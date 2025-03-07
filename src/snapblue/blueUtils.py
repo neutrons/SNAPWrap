@@ -5,6 +5,8 @@ from mantid.kernel import PhysicalConstants
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+import os
+import shutil
 import importlib
 import snapblue.SNAPStateMgr as ssm
 importlib.reload(ssm)
@@ -81,13 +83,42 @@ def loadSEE(seeDefinition,SEEFolder):
 
     return seeDict
 
-def indexStates(isLite=True):
-
+def purgeNormalisation(isLite=True,purge=False):
+    #this removes all existing normalization folders. User with caution!!!!!!!!!!!
     allAvailableStates = ssm.availableStates()
 
-        #12345678901234567890123456789012345678901234567890
 
+    print("Existing Normalization calibrations:\n")
+    for stateID in allAvailableStates:
+        nrmcal = ssm.checkCalibrationStatus(stateID,isLite,calType='normcal')
+        if nrmcal["isCalibrated"]:
+            nrmDir = os.path.dirname(nrmcal['indexPath'])
+            print(f"{nrmDir}")
+                  
+    if purge:
+        doubleCheck = input("Listed folders will be deleted. Enter \"yes\" if you are very sure you are OK with this!")
+        if doubleCheck == 'yes':
+            nDeleted = 0
+            for stateID in allAvailableStates:
+                nrmcal = ssm.checkCalibrationStatus(stateID,isLite,calType='normcal')
+                if nrmcal["isCalibrated"]:
+                    nrmDir = os.path.dirname(nrmcal['indexPath'])
+                    shutil.rmtree(nrmDir)
+                    nDeleted += 1
+
+            print(f"Done. {nDeleted} folders were deleted")
+    else:
+        print("\nRe-run with purge=True to actually delete these")
+
+
+
+def indexStates(isLite=True):
+    #prints an index of existing states and their calibration statuses
     
+
+    allAvailableStates = ssm.availableStates()
+    
+
     outputStrings = []
     statuses = []
     for stateID in allAvailableStates:
