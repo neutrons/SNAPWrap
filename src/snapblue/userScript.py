@@ -14,10 +14,11 @@ t0 = time.time()
 # Data are reduced with blue.reduceSNAP. Minimum input is a run-number but
 # various options can be set as described here 
 # 
-# blue.reduce(64431)#,
+blue.reduce(64413,#)#,
 # pixelMaskIndex=1,
-# verbose=True,keepUnfocussed=True)
-blue.exportData()
+verbose=True,keepUnfocussed=True,
+lambdaCrop=False)
+
 
 # blue.indexStates()
 
