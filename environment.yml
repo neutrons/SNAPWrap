@@ -6,7 +6,9 @@ channels:
   - mantid-ornl/label/rc
   - neutrons/label/rc
 dependencies:
-  - snapred==1.1.0rc4
+  - snapred==1.1.0rc5
+  # SNAPBlue specific dependencies
+  - scikit-image
   # -- Runtime dependencies
   # base: list all base dependencies here
   - python>=3.8  # please specify the minimum version of python here

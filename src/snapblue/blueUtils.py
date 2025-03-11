@@ -9,9 +9,9 @@ import os
 import shutil
 import importlib
 import snapblue.SNAPStateMgr as ssm
-importlib.reload(ssm)
+# importlib.reload(ssm)
 import snapblue.SNAPExportTools as exportTools
-importlib.reload(exportTools)
+# importlib.reload(exportTools)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -324,7 +324,7 @@ def reduce(runNumber,
                verbose=False,
                reduceData=True,
                keepUnfocussed=False,
-               lambdaCrop=True, #temporarily needed until SNAPRed can do this during reduction
+               lambdaCrop=False, #no longer needed
                emptyTrash=True, #remove temporary mantid workspaces at the end of reduction
             #    export=['gsas','xye','ascii'], #file formats to export to. If empty, no export 
                cisMode=False,
@@ -424,6 +424,8 @@ def reduce(runNumber,
         convertUnitsTo=convertUnitsTo,
         artificialNormalizationIngredients=artificialNormalizationIngredients
     )
+
+    print(reductionRequest)
 
     reductionService.validateReduction(reductionRequest)
 

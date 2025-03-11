@@ -104,6 +104,7 @@ clean-all = { description = "Clean all build artifacts", depends-on = ["clean-py
 
 [tool.pixi.dependencies]
 snapred = "==1.1.0rc4"
+scikit-image = "*"
 python = ">=3.8"
 versioningit = "*"
 numpy = "*"

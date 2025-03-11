@@ -39,6 +39,7 @@ requirements:
     - python
     - mantidworkbench
     - snapred
+    - scikit-image
 
 about:
   home: {{ url }}
