@@ -10,12 +10,6 @@ import json
 
 import snapblue.SNAPStateMgr as ssm
 
-# TODO: get rid of link to SNAPTools
-# sys.path.append("/SNS/SNAP/shared/Malcolm/code/SNAPRedScripted")
-# import SNAPTools as snp
-# import importlib
-# importlib.reload(snp)
-
 #Mantid interface
 
 class redObject:
