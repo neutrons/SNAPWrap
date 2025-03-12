@@ -35,8 +35,14 @@ class redObject:
             self.isReducedDataWorkspace = False
             return
         
-        self.suffix = f"{parsed[2]}_{parsed[3]}_{parsed[4]}"
+        #get useful workspace properties
+        self.wsProperties(wsName)
+        if not self.isReducedDataWorkspace:
+            return
+        
         self.isReducedDataWorkspace = True
+
+        self.suffix = f"{parsed[2]}_{parsed[3]}_{parsed[4]}"
         self.pixelGroup = parsed[2]
         self.runNumber = parsed[3]
         self.timeStamp = parsed[4]
@@ -50,8 +56,7 @@ class redObject:
         self.exportPaths = self.buildExportPaths()
         self.dateTime = datetime.datetime.strptime(self.timeStamp,'%Y-%m-%dT%H%M%S')
 
-        #get useful workspace properties
-        self.wsProperties(wsName)
+        
 
         #create a dictionary to hold metadata to include as a comment in output files
 
@@ -78,12 +83,16 @@ class redObject:
         if nPix == Config["instrument.lite.pixelResolution"]:
             self.isLite = True
             self.instName = "SNAPLite"
+            self.isReducedDataWorkspace = True
         elif nPix == Config["instrument.native.pixelResolution"]:
             self.isLite = False
             self.instName = "SNAP"
+            self.isReducedDataWorkspace = True
         else:
             print("ERROR: these data aren\'t from a recognised SNAP instrument")
-            assert False
+            print(f"found {nPix} pixels in instrument for workspace {wsName}")
+            self.isReducedDataWorkspace=False
+            return
         
         self.nHist = ws.getNumberHistograms()
 
@@ -107,7 +116,7 @@ class redObject:
 
         #TODO: use elements of paths defined in SNAPInstPrm instead of hardwiring here
         #TODO: allow for overrides?
-        #TODO: save reduction metadata? Link to reduction record?
+        #TODO: save reduction metadata? Link to reduction
 
         #constructs export filepaths according to exportFormats requested
 
