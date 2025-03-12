@@ -173,12 +173,62 @@ def indexStates(isLite=True):
         if statuses[i] == "*CALIB*":
             print(string) 
 
+def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
+
+#creates a Workspace Group called cabinetName.
+# if operation = "add" workspaces with specified nameKeys in their name will be added to group
+# if operation = "remove" workspaces with specified nameKeys in their name will be removed from group
+# if operation = "empty" cabinet will be emptied and removed
+ 
+    if operation.lower() == "empty":
+        groupWS = mtd[cabinetName]
+        UnGroupWorkspace(groupWS)
+        return
+
+    # print("nameKeys: ",nameKeys)
+    if type(nameKeys) != list:
+        print("ERROR: name keys must be a list")
+        return
+
+    allWorkspaces = mtd.getObjectNames()
+    toBeFiled = []
+    for wsName in allWorkspaces:
+        for key in nameKeys:
+            if key.lower() in wsName.lower():
+                toBeFiled.append(wsName)
+
+    if operation.lower() == "add":
+        print(f"{len(toBeFiled)} workspaces will be added to {cabinetName}")
+        # check if filing cabinet exists already 
+        if mtd.doesExist(cabinetName):
+            wsGroup = mtd[cabinetName]
+            cabinetContents = wsGroup.getNames()
+            for wsName in toBeFiled:
+                wsGroup.add(wsName)
+
+        else:
+            GroupWorkspaces(InputWorkspaces=toBeFiled,
+                        OutputWOrkspace=cabinetName)
+
+    if operation.lower() == "remove":
+        if not mtd.doesExist(cabinetName):
+            print(f"{cabinetName} doesn\'t exist cannot remove from it")
+            return
+        
+        print(f"{len(toBeFiled)} workspaces will be removed from {cabinetName}")
+        wsGroup = mtd[cabinetName]
+        for wsName in toBeFiled:
+            wsGroup.remove(wsName)
+
+
+    wsGroup = mtd[cabinetName]
+    print(f"{cabinetName} has {wsGroup.getNumberOfEntries()} total workspaces")
 
 def resample(sampleFactor=1):
 
     # function to downsample reduced workspaces
 
-    reducedGroups = exportTools.reducedRuns(exportFormats=[])
+    reducedGroups = exportTools.reducedRuns(exportFormats=[],prefix="reduced_dsp")
 
     for redGroup in reducedGroups:
 
@@ -191,7 +241,7 @@ def resample(sampleFactor=1):
             print(f"processing group {pgs} with {len(runDict[pgs])} associated workspaces")
             for redObj in runDict[pgs]:
                 # each redObj corresponds to a mantid workspace containing with reduced data
-
+                print(redObj.redRecord)
                 XMin = redObj.xMin
                 XMax = redObj.xMax
                 Delta = redObj.delta
