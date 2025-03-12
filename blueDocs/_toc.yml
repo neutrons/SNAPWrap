@@ -5,18 +5,21 @@ format: jb-book
 root: intro
 chapters:
 - file: setup
-- file: blueUtils
-- file: reduce
-- file: exportData
-- file: confirmIPTS
-- file: propagateDifcal
-- file: indexStates
-- file: SNAPStateMgr
-- file: stateDef
-- file: checkStateExists
-- file: checkCalibrationStatus
-- file: printCalibrationHome
-- file: availableStates
-- file: pullStateDict
-- file: autoStateName
-- file: createState
+- file: blueUtils/blueUtils
+  sections:
+  - file: blueUtils/confirmIPTS
+  - file: blueUtils/exportData
+  - file: blueUtils/file
+  - file: blueUtils/indexStates
+  - file: blueUtils/propagateDifcal
+  - file: blueUtils/reduce
+- file: SNAPStateManager/SNAPStateManager
+  sections:
+  - file: SNAPStateManager/autoStateName
+  - file: SNAPStateManager/availableStates
+  - file: SNAPStateManager/checkCalibrationStatus
+  - file: SNAPStateManager/checkStateExists
+  - file: SNAPStateManager/createState
+  - file: SNAPStateManager/printCalibrationHome
+  - file: SNAPStateManager/pullStateDict
+  - file: SNAPStateManager/stateDef

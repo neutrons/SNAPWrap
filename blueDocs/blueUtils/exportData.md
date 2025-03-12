@@ -31,6 +31,21 @@ e.g.
 /SNS/SNAP/IPTS-34952/shared/SNAPRed/export/gsa/column/
 ```
 
+## Optional Arguments
+
+## `prefix`
+
+Data reduced by SNAPRed will have a workspace with names that  begin with the prefix `reduced_dsp`. By default, all workspaces with this prefix will be processed by `exportData`. However it is possible to specify a different prefix.
+
+For example, if data have been downsampled, they will be stored in workspaces with a prefix `resampled_dsp`. Or, if data have been converted to units of momentum transfer, they will have the prefix `reduced_qsp`.
+
+As long as workspaces follow the naming convention
+
+```
+{prefix}_{pixelgroup}_{runNumber}_{timestamp}
+```
+`exportData` should be able to process these.
+
 ## `exportFormats`
 
 The desired export formats can be specified using this parameter. Its value is in the form of a list of string, each supported string is a 3 character as described in the overview. The default value of this parameter is ['gsa','xye','csv'] and all three formats will be created. 

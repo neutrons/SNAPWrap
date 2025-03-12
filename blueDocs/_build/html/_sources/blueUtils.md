@@ -6,8 +6,12 @@ Once imported, its various functions are available as methods, each method will 
 
 The available methods are: 
 
-* `reduce`: reduces data using SNAPRed
+* `confirm_IPTS`: enables automatic update of the IPTS record of data reduction status 
 * `exportData`: exports reduced data to various format outputs for subsequent refinement/analysis
-* `propagateDifcal`: a utility to copy a diffraction calibration from one state to another compatible state (i.e. one with the same detector positions)
+* `file`: this is a utility to use mantid workspace groups to keep the workspace tree as clean as possible.
 * `indexState`: outputs a list of defined states and their calibration status
+* `propagateDifcal`: a utility to copy a diffraction calibration from one state to another compatible state (i.e. one with the same detector positions)
+* `reduce`: reduces data using SNAPRed
+* `resample`: allows consistent rebinning of all reduced workspaces
+
 
