@@ -107,6 +107,7 @@ class redObject:
 
         #TODO: use elements of paths defined in SNAPInstPrm instead of hardwiring here
         #TODO: allow for overrides?
+        #TODO: save reduction metadata? Link to reduction record?
 
         #constructs export filepaths according to exportFormats requested
 
@@ -210,7 +211,7 @@ def convertToQ():
                         OutputWorkspace=outName,
                         Target="MomentumTransfer")
 
-def reducedRuns(exportFormats):#,latestOnly=True,gsaInstPrm=True):
+def reducedRuns(exportFormats,prefix):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a .runNumber attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
@@ -225,7 +226,7 @@ def reducedRuns(exportFormats):#,latestOnly=True,gsaInstPrm=True):
     redRuns = []
     for ws in allWorkspaces:
 
-        red = redObject(ws,exportFormats) 
+        red = redObject(ws,exportFormats,prefix) 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
             redRuns.append(red.runNumber)
