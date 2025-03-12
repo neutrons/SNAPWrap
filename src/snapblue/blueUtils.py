@@ -199,7 +199,7 @@ def resample(sampleFactor=1):
                 print("XMax: ",XMax)
                 print("Delta: ",Delta)
                 dsDelta = Delta/sampleFactor #TODO: worry about this sign...
-                print("downSampled Delta: ",dsDelta)
+                print("DS Delta: ",dsDelta)
 
                 print(f"inputWorkspace is: {redObj.wsName}")
                 outWSName = f"resampled_dsp_{redObj.suffix}"
@@ -211,15 +211,13 @@ def resample(sampleFactor=1):
                             Delta = dsDelta,
                             )
 
-
-
-
-
-
-def exportData(exportFormats=['gsa','xye','csv'],latestOnly=True,gsaInstPrm=True):
+def exportData(exportFormats=['gsa','xye','csv'],
+               prefix='reduced_dsp',
+               latestOnly=True,
+               gsaInstPrm=True):
     #creates reducedGroups and then exports these using the requested export formats
 
-    reducedGroups = exportTools.reducedRuns(exportFormats)
+    reducedGroups = exportTools.reducedRuns(exportFormats,prefix)
     
     exportTools.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
     
