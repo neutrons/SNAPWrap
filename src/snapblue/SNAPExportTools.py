@@ -7,6 +7,7 @@ import shutil
 from mantid.simpleapi import *
 import datetime
 import json
+from snapred.meta.Config import Config
 
 import snapblue.SNAPStateMgr as ssm
 
@@ -19,21 +20,22 @@ class redObject:
     #and then builds further attributes from these
 
 
-    def __init__(self, wsName,exportFormats):
-
-        requiredPrefix = 'reduced_dsp_'
+    def __init__(self, wsName,exportFormats,requiredPrefix='reduced_dsp'):
 
         if '_' not in wsName:
             self.isReducedDataWorkspace = False
             return
 
         parsed = wsName.split('_')
-        prefix = f"{parsed[0]}_{parsed[1]}_"
+        prefix = f"{parsed[0]}_{parsed[1]}"
+        
+        # print(f"prefix: {prefix}, required prefix: {requiredPrefix}")
 
         if prefix != requiredPrefix:
             self.isReducedDataWorkspace = False
             return
         
+        self.suffix = f"{parsed[2]}_{parsed[3]}_{parsed[4]}"
         self.isReducedDataWorkspace = True
         self.pixelGroup = parsed[2]
         self.runNumber = parsed[3]
@@ -48,29 +50,58 @@ class redObject:
         self.exportPaths = self.buildExportPaths()
         self.dateTime = datetime.datetime.strptime(self.timeStamp,'%Y-%m-%dT%H%M%S')
 
-        ws = mtd[wsName]
-        self.instName = ws.getInstrument().getFullName()
-        if "Lite" in self.instName:
-            self.isLite = True
-        else:
-            self.isLite = False
+        #get useful workspace properties
+        self.wsProperties(wsName)
 
         #create a dictionary to hold metadata to include as a comment in output files
 
         if self.isLite:
-            self.redRecord = (f"{self.ipts}shared/SNAPRed/{self.stateID[0]}/"
-                              f"lite/{self.runNumber}/"
-                              f"{self.timeStamp}/")
+            self.redRecord = (f"{self.ipts}shared/SNAPRed/{self.stateID}/"
+                              f"lite/{runNumber}/"
+                              f"{self.timeStamp}/ReductionRecord.json")
         else:
-            self.redRecord = (f"{self.ipts}shared/SNAPRed/{self.stateID[0]}/"
-                              f"native/{self.runNumber}/"
-                              f"{self.timeStamp}/")
+            self.redRecord = (f"{self.ipts}shared/SNAPRed/{self.stateID}/"
+                              f"native/{runNumber}/"
+                              f"{self.timeStamp}/ReductionRecord.json")
 
         self.meta = {
             "redRecord" : self.redRecord, 
             "attenuationMethod": None,
             "backgroundMethod":None
         }
+
+    def wsProperties(self,wsName):
+        #gets some useful attributes of workspace
+
+        ws = mtd[wsName]
+        nPix = ws.getInstrument().getNumberDetectors(True)
+        if nPix == Config["instrument.lite.pixelResolution"]:
+            self.isLite = True
+            self.instName = "SNAPLite"
+        elif nPix == Config["instrument.native.pixelResolution"]:
+            self.isLite = False
+            self.instName = "SNAP"
+        else:
+            print("ERROR: these data aren\'t from a recognised SNAP instrument")
+            assert False
+        
+        self.nHist = ws.getNumberHistograms()
+
+        self.xMin = np.zeros(self.nHist)
+        self.xMax = np.zeros(self.nHist)
+        self.delta = np.zeros(self.nHist)
+        for h in range(self.nHist):
+            x = ws.readX(h)
+            self.xMin[h] = np.min(x)
+            self.xMax[h] = np.max(x)
+            binSizes = x[:-1]-x[1:] #array of bin sizes, one smaller than x array
+            if binSizes[0] == binSizes[-2]:
+                self.binType = "linear"
+                self.delta[h]=binSizes[0]
+            else:
+                self.binType = "logarithmic" #this is not particularly safe...
+                self.delta[h] = -(x[1]/x[0]-1)
+        
 
     def buildExportPaths(self):
 
@@ -179,14 +210,13 @@ def convertToQ():
                         OutputWorkspace=outName,
                         Target="MomentumTransfer")
 
-def reducedRuns(exportFormats,latestOnly=True,gsaInstPrm=True):
+def reducedRuns(exportFormats):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a .runNumber attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
     #are a list of available reduction object for that group (each with all attributes needed
     #to export requested files)
 
-    #then works through list and appropriately exports workspaces in each group to disk
 
     allWorkspaces = mtd.getObjectNames()
 
@@ -203,16 +233,22 @@ def reducedRuns(exportFormats,latestOnly=True,gsaInstPrm=True):
     nReduced = len(redObjectList)
     uniqueRuns = set(redRuns)
     nUnique = len(uniqueRuns)
-    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} reduction groups")
+    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction groups")
 
     #parse these creating "reductionGroup" for each run numbner
     reducedGroups = []
     for run in uniqueRuns: 
         redGroup = reductionGroup(run,redObjectList)
         reducedGroups.append(redGroup)
-        exportReducedGroup(redGroup,latestOnly,gsaInstPrm) #this function handles the writing of output files  
 
     return reducedGroups
+
+def exportReducedGroups(reducedGroups,latestOnly=True,gsaInstPrm=True):
+    #works through a reducedGroups list and exports these. Required export formats
+    #must be specified when creating the reducedGroups list
+
+    for redGroup in reducedGroups:
+        exportReducedGroup(redGroup,latestOnly,gsaInstPrm)
 
 def exportReducedGroup(redGroup,latestOnly,gsaInstPrm):
 
