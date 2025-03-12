@@ -9,21 +9,13 @@ import sys
 import copy
 import shutil
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-# SNAPRed imports TODO: clean up what is not needed...
+# SNAPRed imports 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-# from snapred.backend.dao.ingredients.ArtificialNormalizationIngredients import ArtificialNormalizationIngredients
-# from snapred.backend.dao.request import ReductionExportRequest
-# from snapred.backend.dao.request.ReductionRequest import ReductionRequest
+
 from snapred.backend.data.DataFactoryService import DataFactoryService
-# from snapred.backend.error.ContinueWarning import ContinueWarning
-# from snapred.backend.recipe.ReductionRecipe import ReductionRecipe
-# from snapred.backend.service.ReductionService import ReductionService
-# from snapred.backend.dao.indexing.Versioning import Version, VersionState
 from snapred.meta.mantid.WorkspaceNameGenerator import WorkspaceNameGenerator as wng
 from snapred.meta.Config import Config
 from snapred.backend.data import LocalDataService as lds
-# from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
-# from snapred.backend.service.SousChef import SousChef
 from snapred.backend.data.LocalDataService import LocalDataService
 from snapred.backend.dao.indexing.IndexEntry import IndexEntry
 
@@ -61,6 +53,15 @@ def stateDef(runNumber):
     }
 
     return [stateID,stateDict]
+
+def retrieveReductionRecord(redRecord):
+    #returns a dictionary taken from the reduction record at path redPath
+
+    with open(redRecord,'r') as file:
+        recordDict = json.load(file)
+    
+    return recordDict
+
 
 def checkStateExists(stateID):
   

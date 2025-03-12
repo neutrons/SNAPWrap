@@ -9,9 +9,9 @@ import os
 import shutil
 import importlib
 import snapblue.SNAPStateMgr as ssm
-# importlib.reload(ssm)
+importlib.reload(ssm)
 import snapblue.SNAPExportTools as exportTools
-# importlib.reload(exportTools)
+importlib.reload(exportTools)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -174,12 +174,54 @@ def indexStates(isLite=True):
             print(string) 
 
 
+def resample(sampleFactor=1):
+
+    # function to downsample reduced workspaces
+
+    reducedGroups = exportTools.reducedRuns(exportFormats=[])
+
+    for redGroup in reducedGroups:
+
+        runNumber = redGroup.runNumber
+        runDict = redGroup.objectDict
+        print(f"Down sampling run: {runNumber} with {len(runDict)} pixel group(s)")
+
+        for pgs in runDict.keys():
+            #each key is a pixel group and each pixel group has a list of objects (each is a workspace)
+            print(f"processing group {pgs} with {len(runDict[pgs])} associated workspaces")
+            for redObj in runDict[pgs]:
+                # each redObj corresponds to a mantid workspace containing with reduced data
+
+                XMin = redObj.xMin
+                XMax = redObj.xMax
+                Delta = redObj.delta
+                print("XMin: ",XMin)
+                print("XMax: ",XMax)
+                print("Delta: ",Delta)
+                dsDelta = Delta/sampleFactor #TODO: worry about this sign...
+                print("downSampled Delta: ",dsDelta)
+
+                print(f"inputWorkspace is: {redObj.wsName}")
+                outWSName = f"resampled_dsp_{redObj.suffix}"
+                print(f"outputWorkspace is: {outWSName}")
+                RebinRagged(InputWorkspace=redObj.wsName,
+                            OutputWorkspace=outWSName,
+                            XMin = XMin,
+                            XMax = XMax,
+                            Delta = dsDelta,
+                            )
+
+
+
+
+
 
 def exportData(exportFormats=['gsa','xye','csv'],latestOnly=True,gsaInstPrm=True):
+    #creates reducedGroups and then exports these using the requested export formats
 
-    exportTools.reducedRuns(exportFormats,
-                            latestOnly,
-                            gsaInstPrm)
+    reducedGroups = exportTools.reducedRuns(exportFormats)
+    
+    exportTools.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
     
 def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
 
