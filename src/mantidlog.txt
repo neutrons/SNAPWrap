@@ -1177,3 +1177,154 @@
 [38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:34:17,744 - INFO     - Mantid -[00m SetSample started (child)
 [38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:34:17,744 - INFO     - Mantid -[00m SetSample successful, Duration 0.00 seconds
 [38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:34:17,746 - INFO     - Mantid -[00m CylinderAbsorption started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:15,611 - INFO     - Mantid -[00m CylinderAbsorption successful, Duration 1 minutes 57.86 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:15,651 - INFO     - Mantid -[00m Divide started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,448 - INFO     - Mantid -[00m Divide successful, Duration 0.80 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,452 - INFO     - Mantid -[00m WashDishes started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,452 - INFO     - Mantid -[00m Washing the dishes...
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,454 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,455 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,455 - INFO     - Mantid -[00m WashDishes successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,457 - INFO     - Mantid -[00m ConvertUnits started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,851 - INFO     - Mantid -[00m ConvertUnits successful, Duration 0.39 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,853 - INFO     - Mantid -[00m RawVanadiumCorrectionAlgorithm successful, Duration 2 minutes 1.55 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:16,859 - INFO     - Mantid -[00m CloneWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,736 - INFO     - Mantid -[00m CloneWorkspace successful, Duration 0.88 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,738 - INFO     - Mantid -[00m MaskDetectorFlags started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,780 - INFO     - Mantid -[00m MaskDetectorFlags successful, Duration 0.04 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,781 - INFO     - Mantid -[00m ApplyDiffCal started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,823 - INFO     - Mantid -[00m ApplyDiffCal successful, Duration 0.04 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,824 - INFO     - Mantid -[00m ConvertUnits started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,824 - INFO     - Mantid -[00m ConvertUnits successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,830 - INFO     - Mantid -[00m ConvertUnits started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,830 - INFO     - Mantid -[00m ConvertUnits successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,831 - INFO     - Mantid -[00m FocusSpectraAlgorithm started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,839 - INFO     - Mantid -[00m Execute of FocusSpectra START!
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:17,841 - INFO     - Mantid -[00m ConvertUnits started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,189 - INFO     - Mantid -[00m ConvertUnits successful, Duration 0.35 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,191 - INFO     - Mantid -[00m DiffractionFocussing started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,310 - INFO     - Mantid -[00m DiffractionFocussing successful, Duration 0.12 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,311 - INFO     - Mantid -[00m FocusSpectraAlgorithm successful, Duration 0.48 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,311 - INFO     - Mantid -[00m NormalizeByCurrentButTheCorrectWay started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,311 - INFO     - Mantid -[00m Normalizing by current, but properly
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,322 - INFO     - Mantid -[00m NormaliseByCurrent started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,343 - INFO     - Mantid -[00m NormaliseByCurrent successful, Duration 0.02 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,344 - INFO     - Mantid -[00m NormalizeByCurrentButTheCorrectWay successful, Duration 0.03 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,346 - INFO     - Mantid -[00m SmoothDataExcludingPeaksAlgo started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,346 - INFO     - Mantid -[00m Removing peaks and smoothing data
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,347 - INFO     - Mantid -[00m CloneWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,537 - INFO     - Mantid -[00m CloneWorkspace successful, Duration 0.19 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:18,538 - INFO     - Mantid -[00m ConvertToMatrixWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:19,030 - INFO     - Mantid -[00m ConvertToMatrixWorkspace successful, Duration 0.49 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:19,031 - INFO     - Mantid -[00m DiffractionSpectrumWeightCalculator started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:19,032 - INFO     - Mantid -[00m CloneWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:19,037 - INFO     - Mantid -[00m CloneWorkspace successful, Duration 0.01 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:19,039 - INFO     - Mantid -[00m DiffractionSpectrumWeightCalculator successful, Duration 0.01 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,220 - INFO     - Mantid -[00m WashDishes started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,221 - INFO     - Mantid -[00m Washing the dishes...
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,221 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,222 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,222 - INFO     - Mantid -[00m WashDishes successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,222 - INFO     - Mantid -[00m SmoothDataExcludingPeaksAlgo successful, Duration 1.88 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,227 - INFO     - Mantid -[00m Minus started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:20,309 - INFO     - Mantid -[00m Minus successful, Duration 0.08 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:41,977 - INFO     - Mantid -[00m SmoothDataExcludingPeaksAlgo started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:41,978 - INFO     - Mantid -[00m Removing peaks and smoothing data
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:41,979 - INFO     - Mantid -[00m CloneWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,465 - INFO     - Mantid -[00m CloneWorkspace successful, Duration 0.20 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,478 - INFO     - Mantid -[00m ConvertToMatrixWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,570 - INFO     - Mantid -[00m ConvertToMatrixWorkspace successful, Duration 0.08 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,582 - INFO     - Mantid -[00m DiffractionSpectrumWeightCalculator started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,585 - INFO     - Mantid -[00m CloneWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,598 - INFO     - Mantid -[00m CloneWorkspace successful, Duration 0.01 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,602 - INFO     - Mantid -[00m DiffractionSpectrumWeightCalculator successful, Duration 0.02 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,842 - INFO     - Mantid -[00m WashDishes started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,842 - INFO     - Mantid -[00m Washing the dishes...
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,843 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,843 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,843 - INFO     - Mantid -[00m WashDishes successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,853 - INFO     - Mantid -[00m SmoothDataExcludingPeaksAlgo successful, Duration 0.87 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,855 - INFO     - Mantid -[00m Minus started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:36:42,897 - INFO     - Mantid -[00m Minus successful, Duration 0.04 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:01,208 - INFO     - Mantid -[00m RenameWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:01,724 - INFO     - Mantid -[00m RenameWorkspace successful, Duration 0.51 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:01,727 - INFO     - Mantid -[00m RenameWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:02,234 - INFO     - Mantid -[00m RenameWorkspace successful, Duration 0.51 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:02,235 - INFO     - Mantid -[00m RenameWorkspace started (child)
+[33;20manalysis-node03 - 2025-03-12 17:37:02,385 - WARNING  - Mantid - constrained_layout not applied because axes sizes collapsed to zero.  Try making figure larger or Axes decorations smaller.
+[0m
+[33;20manalysis-node03 - 2025-03-12 17:37:02,511 - WARNING  - Mantid - constrained_layout not applied because axes sizes collapsed to zero.  Try making figure larger or Axes decorations smaller.
+[0m
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:02,748 - INFO     - Mantid -[00m RenameWorkspace successful, Duration 0.51 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:02,753 - INFO     - Mantid -[00m SaveNexus started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:03,081 - INFO     - Mantid -[00m SaveNexus successful, Duration 0.33 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:03,083 - INFO     - Mantid -[00m SaveNexus started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:04,449 - INFO     - Mantid -[00m SaveNexus successful, Duration 1.37 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:04,450 - INFO     - Mantid -[00m SaveNexus started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:06,038 - INFO     - Mantid -[00m SaveNexus successful, Duration 1.59 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,506 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,507 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,508 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,508 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,509 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,509 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,510 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,510 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,511 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,511 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,512 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,513 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,514 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,514 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,515 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,515 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,516 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,528 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.01 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,529 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,529 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,530 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,530 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,530 - INFO     - Mantid -[00m DeleteWorkspace started (child)
+[38:2:0:136:51:46manalysis-node03 - 2025-03-12 17:37:09,531 - INFO     - Mantid -[00m DeleteWorkspace successful, Duration 0.00 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:00:15,767 - INFO     - Mantid -[00m LoadEventNexus started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:00:17,757 - INFO     - Mantid -[00m Instrument parameter file: /SNS/users/66j/.mantid/instrument/SNAP_Parameters.xml has been loaded.
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:00:17,757 - INFO     - Mantid -[00m 
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:00:17,757 - INFO     - Mantid -[00m No correction parameter file applies to the date for correction file.
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:00:19,193 - INFO     - Mantid -[00m LoadEventNexus successful, Duration 3.43 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:00:19,196 - INFO     - Mantid -[00m LoadDiffCal started
+[33;20manalysis-node03 - 2025-03-13 09:00:19,426 - WARNING  - Mantid - The instrument definition filename does not contain _Definition. Your instrument name will be set to: SNAP_47278.nxs.h5[0m
+[31;20manalysis-node03 - 2025-03-13 09:00:20,421 - ERROR    - Mantid - Error in execution of algorithm LoadInstrument:[0m
+[31;20manalysis-node03 - 2025-03-13 09:00:20,422 - ERROR    - Mantid - No valid loader found for instrument file  in "/SNS/SNAP/IPTS-22157/nexus/SNAP_47278.nxs.h5"[0m
+[31;20manalysis-node03 - 2025-03-13 09:00:20,423 - ERROR    - Mantid - Error in execution of algorithm LoadDiffCal:[0m
+[31;20manalysis-node03 - 2025-03-13 09:00:20,423 - ERROR    - Mantid - No valid loader found for instrument file  in "/SNS/SNAP/IPTS-22157/nexus/SNAP_47278.nxs.h5"[0m
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:06:51,222 - INFO     - Mantid -[00m LoadDiffCal started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:06:52,024 - INFO     - Mantid -[00m LoadDiffCal successful, Duration 0.80 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:10:21,600 - INFO     - Mantid -[00m LoadDiffCal started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:10:22,471 - INFO     - Mantid -[00m LoadDiffCal successful, Duration 0.87 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:11:49,823 - INFO     - Mantid -[00m LoadDiffCal started
+[33;20manalysis-node03 - 2025-03-13 09:11:50,163 - WARNING  - Mantid - The instrument definition filename does not contain _Definition. Your instrument name will be set to: SNAP_47278.nxs.h5[0m
+[31;20manalysis-node03 - 2025-03-13 09:11:50,205 - ERROR    - Mantid - Error in execution of algorithm LoadInstrument:[0m
+[31;20manalysis-node03 - 2025-03-13 09:11:50,205 - ERROR    - Mantid - No valid loader found for instrument file  in "/SNS/SNAP/IPTS-22157/nexus/SNAP_47278.nxs.h5"[0m
+[31;20manalysis-node03 - 2025-03-13 09:11:50,206 - ERROR    - Mantid - Error in execution of algorithm LoadDiffCal:[0m
+[31;20manalysis-node03 - 2025-03-13 09:11:50,206 - ERROR    - Mantid - No valid loader found for instrument file  in "/SNS/SNAP/IPTS-22157/nexus/SNAP_47278.nxs.h5"[0m
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:14:36,986 - INFO     - Mantid -[00m LoadDiffCal started
+[33;20manalysis-node03 - 2025-03-13 09:14:37,037 - WARNING  - Mantid - The instrument definition filename does not contain _Definition. Your instrument name will be set to: SNAP_47278.nxs.h5[0m
+[31;20manalysis-node03 - 2025-03-13 09:14:37,085 - ERROR    - Mantid - Error in execution of algorithm LoadInstrument:[0m
+[31;20manalysis-node03 - 2025-03-13 09:14:37,085 - ERROR    - Mantid - No valid loader found for instrument file  in "/SNS/SNAP/IPTS-22157/nexus/SNAP_47278.nxs.h5"[0m
+[31;20manalysis-node03 - 2025-03-13 09:14:37,086 - ERROR    - Mantid - Error in execution of algorithm LoadDiffCal:[0m
+[31;20manalysis-node03 - 2025-03-13 09:14:37,086 - ERROR    - Mantid - No valid loader found for instrument file  in "/SNS/SNAP/IPTS-22157/nexus/SNAP_47278.nxs.h5"[0m
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:18:48,622 - INFO     - Mantid -[00m LoadDiffCal started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:18:49,763 - INFO     - Mantid -[00m LoadDiffCal successful, Duration 1.14 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:18:49,764 - INFO     - Mantid -[00m RenameWorkspace started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:18:50,160 - INFO     - Mantid -[00m RenameWorkspace successful, Duration 0.40 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:18:50,169 - INFO     - Mantid -[00m GroupDetectors started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:18:50,799 - INFO     - Mantid -[00m GroupDetectors successful, Duration 0.63 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:28,103 - INFO     - Mantid -[00m LoadDiffCal started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:29,238 - INFO     - Mantid -[00m LoadDiffCal successful, Duration 1.13 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:29,239 - INFO     - Mantid -[00m RenameWorkspace started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:29,618 - INFO     - Mantid -[00m RenameWorkspace successful, Duration 0.38 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:30,002 - INFO     - Mantid -[00m GroupDetectors started
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:30,657 - INFO     - Mantid -[00m GroupDetectors successful, Duration 0.65 seconds
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:30,705 - INFO     - Mantid -[00m LoadInstrument started
+[33;20manalysis-node03 - 2025-03-13 09:20:30,705 - WARNING  - Mantid - The instrument definition filename does not contain _Definition. Your instrument name will be set to: SNAPLite.xml[0m
+[38:2:0:136:51:46manalysis-node03 - 2025-03-13 09:20:30,711 - INFO     - Mantid -[00m LoadInstrument successful, Duration 0.01 seconds

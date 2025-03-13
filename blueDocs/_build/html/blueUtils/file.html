@@ -400,9 +400,11 @@ document.write(`
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#default-usage">Default usage</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-parameters">Optional parameters</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#operation"><code class="docutils literal notranslate"><span class="pre">operation</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cabinetname"><code class="docutils literal notranslate"><span class="pre">cabinetName</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#operation"><code class="docutils literal notranslate"><span class="pre">operation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cabinetname"><code class="docutils literal notranslate"><span class="pre">cabinetName</span></code></a></li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -421,10 +423,14 @@ document.write(`
 <p>This is a utility to help manage large numbers of workspaces in the mantid workspace tree. It works by creating a mantid workspace group (default name <code class="docutils literal notranslate"><span class="pre">File_Cabinet</span></code>) and allows the bulk movement of workspaces in and out of that using sub strings from the workspace names, here called nameKeys (nb nameKeys are not case sensitive). The desired nameKeys must be provided as a list of strings e.g.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">nameKeys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;all&quot;</span><span class="p">,</span><span class="s2">&quot;column&quot;</span><span class="p">]</span>
 <span class="n">nameKeys</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;all&#39;</span><span class="p">,</span><span class="s1">&#39;column&#39;</span><span class="p">]</span>
-<span class="n">nameKeys</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">nameKeys</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;aLL&#39;</span><span class="p">,</span><span class="n">cOLuMn</span><span class="s1">&#39;]</span>
 </pre></div>
 </div>
-<p>are all valid</p>
+<p>are all valid and will do the same thing.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">nameKeys</span> <span class="o">=</span> <span class="p">[]</span>
+</pre></div>
+</div>
+<p>is also valid.</p>
 </section>
 <section id="default-usage">
 <h2>Default usage<a class="headerlink" href="#default-usage" title="Permalink to this heading">#</a></h2>
@@ -441,30 +447,34 @@ document.write(`
 <p>Using a nameKey “all_” might help be more specific.</p>
 <p>Any workspaces inadvertently added to the Workspace Group can be removed using the <code class="docutils literal notranslate"><span class="pre">remove</span></code> operation described below</p>
 </div>
-<p>The default behaviour is to add specified workspaces to the Workspace Group. So, if the above command has been run, creating the workspace group and moving all workspaces with “all” in their names into that and <em>then</em> the following is run:</p>
+<p>The default behaviour is to cumulatively add specified workspaces to the Workspace Group. So, if the above command has been run, creating the workspace group and moving all workspaces with “all” in their names into that and <em>then</em> the following is run:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">blue</span><span class="o">.</span><span class="n">file</span><span class="p">(</span><span class="n">nameKeys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;column&quot;</span><span class="p">])</span>
 </pre></div>
 </div>
 <p>all workspaces with “column” in their names will also be moved into the Workspace Group</p>
 </section>
-<section id="optional-parameters">
-<h2>Optional parameters<a class="headerlink" href="#optional-parameters" title="Permalink to this heading">#</a></h2>
-</section>
+<section id="optional-arguments">
+<h2>Optional arguments<a class="headerlink" href="#optional-arguments" title="Permalink to this heading">#</a></h2>
 <section id="operation">
-<h2><code class="docutils literal notranslate"><span class="pre">operation</span></code><a class="headerlink" href="#operation" title="Permalink to this heading">#</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">operation</span></code> controls what <code class="docutils literal notranslate"><span class="pre">file</span></code>. It has a default value of “add” and optional values of “remove” or “empty”</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">operation</span> <span class="o">==</span> <span class="s2">&quot;empty&quot;</span>
+<h3><code class="docutils literal notranslate"><span class="pre">operation</span></code><a class="headerlink" href="#operation" title="Permalink to this heading">#</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">operation</span></code> controls what <code class="docutils literal notranslate"><span class="pre">file</span></code> does. It has a default value of “add” and optional values of “remove” or “empty”</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">operation</span> <span class="o">==</span> <span class="s2">&quot;add&quot;</span>
 </pre></div>
 </div>
-<p>irrespective of any provided nameKeys, all workspaces in the Workspace Group will be removed from the Group and the Group deleted.</p>
+<p>workspaces matching the specified nameKey will we be added to the Workspace Group. Any workspaces already in the group will be left there.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">operation</span> <span class="o">==</span> <span class="s2">&quot;remove&quot;</span>
 </pre></div>
 </div>
 <p>Any workspaces inside the Group that match the provided nameKeys will be removed from the Group.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">operation</span> <span class="o">==</span> <span class="s2">&quot;empty&quot;</span>
+</pre></div>
+</div>
+<p>irrespective of any provided nameKeys, all workspaces in the Workspace Group will be removed from the Group and the Group deleted.</p>
 </section>
 <section id="cabinetname">
-<h2><code class="docutils literal notranslate"><span class="pre">cabinetName</span></code><a class="headerlink" href="#cabinetname" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">cabinetName</span></code><a class="headerlink" href="#cabinetname" title="Permalink to this heading">#</a></h3>
 <p>By default the Workspace Group will be called “File_Cabinet” if you wish to use a different name, this can be specified using <code class="docutils literal notranslate"><span class="pre">cabinetName</span></code>. Subsequenly, multiple Workspace Groups can be maintained as needed.</p>
+</section>
 </section>
 </section>
 
@@ -534,9 +544,11 @@ document.write(`
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#default-usage">Default usage</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-parameters">Optional parameters</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#operation"><code class="docutils literal notranslate"><span class="pre">operation</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cabinetname"><code class="docutils literal notranslate"><span class="pre">cabinetName</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#operation"><code class="docutils literal notranslate"><span class="pre">operation</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cabinetname"><code class="docutils literal notranslate"><span class="pre">cabinetName</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 

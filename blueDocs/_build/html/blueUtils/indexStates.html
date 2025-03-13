@@ -62,8 +62,8 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'blueUtils/indexStates';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="SNAPStateMgr" href="../SNAPStateManager/SNAPStateManager.html" />
-    <link rel="prev" title="propagateDifcal" href="propagateDifcal.html" />
+    <link rel="next" title="propagateDifcal" href="propagateDifcal.html" />
+    <link rel="prev" title="file" href="file.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -184,15 +184,23 @@
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../setup.html">Set up</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="blueUtils.html">blueUtils</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="confirmIPTS.html"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="exportData.html"><code class="docutils literal notranslate"><span class="pre">exportData</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="file.html"><code class="docutils literal notranslate"><span class="pre">file</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="reduce.html"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="confirmIPTS.html"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="propagateDifcal.html"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">indexStates</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="propagateDifcal.html"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="reduce.html"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="simple">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/autoStateName.html"><code class="docutils literal notranslate"><span class="pre">autoStateName</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/availableStates.html"><code class="docutils literal notranslate"><span class="pre">availableStates</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/checkCalibrationStatus.html"><code class="docutils literal notranslate"><span class="pre">checkCalibrationStatus</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/checkStateExists.html"><code class="docutils literal notranslate"><span class="pre">checkStateExists</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/createState.html"><code class="docutils literal notranslate"><span class="pre">createState</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/printCalibrationHome.html"><code class="docutils literal notranslate"><span class="pre">printCalibrationHome</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/pullStateDict.html"><code class="docutils literal notranslate"><span class="pre">pullStateDict</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/stateDef.html"><code class="docutils literal notranslate"><span class="pre">stateDef</span></code></a></li>
 </ul>
 </details></li>
 </ul>
@@ -391,7 +399,10 @@ document.write(`
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -438,9 +449,12 @@ document.write(`
 </div>
 <p>TODO: probably useful to add run numbers of latest calibration runs (when they exist)??</p>
 </section>
+<section id="optional-arguments">
+<h2>Optional arguments<a class="headerlink" href="#optional-arguments" title="Permalink to this heading">#</a></h2>
 <section id="islite">
-<h2><code class="docutils literal notranslate"><span class="pre">isLite</span></code><a class="headerlink" href="#islite" title="Permalink to this heading">#</a></h2>
-<p>The only optional parameter is <code class="docutils literal notranslate"><span class="pre">isLite</span></code>, which defaults to True.</p>
+<h3><code class="docutils literal notranslate"><span class="pre">isLite</span></code><a class="headerlink" href="#islite" title="Permalink to this heading">#</a></h3>
+<p>The only optional parameter is <code class="docutils literal notranslate"><span class="pre">isLite</span></code>, which defaults to True. If you set false, it will query calibration.home for any calibrated native states</p>
+</section>
 </section>
 </section>
 
@@ -475,20 +489,20 @@ document.write(`
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="propagateDifcal.html"
+       href="file.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></p>
+        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">file</span></code></p>
       </div>
     </a>
     <a class="right-next"
-       href="../SNAPStateManager/SNAPStateManager.html"
+       href="propagateDifcal.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">SNAPStateMgr</p>
+        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -509,7 +523,10 @@ document.write(`
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 

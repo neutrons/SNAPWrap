@@ -36,6 +36,8 @@ ce8a5e1e29a1de97| -50.0:  90.0: 2.1: 60: 1| *CALIB* |     1     |  64420 |     1
 
 TODO: probably useful to add run numbers of latest calibration runs (when they exist)??
 
-## `isLite`
+## Optional arguments
 
-The only optional parameter is `isLite`, which defaults to True.
+### `isLite`
+
+The only optional parameter is `isLite`, which defaults to True. If you set false, it will query calibration.home for any calibrated native states

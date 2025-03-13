@@ -31,9 +31,9 @@ e.g.
 /SNS/SNAP/IPTS-34952/shared/SNAPRed/export/gsa/column/
 ```
 
-## Optional Arguments
+## Optional arguments
 
-## `prefix`
+### `prefix`
 
 Data reduced by SNAPRed will have a workspace with names that  begin with the prefix `reduced_dsp`. By default, all workspaces with this prefix will be processed by `exportData`. However it is possible to specify a different prefix.
 
@@ -46,16 +46,16 @@ As long as workspaces follow the naming convention
 ```
 `exportData` should be able to process these.
 
-## `exportFormats`
+### `exportFormats`
 
 The desired export formats can be specified using this parameter. Its value is in the form of a list of string, each supported string is a 3 character as described in the overview. The default value of this parameter is ['gsa','xye','csv'] and all three formats will be created. 
 
 If a different format needs to be supported, just let Malcolm know.
 
-## `latestOnly`
+### `latestOnly`
 
 Defaulting to `True` this ensures that only the latest reduced workspace is exported and that it's timestamp is excluded from the exported filename. If, instead, this is set `False` _all_ existing reductions of a given run are exported and their filenames will include their timestamps.
 
-## `gsasInstPrm`
+### `gsasInstPrm`
 
 Defaults to `True`. This will export a dummy instPrm to the gsas export folder with the same name as the exported data.

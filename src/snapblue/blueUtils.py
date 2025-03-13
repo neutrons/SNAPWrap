@@ -414,7 +414,7 @@ def reduce(runNumber,
                verbose=False,
                reduceData=True,
                keepUnfocussed=False,
-               lambdaCrop=False, #no longer needed
+               lambdaCrop=False, #no longer needed TODO: delete
                emptyTrash=True, #remove temporary mantid workspaces at the end of reduction
             #    export=['gsas','xye','ascii'], #file formats to export to. If empty, no export 
                cisMode=False,

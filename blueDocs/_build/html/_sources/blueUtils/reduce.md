@@ -32,7 +32,17 @@ If you are only interested in a particular group (e.g. `bank`), the mantid utili
 
 As with any python method, additional arguments can be passed to the `reduce` inside its parentheses with simple `parameter=value` syntax. The available parameters are described here
 
-## `continueNoDifcal`
+## Optional arguments
+
+### `cisMode`
+
+If `True` various intermediate workspaces created during reduction are retained. This can be useful for troubleshooting, but it's a bit tricky to figure out what the many workspaces are. Malcolm can help with this...
+
+```{caution}
+Be aware that retaining intermediate workspaces can use up a lot of memory
+```
+
+### `continueNoDifcal`
 
 This flag allows a "diagnostic" reduction of data to proceed when a diffraction calibration (specifically the .h5 file containing diffractometer constants) does not exist. The default setting for this parameter is `False`. 
 
@@ -40,25 +50,21 @@ This flag allows a "diagnostic" reduction of data to proceed when a diffraction 
 SNAPRed follows the Calibration Index for the relevant instrument state to find calibration files. This is built automatically when using SNAPRed to conduct a diffraction calibration workflow.
 ```
 
-## `continueNoNrmcal`
+### `continueNoNrmcal`
 
 Similarly to above, this parameter allows a diagnostic assessement of data where no vanadium normalisation calibration exists. When `True` a background extracted from the reduced diffraction pattern is used as an artificial normalisation function for the data. The default setting for this parameter is `False`.
 
 The algorithm that extracts the the artificial normalisation is (`clipPeaks`) has three parameters (`smoothingParameter`,`decreaseParameters` and `lss`), their default values are set in the config file "defaultRedcConfig.yml", and these can be overriden by using the `YMLOverride` option (see below). 
 
-## `reduceData`
+### `emptyTrash`
 
-By default, set to `True,` this allows control over whether the data are reduced. If set `False`, SNAPBlue will report relevant information on the reduction (e.g. existance and location of various calibration files) but will not actually reduce data.
+If `True` (the default) `SNAPBlue` will delete any intermediate workspaces created by `SNAPRed`. Sometimes it's useful to inspect these, which can be done by setting `emptyTrash=False`
 
-## `verbose`
-
-By default, set to `False`, this flag allows control of the mantid logging level and also allows detailed information regarding the reduction to be output to the messages window.
-
-## `keepUnfocussed`
+### `keepUnfocussed`
 
 By default set to `False`, this flag allows the retention of the unfocussed, as loaded dataset. x-units are by default d-spacing (this can be changed using the `YMLOverride` option).
 
-## `pixelMaskIndex`
+### `pixelMaskIndex`
 
 Currently, SNAPRed can apply a pixel mask with the following caveats:
 
@@ -67,24 +73,25 @@ Currently, SNAPRed can apply a pixel mask with the following caveats:
 
 Masks of this type are specified by specifiying the value of `N` (note the workspace `MaskWorkspace` can be indicated with _either_ N= 0 or 1 as the first value of N used by mantid is 2).
 
-## `emptyTrash`
+### `qsp`
 
-If `True` (the default) `SNAPBlue` will delete any intermediate workspaces created by `SNAPRed`. Sometimes it's useful to inspect these, which can be done by setting `emptyTrash=False`
+Default value is `False`. If set `True` it will create copies of all present reduced workspaces to units of momentum transfer. 
 
-## `cisMode`
+### `reduceData`
 
-If `True` various intermediate workspaces created during reduction are retained. This can be useful for troubleshooting, but it's a bit tricky to figure out what the many workspaces are. Malcolm can help with this...
+By default, set to `True,` this allows control over whether the data are reduced. If set `False`, SNAPBlue will report relevant information on the reduction (e.g. existance and location of various calibration files) but will not actually reduce data.
 
-```{caution}
-Be aware that retaining intermediate workspaces can use up a lot of memory
-```
-
-## `YMLOverride`
-
-Some default settings for SNAPBlue are set in a `yml` file inside the reop (currently `/SNS/SNAP/shared/code/SNAPBlue/defaultRedConfig`). It is possible to override any value by copying this file, editing as needed and then setting the value of `YMLOverride` to be the path to the new `.yml`
-
-## `sampleEnv`
+### `sampleEnv`
 
 **NOT YET IMPLEMENTED**
 
 This is a protoype feature that will allow the specification of pre-set sample environment types (e.g. PE cells, DACs etc) and application of specific corrections during reduction. The concept is to define a `.yml` file for each sample environment and use this parameter to point to that file.
+
+### `verbose`
+
+By default, set to `False`, this flag allows control of the mantid logging level and also allows detailed information regarding the reduction to be output to the messages window.
+
+### `YMLOverride`
+
+Some default settings for SNAPBlue are set in a `yml` file inside the reop (currently `/SNS/SNAP/shared/code/SNAPBlue/defaultRedConfig`). It is possible to override any value by copying this file, editing as needed and then setting the value of `YMLOverride` to be the path to the new `.yml`
+

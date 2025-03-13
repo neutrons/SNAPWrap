@@ -62,8 +62,8 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'blueUtils/reduce';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="confirmIPTS" href="confirmIPTS.html" />
-    <link rel="prev" title="file" href="file.html" />
+    <link rel="next" title="SNAPStateMgr" href="../SNAPStateManager/SNAPStateManager.html" />
+    <link rel="prev" title="propagateDifcal" href="propagateDifcal.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -184,15 +184,23 @@
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../setup.html">Set up</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="blueUtils.html">blueUtils</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="confirmIPTS.html"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="exportData.html"><code class="docutils literal notranslate"><span class="pre">exportData</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="file.html"><code class="docutils literal notranslate"><span class="pre">file</span></code></a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="confirmIPTS.html"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="propagateDifcal.html"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="indexStates.html"><code class="docutils literal notranslate"><span class="pre">indexStates</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="propagateDifcal.html"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="simple">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/autoStateName.html"><code class="docutils literal notranslate"><span class="pre">autoStateName</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/availableStates.html"><code class="docutils literal notranslate"><span class="pre">availableStates</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/checkCalibrationStatus.html"><code class="docutils literal notranslate"><span class="pre">checkCalibrationStatus</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/checkStateExists.html"><code class="docutils literal notranslate"><span class="pre">checkStateExists</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/createState.html"><code class="docutils literal notranslate"><span class="pre">createState</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/printCalibrationHome.html"><code class="docutils literal notranslate"><span class="pre">printCalibrationHome</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/pullStateDict.html"><code class="docutils literal notranslate"><span class="pre">pullStateDict</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/stateDef.html"><code class="docutils literal notranslate"><span class="pre">stateDef</span></code></a></li>
 </ul>
 </details></li>
 </ul>
@@ -391,16 +399,20 @@ document.write(`
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenodifcal"><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenonrmcal"><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reducedata"><code class="docutils literal notranslate"><span class="pre">reduceData</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#verbose"><code class="docutils literal notranslate"><span class="pre">verbose</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keepunfocussed"><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#pixelmaskindex"><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#emptytrash"><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cismode"><code class="docutils literal notranslate"><span class="pre">cisMode</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ymloverride"><code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sampleenv"><code class="docutils literal notranslate"><span class="pre">sampleEnv</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cismode"><code class="docutils literal notranslate"><span class="pre">cisMode</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenodifcal"><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenonrmcal"><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#emptytrash"><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#keepunfocussed"><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pixelmaskindex"><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#qsp"><code class="docutils literal notranslate"><span class="pre">qsp</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reducedata"><code class="docutils literal notranslate"><span class="pre">reduceData</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sampleenv"><code class="docutils literal notranslate"><span class="pre">sampleEnv</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#verbose"><code class="docutils literal notranslate"><span class="pre">verbose</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ymloverride"><code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code></a></li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -444,8 +456,18 @@ document.write(`
 </div>
 <p>As with any python method, additional arguments can be passed to the <code class="docutils literal notranslate"><span class="pre">reduce</span></code> inside its parentheses with simple <code class="docutils literal notranslate"><span class="pre">parameter=value</span></code> syntax. The available parameters are described here</p>
 </section>
+<section id="optional-arguments">
+<h2>Optional arguments<a class="headerlink" href="#optional-arguments" title="Permalink to this heading">#</a></h2>
+<section id="cismode">
+<h3><code class="docutils literal notranslate"><span class="pre">cisMode</span></code><a class="headerlink" href="#cismode" title="Permalink to this heading">#</a></h3>
+<p>If <code class="docutils literal notranslate"><span class="pre">True</span></code> various intermediate workspaces created during reduction are retained. This can be useful for troubleshooting, but it’s a bit tricky to figure out what the many workspaces are. Malcolm can help with this…</p>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Be aware that retaining intermediate workspaces can use up a lot of memory</p>
+</div>
+</section>
 <section id="continuenodifcal">
-<h2><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code><a class="headerlink" href="#continuenodifcal" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code><a class="headerlink" href="#continuenodifcal" title="Permalink to this heading">#</a></h3>
 <p>This flag allows a “diagnostic” reduction of data to proceed when a diffraction calibration (specifically the .h5 file containing diffractometer constants) does not exist. The default setting for this parameter is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -453,24 +475,20 @@ document.write(`
 </div>
 </section>
 <section id="continuenonrmcal">
-<h2><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code><a class="headerlink" href="#continuenonrmcal" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code><a class="headerlink" href="#continuenonrmcal" title="Permalink to this heading">#</a></h3>
 <p>Similarly to above, this parameter allows a diagnostic assessement of data where no vanadium normalisation calibration exists. When <code class="docutils literal notranslate"><span class="pre">True</span></code> a background extracted from the reduced diffraction pattern is used as an artificial normalisation function for the data. The default setting for this parameter is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <p>The algorithm that extracts the the artificial normalisation is (<code class="docutils literal notranslate"><span class="pre">clipPeaks</span></code>) has three parameters (<code class="docutils literal notranslate"><span class="pre">smoothingParameter</span></code>,<code class="docutils literal notranslate"><span class="pre">decreaseParameters</span></code> and <code class="docutils literal notranslate"><span class="pre">lss</span></code>), their default values are set in the config file “defaultRedcConfig.yml”, and these can be overriden by using the <code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code> option (see below).</p>
 </section>
-<section id="reducedata">
-<h2><code class="docutils literal notranslate"><span class="pre">reduceData</span></code><a class="headerlink" href="#reducedata" title="Permalink to this heading">#</a></h2>
-<p>By default, set to <code class="docutils literal notranslate"><span class="pre">True,</span></code> this allows control over whether the data are reduced. If set <code class="docutils literal notranslate"><span class="pre">False</span></code>, SNAPBlue will report relevant information on the reduction (e.g. existance and location of various calibration files) but will not actually reduce data.</p>
-</section>
-<section id="verbose">
-<h2><code class="docutils literal notranslate"><span class="pre">verbose</span></code><a class="headerlink" href="#verbose" title="Permalink to this heading">#</a></h2>
-<p>By default, set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, this flag allows control of the mantid logging level and also allows detailed information regarding the reduction to be output to the messages window.</p>
+<section id="emptytrash">
+<h3><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code><a class="headerlink" href="#emptytrash" title="Permalink to this heading">#</a></h3>
+<p>If <code class="docutils literal notranslate"><span class="pre">True</span></code> (the default) <code class="docutils literal notranslate"><span class="pre">SNAPBlue</span></code> will delete any intermediate workspaces created by <code class="docutils literal notranslate"><span class="pre">SNAPRed</span></code>. Sometimes it’s useful to inspect these, which can be done by setting <code class="docutils literal notranslate"><span class="pre">emptyTrash=False</span></code></p>
 </section>
 <section id="keepunfocussed">
-<h2><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code><a class="headerlink" href="#keepunfocussed" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code><a class="headerlink" href="#keepunfocussed" title="Permalink to this heading">#</a></h3>
 <p>By default set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, this flag allows the retention of the unfocussed, as loaded dataset. x-units are by default d-spacing (this can be changed using the <code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code> option).</p>
 </section>
 <section id="pixelmaskindex">
-<h2><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code><a class="headerlink" href="#pixelmaskindex" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code><a class="headerlink" href="#pixelmaskindex" title="Permalink to this heading">#</a></h3>
 <p>Currently, SNAPRed can apply a pixel mask with the following caveats:</p>
 <ol class="arabic simple">
 <li><p>the mask must exist as a mantid mask workspace and</p></li>
@@ -478,26 +496,27 @@ document.write(`
 </ol>
 <p>Masks of this type are specified by specifiying the value of <code class="docutils literal notranslate"><span class="pre">N</span></code> (note the workspace <code class="docutils literal notranslate"><span class="pre">MaskWorkspace</span></code> can be indicated with <em>either</em> N= 0 or 1 as the first value of N used by mantid is 2).</p>
 </section>
-<section id="emptytrash">
-<h2><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code><a class="headerlink" href="#emptytrash" title="Permalink to this heading">#</a></h2>
-<p>If <code class="docutils literal notranslate"><span class="pre">True</span></code> (the default) <code class="docutils literal notranslate"><span class="pre">SNAPBlue</span></code> will delete any intermediate workspaces created by <code class="docutils literal notranslate"><span class="pre">SNAPRed</span></code>. Sometimes it’s useful to inspect these, which can be done by setting <code class="docutils literal notranslate"><span class="pre">emptyTrash=False</span></code></p>
+<section id="qsp">
+<h3><code class="docutils literal notranslate"><span class="pre">qsp</span></code><a class="headerlink" href="#qsp" title="Permalink to this heading">#</a></h3>
+<p>Default value is <code class="docutils literal notranslate"><span class="pre">False</span></code>. If set <code class="docutils literal notranslate"><span class="pre">True</span></code> it will create copies of all present reduced workspaces to units of momentum transfer.</p>
 </section>
-<section id="cismode">
-<h2><code class="docutils literal notranslate"><span class="pre">cisMode</span></code><a class="headerlink" href="#cismode" title="Permalink to this heading">#</a></h2>
-<p>If <code class="docutils literal notranslate"><span class="pre">True</span></code> various intermediate workspaces created during reduction are retained. This can be useful for troubleshooting, but it’s a bit tricky to figure out what the many workspaces are. Malcolm can help with this…</p>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Be aware that retaining intermediate workspaces can use up a lot of memory</p>
-</div>
-</section>
-<section id="ymloverride">
-<h2><code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code><a class="headerlink" href="#ymloverride" title="Permalink to this heading">#</a></h2>
-<p>Some default settings for SNAPBlue are set in a <code class="docutils literal notranslate"><span class="pre">yml</span></code> file inside the reop (currently <code class="docutils literal notranslate"><span class="pre">/SNS/SNAP/shared/code/SNAPBlue/defaultRedConfig</span></code>). It is possible to override any value by copying this file, editing as needed and then setting the value of <code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code> to be the path to the new <code class="docutils literal notranslate"><span class="pre">.yml</span></code></p>
+<section id="reducedata">
+<h3><code class="docutils literal notranslate"><span class="pre">reduceData</span></code><a class="headerlink" href="#reducedata" title="Permalink to this heading">#</a></h3>
+<p>By default, set to <code class="docutils literal notranslate"><span class="pre">True,</span></code> this allows control over whether the data are reduced. If set <code class="docutils literal notranslate"><span class="pre">False</span></code>, SNAPBlue will report relevant information on the reduction (e.g. existance and location of various calibration files) but will not actually reduce data.</p>
 </section>
 <section id="sampleenv">
-<h2><code class="docutils literal notranslate"><span class="pre">sampleEnv</span></code><a class="headerlink" href="#sampleenv" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">sampleEnv</span></code><a class="headerlink" href="#sampleenv" title="Permalink to this heading">#</a></h3>
 <p><strong>NOT YET IMPLEMENTED</strong></p>
 <p>This is a protoype feature that will allow the specification of pre-set sample environment types (e.g. PE cells, DACs etc) and application of specific corrections during reduction. The concept is to define a <code class="docutils literal notranslate"><span class="pre">.yml</span></code> file for each sample environment and use this parameter to point to that file.</p>
+</section>
+<section id="verbose">
+<h3><code class="docutils literal notranslate"><span class="pre">verbose</span></code><a class="headerlink" href="#verbose" title="Permalink to this heading">#</a></h3>
+<p>By default, set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, this flag allows control of the mantid logging level and also allows detailed information regarding the reduction to be output to the messages window.</p>
+</section>
+<section id="ymloverride">
+<h3><code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code><a class="headerlink" href="#ymloverride" title="Permalink to this heading">#</a></h3>
+<p>Some default settings for SNAPBlue are set in a <code class="docutils literal notranslate"><span class="pre">yml</span></code> file inside the reop (currently <code class="docutils literal notranslate"><span class="pre">/SNS/SNAP/shared/code/SNAPBlue/defaultRedConfig</span></code>). It is possible to override any value by copying this file, editing as needed and then setting the value of <code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code> to be the path to the new <code class="docutils literal notranslate"><span class="pre">.yml</span></code></p>
+</section>
 </section>
 </section>
 
@@ -532,20 +551,20 @@ document.write(`
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="file.html"
+       href="propagateDifcal.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">file</span></code></p>
+        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></p>
       </div>
     </a>
     <a class="right-next"
-       href="confirmIPTS.html"
+       href="../SNAPStateManager/SNAPStateManager.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></p>
+        <p class="prev-next-title">SNAPStateMgr</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -566,16 +585,20 @@ document.write(`
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenodifcal"><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenonrmcal"><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reducedata"><code class="docutils literal notranslate"><span class="pre">reduceData</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#verbose"><code class="docutils literal notranslate"><span class="pre">verbose</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#keepunfocussed"><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#pixelmaskindex"><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#emptytrash"><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cismode"><code class="docutils literal notranslate"><span class="pre">cisMode</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ymloverride"><code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sampleenv"><code class="docutils literal notranslate"><span class="pre">sampleEnv</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cismode"><code class="docutils literal notranslate"><span class="pre">cisMode</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenodifcal"><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenonrmcal"><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#emptytrash"><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#keepunfocussed"><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pixelmaskindex"><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#qsp"><code class="docutils literal notranslate"><span class="pre">qsp</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reducedata"><code class="docutils literal notranslate"><span class="pre">reduceData</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sampleenv"><code class="docutils literal notranslate"><span class="pre">sampleEnv</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#verbose"><code class="docutils literal notranslate"><span class="pre">verbose</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ymloverride"><code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 
