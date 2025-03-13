@@ -10,8 +10,8 @@ import shutil
 import importlib
 import snapblue.SNAPStateMgr as ssm
 importlib.reload(ssm)
-import snapblue.SNAPExportTools as exportTools
-importlib.reload(exportTools)
+import snapblue.blueIO as blueIO
+importlib.reload(blueIO)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -228,7 +228,7 @@ def resample(sampleFactor=1):
 
     # function to downsample reduced workspaces
 
-    reducedGroups = exportTools.reducedRuns(exportFormats=[],prefix="reduced_dsp")
+    reducedGroups = blueIO.reducedRuns(exportFormats=[],prefix="reduced_dsp")
 
     for redGroup in reducedGroups:
 
@@ -267,9 +267,9 @@ def exportData(exportFormats=['gsa','xye','csv'],
                gsaInstPrm=True):
     #creates reducedGroups and then exports these using the requested export formats
 
-    reducedGroups = exportTools.reducedRuns(exportFormats,prefix)
+    reducedGroups = blueIO.reducedRuns(exportFormats,prefix)
     
-    exportTools.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
+    blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
     
 def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
 
@@ -918,7 +918,7 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
                     DeleteWorkspace(ws)
 
     if qsp:
-        exportTools.convertToQ()
+        blueIO.convertToQ()
 
     # for par in instrumentState:
     #     print(par)
