@@ -62,8 +62,8 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'blueUtils/propagateDifcal';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="indexStates" href="indexStates.html" />
-    <link rel="prev" title="confirmIPTS" href="confirmIPTS.html" />
+    <link rel="next" title="reduce" href="reduce.html" />
+    <link rel="prev" title="indexStates" href="indexStates.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -184,15 +184,23 @@
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../setup.html">Set up</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="blueUtils.html">blueUtils</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="confirmIPTS.html"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="exportData.html"><code class="docutils literal notranslate"><span class="pre">exportData</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="file.html"><code class="docutils literal notranslate"><span class="pre">file</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="reduce.html"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="confirmIPTS.html"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="indexStates.html"><code class="docutils literal notranslate"><span class="pre">indexStates</span></code></a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="reduce.html"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="simple">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/autoStateName.html"><code class="docutils literal notranslate"><span class="pre">autoStateName</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/availableStates.html"><code class="docutils literal notranslate"><span class="pre">availableStates</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/checkCalibrationStatus.html"><code class="docutils literal notranslate"><span class="pre">checkCalibrationStatus</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/checkStateExists.html"><code class="docutils literal notranslate"><span class="pre">checkStateExists</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/createState.html"><code class="docutils literal notranslate"><span class="pre">createState</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/printCalibrationHome.html"><code class="docutils literal notranslate"><span class="pre">printCalibrationHome</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/pullStateDict.html"><code class="docutils literal notranslate"><span class="pre">pullStateDict</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../SNAPStateManager/stateDef.html"><code class="docutils literal notranslate"><span class="pre">stateDef</span></code></a></li>
 </ul>
 </details></li>
 </ul>
@@ -391,8 +399,11 @@ document.write(`
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#propagate"><code class="docutils literal notranslate"><span class="pre">propagate</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#propagate"><code class="docutils literal notranslate"><span class="pre">propagate</span></code></a></li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -435,15 +446,18 @@ document.write(`
 </pre></div>
 </div>
 </section>
+<section id="optional-arguments">
+<h2>Optional arguments<a class="headerlink" href="#optional-arguments" title="Permalink to this heading">#</a></h2>
 <section id="islite">
-<h2><code class="docutils literal notranslate"><span class="pre">isLite</span></code><a class="headerlink" href="#islite" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">isLite</span></code><a class="headerlink" href="#islite" title="Permalink to this heading">#</a></h3>
 <p>Calibrations are lite/native dependent and must be conducted separately for each mode. Since propagation of a difcal relies on it existing, the corresponding calibration must have been conducted.</p>
 <p>By default <code class="docutils literal notranslate"><span class="pre">isLite=True</span></code> but, if an existing <code class="docutils literal notranslate"><span class="pre">native</span></code> calibration needs to be transferred, this can be done by specifying <code class="docutils literal notranslate"><span class="pre">isLite=False</span></code>.</p>
 </section>
 <section id="propagate">
-<h2><code class="docutils literal notranslate"><span class="pre">propagate</span></code><a class="headerlink" href="#propagate" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">propagate</span></code><a class="headerlink" href="#propagate" title="Permalink to this heading">#</a></h3>
 <p>It is considered good practice to examine the expected outcome of propagation <em>without actually propagating any data</em>. Consequently, this is the default behaviour and the parameter <code class="docutils literal notranslate"><span class="pre">propagate</span></code> set equal <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <p>Once you are sure everything looks good, setting <code class="docutils literal notranslate"><span class="pre">propagate=True</span></code> will actually propagate the calibration</p>
+</section>
 </section>
 </section>
 
@@ -478,20 +492,20 @@ document.write(`
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="confirmIPTS.html"
+       href="indexStates.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">confirmIPTS</span></code></p>
+        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">indexStates</span></code></p>
       </div>
     </a>
     <a class="right-next"
-       href="indexStates.html"
+       href="reduce.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">indexStates</span></code></p>
+        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -512,8 +526,11 @@ document.write(`
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#propagate"><code class="docutils literal notranslate"><span class="pre">propagate</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#islite"><code class="docutils literal notranslate"><span class="pre">isLite</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#propagate"><code class="docutils literal notranslate"><span class="pre">propagate</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 

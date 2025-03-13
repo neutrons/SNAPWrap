@@ -14,4 +14,4 @@ returns the string
 ```
 -65.5: 105.0: 2.1: 60: 1
 ```
-this is clearly, the two detector angles, wavelength, frequency and guide status
+this is clearly: the two detector angles, wavelength, frequency and guide status

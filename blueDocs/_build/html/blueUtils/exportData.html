@@ -400,11 +400,13 @@ document.write(`
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#export-locations">Export locations</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional Arguments</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prefix"><code class="docutils literal notranslate"><span class="pre">prefix</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#exportformats"><code class="docutils literal notranslate"><span class="pre">exportFormats</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#latestonly"><code class="docutils literal notranslate"><span class="pre">latestOnly</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gsasinstprm"><code class="docutils literal notranslate"><span class="pre">gsasInstPrm</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#prefix"><code class="docutils literal notranslate"><span class="pre">prefix</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#exportformats"><code class="docutils literal notranslate"><span class="pre">exportFormats</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#latestonly"><code class="docutils literal notranslate"><span class="pre">latestOnly</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gsasinstprm"><code class="docutils literal notranslate"><span class="pre">gsasInstPrm</span></code></a></li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -447,10 +449,9 @@ document.write(`
 </div>
 </section>
 <section id="optional-arguments">
-<h2>Optional Arguments<a class="headerlink" href="#optional-arguments" title="Permalink to this heading">#</a></h2>
-</section>
+<h2>Optional arguments<a class="headerlink" href="#optional-arguments" title="Permalink to this heading">#</a></h2>
 <section id="prefix">
-<h2><code class="docutils literal notranslate"><span class="pre">prefix</span></code><a class="headerlink" href="#prefix" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">prefix</span></code><a class="headerlink" href="#prefix" title="Permalink to this heading">#</a></h3>
 <p>Data reduced by SNAPRed will have a workspace with names that  begin with the prefix <code class="docutils literal notranslate"><span class="pre">reduced_dsp</span></code>. By default, all workspaces with this prefix will be processed by <code class="docutils literal notranslate"><span class="pre">exportData</span></code>. However it is possible to specify a different prefix.</p>
 <p>For example, if data have been downsampled, they will be stored in workspaces with a prefix <code class="docutils literal notranslate"><span class="pre">resampled_dsp</span></code>. Or, if data have been converted to units of momentum transfer, they will have the prefix <code class="docutils literal notranslate"><span class="pre">reduced_qsp</span></code>.</p>
 <p>As long as workspaces follow the naming convention</p>
@@ -460,17 +461,18 @@ document.write(`
 <p><code class="docutils literal notranslate"><span class="pre">exportData</span></code> should be able to process these.</p>
 </section>
 <section id="exportformats">
-<h2><code class="docutils literal notranslate"><span class="pre">exportFormats</span></code><a class="headerlink" href="#exportformats" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">exportFormats</span></code><a class="headerlink" href="#exportformats" title="Permalink to this heading">#</a></h3>
 <p>The desired export formats can be specified using this parameter. Its value is in the form of a list of string, each supported string is a 3 character as described in the overview. The default value of this parameter is [‘gsa’,’xye’,’csv’] and all three formats will be created.</p>
 <p>If a different format needs to be supported, just let Malcolm know.</p>
 </section>
 <section id="latestonly">
-<h2><code class="docutils literal notranslate"><span class="pre">latestOnly</span></code><a class="headerlink" href="#latestonly" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">latestOnly</span></code><a class="headerlink" href="#latestonly" title="Permalink to this heading">#</a></h3>
 <p>Defaulting to <code class="docutils literal notranslate"><span class="pre">True</span></code> this ensures that only the latest reduced workspace is exported and that it’s timestamp is excluded from the exported filename. If, instead, this is set <code class="docutils literal notranslate"><span class="pre">False</span></code> <em>all</em> existing reductions of a given run are exported and their filenames will include their timestamps.</p>
 </section>
 <section id="gsasinstprm">
-<h2><code class="docutils literal notranslate"><span class="pre">gsasInstPrm</span></code><a class="headerlink" href="#gsasinstprm" title="Permalink to this heading">#</a></h2>
+<h3><code class="docutils literal notranslate"><span class="pre">gsasInstPrm</span></code><a class="headerlink" href="#gsasinstprm" title="Permalink to this heading">#</a></h3>
 <p>Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>. This will export a dummy instPrm to the gsas export folder with the same name as the exported data.</p>
+</section>
 </section>
 </section>
 
@@ -540,11 +542,13 @@ document.write(`
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#export-locations">Export locations</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional Arguments</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prefix"><code class="docutils literal notranslate"><span class="pre">prefix</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#exportformats"><code class="docutils literal notranslate"><span class="pre">exportFormats</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#latestonly"><code class="docutils literal notranslate"><span class="pre">latestOnly</span></code></a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gsasinstprm"><code class="docutils literal notranslate"><span class="pre">gsasInstPrm</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#prefix"><code class="docutils literal notranslate"><span class="pre">prefix</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#exportformats"><code class="docutils literal notranslate"><span class="pre">exportFormats</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#latestonly"><code class="docutils literal notranslate"><span class="pre">latestOnly</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gsasinstprm"><code class="docutils literal notranslate"><span class="pre">gsasInstPrm</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 

@@ -5,9 +5,6 @@ A core concept in SNAPRed is the creation and management of a collection of diff
 As with `blueUtils` it is intended to be imported into python scripts allowing its functions to be used. I typically import it as `ssm`: 
 
 ```
-import sys
-sys.path.append("/SNS/SNAP/shared/code/SNAPBlue")
-
 import blueUtils as blue
 import SNAPStateMgr as ssm
 ```

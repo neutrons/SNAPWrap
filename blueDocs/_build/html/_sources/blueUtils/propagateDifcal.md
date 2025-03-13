@@ -31,14 +31,15 @@ import SNAPStateMgr as ssm
 ssm.createState(64433) #creates 6.4Å state
 blue.propagateDifcal(64431) #propagates an existing calibration made using run 64431 to this state
 ```
+## Optional arguments
 
-## `isLite`
+### `isLite`
 
 Calibrations are lite/native dependent and must be conducted separately for each mode. Since propagation of a difcal relies on it existing, the corresponding calibration must have been conducted. 
 
 By default `isLite=True` but, if an existing `native` calibration needs to be transferred, this can be done by specifying `isLite=False`.
 
-## `propagate`
+### `propagate`
 
 It is considered good practice to examine the expected outcome of propagation _without actually propagating any data_. Consequently, this is the default behaviour and the parameter `propagate` set equal `False`.
 

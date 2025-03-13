@@ -1,6 +1,6 @@
 # `pullStateDict`
 
-Sometimes it's useful to be able to pull a state definition directly from the specified calibration folder, rather than from a run number (and corresponding data file). This function does this, the required input parameter is a string of the stateID
+Sometimes it's useful to be able to pull a state definition directly from the specified calibration folder, rather than from a run number (and corresponding data file). This function does this, the required input parameter is a string of the stateID. If needed, the stateID can be easily generated from a run number using `stateDef`
 
 Example:
 ```

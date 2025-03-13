@@ -6,9 +6,13 @@ This is a utility to help manage large numbers of workspaces in the mantid works
 ```
 nameKeys = ["all","column"]
 nameKeys = ['all','column']
+nameKeys = ['aLL',cOLuMn']
+```
+are all valid and will do the same thing. 
+```
 nameKeys = []
 ```
-are all valid
+is also valid.
 
 ## Default usage
 
@@ -28,28 +32,34 @@ Using a nameKey "all_" might help be more specific.
 Any workspaces inadvertently added to the Workspace Group can be removed using the `remove` operation described below
 ```
 
-The default behaviour is to add specified workspaces to the Workspace Group. So, if the above command has been run, creating the workspace group and moving all workspaces with "all" in their names into that and _then_ the following is run: 
+The default behaviour is to cumulatively add specified workspaces to the Workspace Group. So, if the above command has been run, creating the workspace group and moving all workspaces with "all" in their names into that and _then_ the following is run: 
 
 ```
 blue.file(nameKeys = ["column"])
 ```
 all workspaces with "column" in their names will also be moved into the Workspace Group
 
-## Optional parameters
+## Optional arguments
 
-## `operation`
+### `operation`
 
-`operation` controls what `file`. It has a default value of "add" and optional values of "remove" or "empty"
+`operation` controls what `file` does. It has a default value of "add" and optional values of "remove" or "empty"
 
 ```
-if operation == "empty"
+if operation == "add"
 ```
-irrespective of any provided nameKeys, all workspaces in the Workspace Group will be removed from the Group and the Group deleted.
+workspaces matching the specified nameKey will we be added to the Workspace Group. Any workspaces already in the group will be left there.
+
 ```
 if operation == "remove"
 ```
 Any workspaces inside the Group that match the provided nameKeys will be removed from the Group.
 
-## `cabinetName`
+```
+if operation == "empty"
+```
+irrespective of any provided nameKeys, all workspaces in the Workspace Group will be removed from the Group and the Group deleted.
+
+### `cabinetName`
 
 By default the Workspace Group will be called "File_Cabinet" if you wish to use a different name, this can be specified using `cabinetName`. Subsequenly, multiple Workspace Groups can be maintained as needed. 

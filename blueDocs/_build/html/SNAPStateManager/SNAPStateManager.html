@@ -404,10 +404,7 @@ document.write(`
 <h1>SNAPStateMgr<a class="headerlink" href="#snapstatemgr" title="Permalink to this heading">#</a></h1>
 <p>A core concept in SNAPRed is the creation and management of a collection of different instrument configurations (known as “states”) and associated orchestration of calibration and reduction tasks. The <code class="docutils literal notranslate"><span class="pre">SNAPStateMgr</span></code> module in <code class="docutils literal notranslate"><span class="pre">SNAPBlue</span></code> is a collection of utilities that exploit this functionality to do useful things inside any python script.</p>
 <p>As with <code class="docutils literal notranslate"><span class="pre">blueUtils</span></code> it is intended to be imported into python scripts allowing its functions to be used. I typically import it as <code class="docutils literal notranslate"><span class="pre">ssm</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
-<span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;/SNS/SNAP/shared/code/SNAPBlue&quot;</span><span class="p">)</span>
-
-<span class="kn">import</span><span class="w"> </span><span class="nn">blueUtils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">blue</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">blueUtils</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">blue</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">SNAPStateMgr</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ssm</span>
 </pre></div>
 </div>
