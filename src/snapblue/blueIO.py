@@ -5,17 +5,19 @@ import glob
 import os
 import shutil
 from mantid.simpleapi import *
+from mantid.api import WorkspaceGroup
 import datetime
 import json
 from snapred.meta.Config import Config
 
 import snapblue.SNAPStateMgr as ssm
+import snapblue.maskUtils as mut
 
 #Mantid interface
 
 class redObject:
 
-    #class that takes a workspace name and, if the name matches an expected pattern four 
+    #class that takes a workspace name and, if the name matches an expected pattern for 
     #a SNAPRed-created reduced data workspace, extracts attributes from this name
     #and then builds further attributes from these
 
@@ -219,6 +221,8 @@ def convertToQ():
             ConvertUnits(InputWorkspace=red.wsName,
                         OutputWorkspace=outName,
                         Target="MomentumTransfer")
+            
+    #TODO: rebin S(Q) once I know how to do this
 
 def reducedRuns(exportFormats,prefix):#,latestOnly=True,gsaInstPrm=True):
 
@@ -406,6 +410,133 @@ def exportRecipe(runDict,pgs,processIndices,gsaInstPrm):
                   Factor = (1.0/scaleFactor),
                   Operation='Multiply')
     
+class diskObject:
+
+    def __init__(self,runNumber,isLite):
+        
+        #This is a class to retrieve information about reduced files that are saved to disk
+        stateID,stateDict = ssm.stateDef(runNumber)
+        if isLite:
+            instType = 'lite'
+        else:
+            instType = 'native'
+
+        self.runNumber = runNumber
+        ipts = GetIPTS(RunNumber=runNumber,
+                            Instrument='SNAP')
+        
+        self.runString = str(runNumber).strip()
+
+        redPath = f"{ipts}shared/SNAPRed/{stateID}/{instType}/{self.runString}/"
+        
+        self.isReduced = os.path.exists(redPath) 
+        if not self.isReduced:
+            self.nReduced = 0
+            return
+        
+        #if this folder exists, then data have been reduced N times with each reduction
+        #stored in a folder with named with its timestamp
+        ts = os.listdir(redPath)
+
+        self.ts = sorted(ts, key=lambda x: datetime.datetime.strptime(x,'%Y-%m-%dT%H%M%S'))
+
+        self.nReduced = len(self.ts)
+        self.redDir = []
+        self.record = []
+        self.dataPath = []
+        self.maskPath = []
+        self.isMasked = []
+        self.dateTime = []
+        self.maskWorkspaceName = []
+        self.groupWorkspaceName = []
+
+        for ts in self.ts:
+            self.dateTime.append(datetime.datetime.strptime(ts,'%Y-%m-%dT%H%M%S'))
+            dir = f"{redPath}{ts}/"
+            self.redDir.append(f"{redPath}{ts}/")
+            with open(f"{dir}ReductionRecord.json",'r') as file:
+                recordDict = json.load(file)
+            self.record.append(recordDict)
+            self.dataPath.append(f"{dir}reduced_{self.runString.zfill(6)}_{ts}.nxs")
+            self.maskWorkspaceName.append(f"pixelmask_{self.runString.zfill(6)}_{ts}")
+            mp = f"{dir}{self.maskWorkspaceName[-1]}.h5"
+            self.isMasked.append(os.path.exists(mp))
+            self.maskPath.append(mp)
+            self.groupWorkspaceName.append(f"reloaded_{self.runString.zfill(6)}_{ts}")
+
+    def info(self):
+        #sometimes useful to output information on reduction status
+        if self.isReduced:
+            print(f"Run: {self.runNumber} has been reduced {self.nReduced} times")
+            print(f"latestReduction was: {self.ts[-1]}")
+            for ind,ts in enumerate(self.ts):
+                print(f"""
+
+    time stamp: {ts}
+    dataPath: {self.dataPath[ind]}
+    mask: {self.maskPath[ind]}
+    isMasked: {self.isMasked[ind]} 
+                        """)
+             
+        else:
+            print(f"Run: {self.runNumber} has not been reduced")
+
+    def degroup(self,ind,keepMask=False,pixelGroup=None):
+
+        #first need to check if this is the expected workspace group. A weird bug
+        #was observed one time where the reduction record only contained the pixel
+        #mask
+
+        ws = mtd[self.groupWorkspaceName[ind]]
+        if not isinstance(ws, WorkspaceGroup):
+            print(f"WARNING: {self.groupWorkspaceName[ind]} is not a workspace group so could not be unpacked. skipping.")
+            return
+
+        #keep a list of the group contents thata are reduced data
+        
+        groupContents = ws.getNames()
+        redGroups = []
+        for ws in groupContents:
+            if "pixel" not in ws:
+                redGroups.append(ws)
+
+        #then ungroup input workspace. 
+        UnGroupWorkspace(self.groupWorkspaceName[ind])  
+            
+        
+        #if a pixelGroup is specified, delete all workspaces apart from that one
+        for ws in redGroups:
+            if pixelGroup.lower() not in ws:
+                DeleteWorkspace(ws)
+
+        #if mask exists and request to keep, clone before deleting
+        if self.isMasked[ind]:
+            if keepMask:
+                CloneWorkspace(InputWorkspace=self.maskWorkspaceName[ind],
+                                OutputWorkspace=mut.nextMaskWSName())
+            DeleteWorkspace(Workspace=self.maskWorkspaceName[ind])
+        else:
+            print("WARNING: Requested to keep mask, but mask does not exist")
+
+    def reload(self,all=False,unpack=True,keepMask=False,pixelGroup=None):
+        #will reload reduced data by default loading only the latest reduction
+        #if requested will reload all reductions
+        if not self.isReduced:
+            print("No reduced data to reload for run: {self.runNumber}")
+            return
+        
+        if all:
+            for ind,ts in enumerate(self.ts):
+                LoadNexus(Filename=self.dataPath[ind],
+                          OutputWorkspace=self.groupWorkspaceName[ind])
+                if unpack:
+                    self.degroup(ind,keepMask=keepMask,pixelGroup=pixelGroup)
+        else:
+            LoadNexus(Filename=self.dataPath[-1],
+                          OutputWorkspace=self.groupWorkspaceName[-1])
+            if unpack:
+                self.degroup(-1,keepMask=keepMask,pixelGroup=pixelGroup)
+
 #GSAS2 specific utilities
 
 def buildBankDict(bankID,Ltot,ttheta,difc):

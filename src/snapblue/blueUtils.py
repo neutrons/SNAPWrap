@@ -10,8 +10,8 @@ import shutil
 import importlib
 import snapblue.SNAPStateMgr as ssm
 importlib.reload(ssm)
-import snapblue.SNAPExportTools as exportTools
-importlib.reload(exportTools)
+import snapblue.blueIO as blueIO
+importlib.reload(blueIO)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -228,7 +228,7 @@ def resample(sampleFactor=1):
 
     # function to downsample reduced workspaces
 
-    reducedGroups = exportTools.reducedRuns(exportFormats=[],prefix="reduced_dsp")
+    reducedGroups = blueIO.reducedRuns(exportFormats=[],prefix="reduced_dsp")
 
     for redGroup in reducedGroups:
 
@@ -267,9 +267,9 @@ def exportData(exportFormats=['gsa','xye','csv'],
                gsaInstPrm=True):
     #creates reducedGroups and then exports these using the requested export formats
 
-    reducedGroups = exportTools.reducedRuns(exportFormats,prefix)
+    reducedGroups = blueIO.reducedRuns(exportFormats,prefix)
     
-    exportTools.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
+    blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
     
 def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
 
@@ -368,6 +368,25 @@ Origin calibration info
     else:
         print("\nPropagatation of calibration was not requested")
         
+def reload(runNumber,
+           all=False,
+           unpack=True,
+           keepMask=False,
+           pixelGroup=None,
+           isLite=True):
+
+    r = blueIO.diskObject(runNumber,isLite)
+    if not r.isReduced: 
+        print(f"WARNING: Run {runNumber} has no reduction record")
+    else:
+        print(f"Reduction record(s) found, run has been reduced {r.nReduced} times")
+        if r.nReduced > 1 and not all:
+            print("Only latest reduction will be loaded")
+        r.reload(all=False,
+             unpack=unpack,
+             keepMask=keepMask,
+             pixelGroup=pixelGroup,
+             )
 
 def autoMask(inputWorkspace,maskType="PE",plotOn=True):
 
@@ -419,7 +438,8 @@ def reduce(runNumber,
             #    export=['gsas','xye','ascii'], #file formats to export to. If empty, no export 
                cisMode=False,
                singlePixelGroup=None,
-               qsp=False):
+               qsp=False,
+               save=False):
 
     from mantid import config
 
@@ -727,12 +747,13 @@ def reduce(runNumber,
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if save:
+            saveReductionRequest = ReductionExportRequest(
+                record=record
+            )
 
-        saveReductionRequest = ReductionExportRequest(
-            record=record
-        )
+            reductionService.saveReduction(saveReductionRequest)
 
-        reductionService.saveReduction(saveReductionRequest)
         print(f"""
         Reduction COMPLETE
 
@@ -918,7 +939,7 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
                     DeleteWorkspace(ws)
 
     if qsp:
-        exportTools.convertToQ()
+        blueIO.convertToQ()
 
     # for par in instrumentState:
     #     print(par)

@@ -197,6 +197,30 @@ def threshMask(sliceImage,thresh):
 
     sliceImage.maskStats()
 
+def nextMaskWSName():
+        #returns the next mask workspace name to use
+
+        allWS = mtd.getObjectNames()
+        maskWS = []
+        for ws in allWS: 
+            if "MaskWorkspace" in ws:
+                maskWS.append(ws)
+        
+        if len(maskWS) == 0:
+            return "MaskWorkspace"
+        
+        maskIndices = []
+        for mask in maskWS:
+
+            if '_' not in mask:
+                maskIndices.append(1)
+            else:
+                maskIndices.append(int(mask.split('_')[-1]))
+
+        latest = max(maskIndices)+1
+        nextName = f"MaskWorkspace_{latest}"
+        return nextName
+
 def liLee(sliceImage,removeDark=True):
     #generates a mask by applying Li thresholding https://scikit-image.org/docs/stable/auto_examples/developers/plot_threshold_li.html
     # a scikit-image filter
