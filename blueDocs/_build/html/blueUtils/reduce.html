@@ -62,7 +62,7 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'blueUtils/reduce';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="SNAPStateMgr" href="../SNAPStateManager/SNAPStateManager.html" />
+    <link rel="next" title="reload" href="reload.html" />
     <link rel="prev" title="propagateDifcal" href="propagateDifcal.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -190,6 +190,7 @@
 <li class="toctree-l2"><a class="reference internal" href="indexStates.html"><code class="docutils literal notranslate"><span class="pre">indexStates</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="propagateDifcal.html"><code class="docutils literal notranslate"><span class="pre">propagateDifcal</span></code></a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">reduce</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="reload.html"><code class="docutils literal notranslate"><span class="pre">reload</span></code></a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../SNAPStateManager/SNAPStateManager.html">SNAPStateMgr</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -402,7 +403,7 @@ document.write(`
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cismode"><code class="docutils literal notranslate"><span class="pre">cisMode</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenodifcal"><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenonrmcal"><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenovan"><code class="docutils literal notranslate"><span class="pre">continueNoVan</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#emptytrash"><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#keepunfocussed"><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pixelmaskindex"><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code></a></li>
@@ -474,8 +475,8 @@ document.write(`
 <p>SNAPRed follows the Calibration Index for the relevant instrument state to find calibration files. This is built automatically when using SNAPRed to conduct a diffraction calibration workflow.</p>
 </div>
 </section>
-<section id="continuenonrmcal">
-<h3><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code><a class="headerlink" href="#continuenonrmcal" title="Permalink to this heading">#</a></h3>
+<section id="continuenovan">
+<h3><code class="docutils literal notranslate"><span class="pre">continueNoVan</span></code><a class="headerlink" href="#continuenovan" title="Permalink to this heading">#</a></h3>
 <p>Similarly to above, this parameter allows a diagnostic assessement of data where no vanadium normalisation calibration exists. When <code class="docutils literal notranslate"><span class="pre">True</span></code> a background extracted from the reduced diffraction pattern is used as an artificial normalisation function for the data. The default setting for this parameter is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <p>The algorithm that extracts the the artificial normalisation is (<code class="docutils literal notranslate"><span class="pre">clipPeaks</span></code>) has three parameters (<code class="docutils literal notranslate"><span class="pre">smoothingParameter</span></code>,<code class="docutils literal notranslate"><span class="pre">decreaseParameters</span></code> and <code class="docutils literal notranslate"><span class="pre">lss</span></code>), their default values are set in the config file “defaultRedcConfig.yml”, and these can be overriden by using the <code class="docutils literal notranslate"><span class="pre">YMLOverride</span></code> option (see below).</p>
 </section>
@@ -560,11 +561,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="../SNAPStateManager/SNAPStateManager.html"
+       href="reload.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">SNAPStateMgr</p>
+        <p class="prev-next-title"><code class="docutils literal notranslate"><span class="pre">reload</span></code></p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -588,7 +589,7 @@ document.write(`
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#optional-arguments">Optional arguments</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cismode"><code class="docutils literal notranslate"><span class="pre">cisMode</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenodifcal"><code class="docutils literal notranslate"><span class="pre">continueNoDifcal</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenonrmcal"><code class="docutils literal notranslate"><span class="pre">continueNoNrmcal</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#continuenovan"><code class="docutils literal notranslate"><span class="pre">continueNoVan</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#emptytrash"><code class="docutils literal notranslate"><span class="pre">emptyTrash</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#keepunfocussed"><code class="docutils literal notranslate"><span class="pre">keepUnfocussed</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#pixelmaskindex"><code class="docutils literal notranslate"><span class="pre">pixelMaskIndex</span></code></a></li>
