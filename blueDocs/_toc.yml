@@ -13,6 +13,7 @@ chapters:
   - file: blueUtils/indexStates
   - file: blueUtils/propagateDifcal
   - file: blueUtils/reduce
+  - file: blueUtils/reload
 - file: SNAPStateManager/SNAPStateManager
   sections:
   - file: SNAPStateManager/autoStateName

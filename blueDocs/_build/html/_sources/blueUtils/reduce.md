@@ -50,7 +50,7 @@ This flag allows a "diagnostic" reduction of data to proceed when a diffraction 
 SNAPRed follows the Calibration Index for the relevant instrument state to find calibration files. This is built automatically when using SNAPRed to conduct a diffraction calibration workflow.
 ```
 
-### `continueNoNrmcal`
+### `continueNoVan`
 
 Similarly to above, this parameter allows a diagnostic assessement of data where no vanadium normalisation calibration exists. When `True` a background extracted from the reduced diffraction pattern is used as an artificial normalisation function for the data. The default setting for this parameter is `False`.
 
