@@ -368,6 +368,25 @@ Origin calibration info
     else:
         print("\nPropagatation of calibration was not requested")
         
+def reload(runNumber,
+           all=False,
+           unpack=True,
+           keepMask=False,
+           pixelGroup=None,
+           isLite=True):
+
+    r = blueIO.diskObject(runNumber,isLite)
+    if not r.isReduced: 
+        print(f"WARNING: Run {runNumber} has no reduction record")
+    else:
+        print(f"Reduction record(s) found, run has been reduced {r.nReduced} times")
+        if r.nReduced > 1 and not all:
+            print("Only latest reduction will be loaded")
+        r.reload(all=False,
+             unpack=unpack,
+             keepMask=keepMask,
+             pixelGroup=pixelGroup,
+             )
 
 def autoMask(inputWorkspace,maskType="PE",plotOn=True):
 
@@ -419,7 +438,8 @@ def reduce(runNumber,
             #    export=['gsas','xye','ascii'], #file formats to export to. If empty, no export 
                cisMode=False,
                singlePixelGroup=None,
-               qsp=False):
+               qsp=False,
+               save=False):
 
     from mantid import config
 
@@ -727,12 +747,13 @@ def reduce(runNumber,
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if save:
+            saveReductionRequest = ReductionExportRequest(
+                record=record
+            )
 
-        saveReductionRequest = ReductionExportRequest(
-            record=record
-        )
+            reductionService.saveReduction(saveReductionRequest)
 
-        reductionService.saveReduction(saveReductionRequest)
         print(f"""
         Reduction COMPLETE
 
