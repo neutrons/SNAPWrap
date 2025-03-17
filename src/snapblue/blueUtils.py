@@ -439,7 +439,7 @@ def reduce(runNumber,
                cisMode=False,
                singlePixelGroup=None,
                qsp=False,
-               save=False):
+               save=True):
 
     from mantid import config
 
