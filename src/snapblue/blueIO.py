@@ -505,9 +505,11 @@ class diskObject:
             
         
         #if a pixelGroup is specified, delete all workspaces apart from that one
-        for ws in redGroups:
-            if pixelGroup.lower() not in ws:
-                DeleteWorkspace(ws)
+        if pixelGroup != None:
+        
+            for ws in redGroups:
+                if pixelGroup.lower() not in ws:
+                    DeleteWorkspace(ws)
 
         #if mask exists and request to keep, clone before deleting
         if self.isMasked[ind]:
