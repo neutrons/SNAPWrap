@@ -6,7 +6,9 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 keywords = ["neutrons", "example", "python"]
 readme = "README.md"
-dependencies = []
+dependencies = [
+  "scikit-image"
+]
     # PyPI dependencies
 
 [project.urls]
