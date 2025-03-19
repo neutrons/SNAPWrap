@@ -46,7 +46,26 @@ where = ["src"]
 exclude = ["tests*", "scripts*", "docs*", "notebooks*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yml","*.yaml","*.ini"]
+"*" = [
+  "*.yml",
+  "*.yaml",
+  "*.ini", 
+  "*.css",
+  "*.doctree",
+  "*.html",
+  "*.inv",
+  "*.jpg",
+  "*.js",
+  "*.map",
+  "*.md",
+  "*.png",
+  "*.po",
+  "*.svg",
+  "*.ttf",
+  "*.txt",
+  "*.woff2",
+  "*.yml",
+]
 
 [project.scripts]
 packagename-cli = "packagenamepy.packagename:main"
