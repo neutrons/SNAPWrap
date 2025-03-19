@@ -8,6 +8,9 @@ import json
 import os
 import shutil
 import importlib
+import copy
+
+
 import snapblue.SNAPStateMgr as ssm
 importlib.reload(ssm)
 import snapblue.blueIO as blueIO
@@ -109,8 +112,6 @@ def purgeNormalisation(isLite=True,purge=False):
             print(f"Done. {nDeleted} folders were deleted")
     else:
         print("\nRe-run with purge=True to actually delete these")
-
-
 
 def indexStates(isLite=True):
     #prints an index of existing states and their calibration statuses
@@ -309,6 +310,57 @@ def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
                    check=True,
                    shell=False) 
 
+def findQLogBin(dMin,dBin,dMax,linBin):
+
+    #starting off with an initial dBin will iteratively determine a final dBin that ensures the
+    #largest q bin size is <= linbin request. the final dBin will be less than the initial dBin
+    
+    Nit = 3000
+    for i in range(Nit):
+        
+        f = (Nit-i)/Nit
+        dBinTrial = dBin*f
+        
+        
+        N = int((1/dBinTrial)*np.log(dMax/dMin)) 
+        maxQBin = (2*np.pi/dMax)*dBinTrial*(1+dBinTrial)**N
+        
+        # print(f"f: {f:.3f} dBin trial: {dBinTrial:6f} Npt: {N} maxQBin: {maxQBin:.3f}")
+        
+        dif = maxQBin-linBin
+        if dif <= 0:
+            break
+            
+    return dBinTrial
+
+def updateBinForQ(inputIngredients,linBin):
+
+    # Takes input of pixelGroup ingredients, pgs, copies this, then 
+    # modifies the original parameters by changing the binning
+    # determined via 
+    # - pgs.PixelGroupingParameter.dRelativeResolution/pgs.nBinsAcrossPeakWidth
+    # to a set of new values (one for each subgroup in each pixel grouping scheme)
+    # that will ensure that *after converion to Q-space* the largest Q-bin is equal to
+    # the requrested linBin value.
+  
+    pgs = inputIngredients.pixelGroups
+    originalIngredients = copy.deepcopy(pgs)
+
+    for pg in pgs:
+        print(f"pgs: {pg.focusGroup.name} with {len(pg.pixelGroupingParameters)} subgroups")
+        for subgroup in pg.pixelGroupingParameters:
+            params = pg.pixelGroupingParameters[subgroup]
+            dMin = params.dResolution.minimum + Config["constants.CropFactors.lowdSpacingCrop"]
+            dMax = params.dResolution.maximum - Config["constants.CropFactors.highdSpacingCrop"]
+            dBin = params.dRelativeResolution/pg.nBinsAcrossPeakWidth
+            print(f"{dMin:.4f} {dBin:.6f} {dMax:.4f} (with final cropping)")
+            newdBin = findQLogBin(dMin,dBin,dMax,linBin)
+            #overwrite
+            params.dRelativeResolution = newdBin*pg.nBinsAcrossPeakWidth
+
+    return originalIngredients,inputIngredients
+            
+
 def propagateDifcal(refRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
 
     #This will accept a reference Run number, determine a list of all existing 
@@ -439,6 +491,7 @@ def reduce(runNumber,
                cisMode=False,
                singlePixelGroup=None,
                qsp=False,
+               linBin=0.01,
                save=True):
 
     from mantid import config
@@ -539,7 +592,7 @@ def reduce(runNumber,
 
     reductionService.validateReduction(reductionRequest)
 
-    # 1. load default grouping workspaces from the state folder  TODO: how to init state?
+    # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
 
     # allow selection of singlePixelGroup
@@ -710,9 +763,37 @@ def reduce(runNumber,
         farmFresh = FarmFreshIngredients(
         runNumber=runNumber,
         useLiteMode=useLiteMode,
-        focusGroups=[{"name":"All", "definition":""}],
+        focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
         )
         instrumentState = SousChef().prepInstrumentState(farmFresh)
+
+    if qsp:
+
+        #prior to reduction, need to determine appropriate binning to match requested
+        #Q-space binning
+
+        originalIngredients,ingredients = updateBinForQ(ingredients,0.01)
+
+        # for pgs in ingredients.pixelGroups:
+        #     print(f"processing pgs: {pgs.focusGroup.name} with {len(pgs.pixelGroupingParameters)} subgroups")
+        
+        #     for subGroup in pgs.pixelGroupingParameters:
+        #         params = pgs.pixelGroupingParameters[subGroup]
+        #         dMax = params.dResolution.maximum
+        #         dMin = params.dResolution.minimum
+        #         dBin = params.dRelativeResolution/pgs.nBinsAcrossPeakWidth
+
+        pgs = ingredients.pixelGroups
+        print("UPDATED")
+        for pg in pgs:
+            print(f"pgs: {pg.focusGroup.name} with {len(pg.pixelGroupingParameters)} subgroups")
+            for subgroup in pg.pixelGroupingParameters:
+                params = pg.pixelGroupingParameters[subgroup]
+                dMin = params.dResolution.minimum
+                dMax = params.dResolution.maximum
+                dBin = params.dRelativeResolution/pg.nBinsAcrossPeakWidth
+                print(f"{dMin:.4f} {dBin:.6f} {dMax:.4f}")
+
 
     if reduceData:
 
@@ -938,8 +1019,23 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
                 if dirt in ws:
                     DeleteWorkspace(ws)
 
+
+    print(data)
+    for dat in data:
+        print(dat)
+
     if qsp:
-        blueIO.convertToQ()
+        # blueIO.convertToQ()
+        for ws in data["outputs"]:
+            qWs = ws.replace("_dsp_","_qsp_")
+            ConvertUnits(InputWorkspace=ws,
+                         OutputWorkspace=qWs,
+                         Target="MomentumTransfer")
+            ws = mtd[qWs]
+            rebPrm = linBin*np.ones(ws.getNumberHistograms)
+            RebinRagged(InputWorkspace = qWS,
+                        OutputWorkspace= qWS,
+                        Delta = rebPrm)
 
     # for par in instrumentState:
     #     print(par)
