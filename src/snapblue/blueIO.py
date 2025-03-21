@@ -22,7 +22,7 @@ class redObject:
     #and then builds further attributes from these
 
 
-    def __init__(self, wsName,exportFormats,requiredPrefix='reduced_dsp'):
+    def __init__(self, wsName,exportFormats=[],requiredPrefix='reduced_dsp'):
 
         if '_' not in wsName:
             self.isReducedDataWorkspace = False
