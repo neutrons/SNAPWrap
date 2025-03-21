@@ -360,7 +360,38 @@ def updateBinForQ(inputIngredients,linBin):
 
     return originalIngredients,inputIngredients
             
+def restoreDBins(redObj,originalIngredients):
 
+    #extract ragged binning params from originalIngredients
+
+    pgName = redObj.pixelGroup.lower()
+    for pg in originalIngredients:
+        if pg.focusGroup.name.lower() == pgName:
+            dMins = []
+            dMaxs = []
+            dBins = []
+            for subgroup in pg.pixelGroupingParameters:
+                params = pg.pixelGroupingParameters[subgroup]
+                dMin = params.dResolution.minimum + Config["constants.CropFactors.lowdSpacingCrop"]
+                dMax = params.dResolution.maximum - Config["constants.CropFactors.highdSpacingCrop"]
+                dBin = params.dRelativeResolution/pg.nBinsAcrossPeakWidth
+                dMins.append(dMin)
+                dMaxs.append(dMax)
+                dBins.append(-1*dBin) #ugh...
+
+    if len(dMins) == 0:
+        print(f"ERROR: could not match pixelGroupingScheme {pgName} with reduction ingredients")
+        return
+    else:
+        RebinRagged(InputWorkspace=redObj.wsName,
+                    Outputworkspace=redObj.wsName,
+                    XMin=dMins,
+                    XMax=dMaxs,
+                    Delta = dBins,
+                    FullBinsOnly=True)
+        print(f"restored binning on {redObj.wsName}")
+        
+    return
 def propagateDifcal(refRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
 
     #This will accept a reference Run number, determine a list of all existing 
@@ -503,9 +534,11 @@ def reduce(runNumber,
 
 
     if cisMode:
-        Config._config['cis_mode'] = True
+        Config._config["cis_mode.enabled"] = True
+        Config._config["cis_mode.preserveDiagnosticWorkspaces"] = True
+
     else:
-        Config._config['cis_mode'] = False
+        Config._config["cis_mode.enabled"] = False
 
     print("SNAPBlue: gathering reduction ingredients...\n")
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -623,14 +656,16 @@ def reduce(runNumber,
 
     groceries["groupingWorkspaces"] = groupings["groupingWorkspaces"]
 
-    print(groceries["inputWorkspace"])
+    # print(groceries["inputWorkspace"])
+    print("groceries")
+    print(groceries)
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #  Load the metadata i.e. ingredients
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     # 1. load reduction ingredients
-    ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask"))
+    ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))
     ingredients.artificialNormalizationIngredients = artificialNormalizationIngredients
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1002,10 +1037,42 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
             print("dBin".ljust(just),dBins)
 
 
+    
+
+
+    print(data)
+    for dat in data:
+        print(dat)
+
+    if qsp:
+        # blueIO.convertToQ()
+        # first generate list of redObjects for this run:
+
+        redWSList = []
+        for ws in data["outputs"]:
+            redObj = blueIO.redObject(ws)
+            if redObj.isReducedDataWorkspace:
+                redWSList.append(redObj)
+            
+        for redObj in redWSList:
+            dspName = redObj.wsName
+            qspName = dspName.replace("_dsp_","_qsp_")
+            ConvertUnits(InputWorkspace=dspName,
+                        OutputWorkspace=qspName,
+                        Target="MomentumTransfer")
+
+            rebPrm = linBin*np.ones(mtd[qspName].getNumberHistograms())
+            RebinRagged(InputWorkspace = qspName,
+                        OutputWorkspace= qspName,
+                        Delta = rebPrm) #ragged is needed as Qmin/max vary
+            
+            #lastly, downsample d-space data back to original request
+            restoreDBins(redObj,originalIngredients)
+
     #clean up after myself
 
-    dirty = ["tof_all_lite_copy",
-             "tof_all_lite_raw",
+    dirty = ["tof_all_lite_raw",
+            #  "tof_all_lite_copy",
              "tof_all_copy",
              "tof_all_raw",
              "SNAPLite_grouping",
@@ -1018,24 +1085,6 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
             for dirt in dirty:
                 if dirt in ws:
                     DeleteWorkspace(ws)
-
-
-    print(data)
-    for dat in data:
-        print(dat)
-
-    if qsp:
-        # blueIO.convertToQ()
-        for ws in data["outputs"]:
-            qWs = ws.replace("_dsp_","_qsp_")
-            ConvertUnits(InputWorkspace=ws,
-                         OutputWorkspace=qWs,
-                         Target="MomentumTransfer")
-            ws = mtd[qWs]
-            rebPrm = linBin*np.ones(ws.getNumberHistograms)
-            RebinRagged(InputWorkspace = qWS,
-                        OutputWorkspace= qWS,
-                        Delta = rebPrm)
 
     # for par in instrumentState:
     #     print(par)
