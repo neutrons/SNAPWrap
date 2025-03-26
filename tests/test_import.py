@@ -9,6 +9,3 @@ def test_import_fail():
     with pytest.raises(ImportError):
         import snapblue.garbage as foo
 
-
-def test_willFail():
-    assert False
