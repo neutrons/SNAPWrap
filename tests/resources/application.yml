@@ -1,0 +1,4 @@
+# put snapred application.yml overrides here
+IPTS:
+  default: /SNS
+  root: /SNS
