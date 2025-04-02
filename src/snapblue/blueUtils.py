@@ -149,19 +149,21 @@ def indexStates(isLite=True):
 
         if nrmcal['latestCalibration'] != "never":
             latestNrmcalRun = nrmcal['mostRecentCalib']['runNumber']
+            latestNrmcalBack = nrmcal["backgroundRunNumber"]
         else:
             latestNrmcalRun = ""
+            latestNrmcalBack = ""
 
         outputString = (f"{stateID}|{desc}|"
                         f" {calStatus} |"
                         f"     {nDifcal}     | {latestDifcalRun.rjust(6)} |"
-                        f"     {nNrmcal}     | {latestNrmcalRun.rjust(6)} |"
+                        f"     {nNrmcal}     | {latestNrmcalRun.rjust(6)} | {latestNrmcalBack.rjust(6)} |"
                             )
         statuses.append(calStatus) 
         outputStrings.append(outputString)
 
     #output in order of calibration status...
-    print("\n StateID        | Desc.                   | Status  |No. difcals| latest |No. nrmcals| latest |")
+    print("\n StateID        | Desc.                   | Status  |No. difcals| latest |No. nrmcals| latest | (back) |")
     for i,string in enumerate(outputStrings):
         if statuses[i] == "UNCALIB":
             print(string) 
@@ -1036,13 +1038,10 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
             print("dMax (Å) - cropped".ljust(just),cropDMaxs)
             print("dBin".ljust(just),dBins)
 
-
-    
-
-
-    print(data)
-    for dat in data:
-        print(dat)
+    if reduceData:
+        print(data)
+        for dat in data:
+            print(dat)
 
     if qsp:
         # blueIO.convertToQ()

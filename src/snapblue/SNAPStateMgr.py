@@ -73,6 +73,22 @@ def checkStateExists(stateID):
  
 def checkCalibrationStatus(stateID,isLite,calType):
 
+    #checks either difcal or normcal calibrations for a given state and `isLite` setting. Returns dictionary of useful
+    #properties regarding these.
+
+    #try to fix incoming typos and case errors
+    nrmAlt = ["nrmcal"]
+    if calType.lower() in nrmAlt:
+        calType = "normcal"
+
+    if calType.lower() == "difcal":
+        calType = "difcal"
+
+    if calType != "difcal" and calType != "normcal":
+        print("ERROR: unsupported calibration type selected. Options are difcal or normcal")
+        return
+
+
     home = SNAPHome()
     powderHome = home.powder
     #dictionary to hold status
@@ -92,12 +108,13 @@ def checkCalibrationStatus(stateID,isLite,calType):
     firstIndex = {"difcal":1,
                  "normcal":0}    #annoyingly these are different
 
-    #build paths
+    #build paths to calibration indices
     if isLite:
-        indexPath = f"{powderHome}{stateID}/lite/{subFolder[calType]}/{jsonName[calType]}"
+        calFolder = f"{powderHome}{stateID}/lite/{subFolder[calType]}/"
     else:
-        indexPath = f"{powderHome}{stateID}/native/{subFolder[calType]}/{jsonName[calType]}"
+        calFolder = f"{powderHome}{stateID}/native/{subFolder[calType]}/"
 
+    indexPath = f"{calFolder}{jsonName[calType]}"
     #first check if index exists
     if not os.path.isfile(indexPath):
         calStatus["isCalibrated"] = False
@@ -106,17 +123,18 @@ def checkCalibrationStatus(stateID,isLite,calType):
         
         return calStatus
 
-    #if index exists, read it    
+    #load calibration index     
     f = open(indexPath)
     calIndex = json.load(f)
     f.close()    
 
+    # identify calibration with most recent timesstamp
     mostRecentCalibTS = 0
     mostRecentCalib = 0
-    if len(calIndex) > firstIndex[calType]:
+    if len(calIndex) > firstIndex[calType]: #this is to manage default difcal being treated as a "zeroth calibration"
         calStatus["isCalibrated"] = True
         calStatus["numberCalibrations"] = len(calIndex)-firstIndex[calType]
-        ts = calIndex[-1]["timestamp"]
+        ts = calIndex[-1]["timestamp"] #the time stamp of latest calibration
         calStatus["latestCalibration"] = datetime.fromtimestamp(int(ts)).strftime('%Y-%m-%d %H:%M:%S')
         calStatus["calibRuns"] = []
         
@@ -136,6 +154,24 @@ def checkCalibrationStatus(stateID,isLite,calType):
 
 
     calStatus["mostRecentCalib"] = calIndex[mostRecentCalib] #dict for most recent calibration
+
+    #want to get run number of vanadium background, which isn't held in index, so need to load calibration record
+    #only relevant in normcal calibration obviously
+
+    if calType == "normcal":
+
+        #build the path to the latest Normalization Record
+        v = str(calStatus["mostRecentCalib"]["version"])
+        latestNormcalRecordPath = f"{calFolder}v_{v.zfill(4)}/NormalizationRecord.json"
+
+        #load normRecord
+        f = open(latestNormcalRecordPath)
+        normRec = json.load(f)
+        f.close()
+
+        # copy background run number to calStatus dictionary
+        calStatus["backgroundRunNumber"] = normRec["backgroundRunNumber"]
+
     return calStatus
 
 def detectorConfig(stateDict,includeGuideStatus):
@@ -184,6 +220,12 @@ def availableStates():
     stateFolderList = [f for f in os.listdir(powderHome) if os.path.isdir(os.path.join(powderHome,f))]
     for nonState in nonStateFolders:
         stateFolderList.remove(nonState)
+
+    #purge statefolders that don't have exactly 16 charater strings as names
+
+    for folder in stateFolderList:
+        if len(folder) != 16:
+            stateFolderList.remove(folder)
 
     return stateFolderList
 
