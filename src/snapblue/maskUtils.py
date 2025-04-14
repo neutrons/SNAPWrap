@@ -9,9 +9,11 @@ import copy
 import importlib
 
 from mantid.simpleapi import *
+from mantid.kernel import UnitFactoryImpl
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage as ski
+import json
 
 import sys
 
@@ -288,3 +290,183 @@ def createCompatibleMask(maskWSName: str, templateWSName: str, maskInfo):
                        OutputWorkspace=maskWSName)
 
     return mask
+
+class eye:
+
+    #an "eye" is a single bubble in a swiss cheese 
+    def __init__(self,xUnits,xMin,xMax,inputWorkspaceIndexSet,isLite):
+
+        self.xUnits = xUnits
+        self.standardiseXUnits()
+
+        self.xMin = float(xMin)
+        self.xMax = float(xMax)
+        self.inputWorkspaceIndexSet = inputWorkspaceIndexSet
+        self.isLite = isLite
+
+    def standardiseXUnits(self):
+
+        #annoyingly mantid history records units with different names than those understood
+        #by maskbins, fix this here: 
+
+        if self.xUnits == 'd-Spacing':
+            self.xUnits = 'dSpacing' #inconsistent naming in mantid
+        if self.xUnits == 'Time-of-flight':
+            self.xUnits = 'TOF' #inconsistent naming in mantid
+
+        #TODO: Pete said I need to validate that this works: 
+
+        # try:
+        # print(f"units: {self.xUnits}")
+        # UnitFactoryImpl.create(self.xUnits)
+        # except:
+        #     print("warning: Mantid UnitFactory couldn\'t instantiate")
+
+class swissCheese:
+
+    def __init__(self):
+
+        self.eyeList = []
+
+    def load(self,filename):
+        # copies ancient snapmask json implementation
+
+        #TODO: validate file exists
+
+
+        with open(filename, "r") as json_file:
+            mskBinsDict = json.load(json_file)
+
+        mask_xmins = mskBinsDict['xmins']
+        mask_xmaxs = mskBinsDict['xmaxs']        
+        mask_spectraLsts = mskBinsDict['spectraLsts']
+        mask_units = mskBinsDict['units']
+
+        #TODO: add islite as property to file
+        isLite = True
+
+        for i in range(len(mask_xmins)):
+            xMin = mask_xmins[i]
+            xMax = mask_xmaxs[i]
+            spectraLsts = mask_spectraLsts[i]
+            units = mask_units
+
+            #create eye
+            oneEye = eye(xMin=xMin,xMax=xMax,xUnits=units,inputWorkspaceIndexSet=spectraLsts,isLite=isLite)
+            
+            #add to list
+            self.eyeList.append(oneEye)
+
+        self.processCheese()
+
+    def extractFromWorkspaceHistory(self,wsName):
+        #this function supports extracting the swiss cheese from a workspace where a user
+        #has manually created a mask in showInstrument view
+
+        ws = mtd[wsName]
+        mask_units = ws.getAxis(0).getUnit().caption()
+        mask_xmins = []
+        mask_xmaxs = []
+        mask_spectraLsts = []
+        if ws.getNumberHistograms() == 96*192:
+            isLite=True
+        elif ws.getNumberHistograms() == 1179648:
+            isLite=False
+        else:
+            raise ValueError(f"workspace {wsName} has unexpected number of spectra {ws.getNumberHistograms()}")
+        
+        #get the history of the workspace
+        h = ws.getHistory().getAlgorithmHistories()
+        #loop over the history and extract the MaskBins operations
+        for hi in h:
+            if hi.name() == 'MaskBins':
+                #get the xMin, xMax and spectraList for each MaskBins operation
+                mask_xmins.append(hi.getPropertyValue('XMin'))
+                mask_xmaxs.append(hi.getPropertyValue('XMax'))
+                mask_spectraLsts.append(hi.getPropertyValue('InputWorkspaceIndexSet'))
+
+        #create the eyes and append to eyeList
+        for i in range(len(mask_xmins)):
+            
+            try:
+                xMin = mask_xmins[i]
+                xMax = mask_xmaxs[i]
+                spectraLsts = mask_spectraLsts[i]
+                units = mask_units
+                isLite = isLite
+
+                #create eye
+                oneEye = eye(xMin=xMin,xMax=xMax,xUnits=units,inputWorkspaceIndexSet=spectraLsts,isLite=isLite)
+                
+                #add to list
+                self.eyeList.append(oneEye)
+            except:
+                pass
+    
+        print(f"found {len(mask_xmins)} eyes in {wsName} history")
+        self.processCheese()
+
+    def processCheese(self):
+
+        self.eyeList = sorted(self.eyeList, key=lambda x: x.xUnits)
+        self.numberOfEyes = len(self.eyeList)
+        allUnits = [eye.xUnits for eye in self.eyeList] 
+        self.uniqueUnits = list(set(allUnits))
+        self.uniqueUnits.sort()
+        self.unitCount = len(self.uniqueUnits)
+
+        #todo confirm all eyes are same isLite
+        allLiteStatus = [eye.isLite for eye in self.eyeList]
+        liteSet = set(allLiteStatus)
+        if len(liteSet) > 1:
+            raise ValueError(f"swiss cheese contains eyes with different isLite status: {liteSet}")
+        self.isLite = allLiteStatus[0]
+
+    def makeMaskBinsTables(self):
+        #create maskBins Tables for use by maskBins 
+
+        for unit in self.uniqueUnits:
+            unitEyes = [eye for eye in self.eyeList if eye.xUnits == unit]
+            unitEyes.sort(key=lambda x: x.xMin)
+            unitXmins = [eye.xMin for eye in unitEyes]
+            unitXmaxs = [eye.xMax for eye in unitEyes]
+            unitSpectraLsts = [eye.inputWorkspaceIndexSet for eye in unitEyes]
+
+            #create a maskBins table
+            binTable = CreateEmptyTableWorkspace(OutputWorkspace=f"maskBins_{unit}")
+            binTable.addColumn('double','XMin')
+            binTable.addColumn('double','XMax')
+            binTable.addColumn('str','SpectraList')
+            # binTable.addColumn('str','units')
+            #add the data to the table
+            for i in range(len(unitXmins)):
+                # print(unitXmins[i],unitXmaxs[i],unitSpectraLsts[i],unit)
+                # print(type(unitXmins[i]),type(unitXmaxs[i]),type(unitSpectraLsts[i]))
+                binTable.addRow([unitXmins[i],unitXmaxs[i],unitSpectraLsts[i]])
+
+    def save(self,filePath,filePrefix):
+        
+        for unit in self.uniqueUnits:
+            unitEyes = [eye for eye in self.eyeList if eye.xUnits == unit]
+            unitEyes.sort(key=lambda x: x.xMin)
+            unitXmins = [eye.xMin for eye in unitEyes]
+            unitXmaxs = [eye.xMax for eye in unitEyes]
+            unitSpectraLsts = [eye.inputWorkspaceIndexSet for eye in unitEyes]
+
+            #create file path
+            if filePath[-1] != '/':
+                filePath += '/'
+            fileName = f"{filePath}{filePrefix}_{unit}.json"
+
+            #create dictionary
+            maskBinsTable = {
+                'units': unit,
+                'isLite': self.isLite,
+                'xmins': unitXmins,
+                'xmaxs': unitXmaxs,
+                'spectraLsts': unitSpectraLsts
+            }
+            with open(fileName, "w") as outfile:
+                json.dump(maskBinsTable, outfile, indent=2)
+
+            print(f"saved mask to: {fileName}")
