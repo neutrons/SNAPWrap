@@ -359,6 +359,135 @@ class swissCheese:
 
         self.processCheese()
 
+    def notchFromList(self,xUnits,notchList,isLite):
+        #this function creates a swiss cheese from a list of notches
+        #the notches are defined as a list of tuples (xMin,xMax)
+
+        for i in range(len(notchList)):
+            xMin = notchList[i][0]
+            xMax = notchList[i][1]
+            #TODO: check notches sort notchlist[i]
+            units = xUnits
+            if isLite:
+                inputWorkspaceIndexSet = '0-18431'
+            else:
+                inputWorkspaceIndexSet = '0-1179647'        
+
+            #create eye
+            oneEye = eye(xMin=xMin,
+                         xMax=xMax,
+                         xUnits=units,
+                         inputWorkspaceIndexSet=inputWorkspaceIndexSet,
+                         isLite=isLite)
+            
+            #add to list
+            self.eyeList.append(oneEye)
+
+        self.processCheese()
+
+    def notchFromUB(self,donorWS,UBPath,widthCoef,isLite):
+
+        # accepts a path to an ISAW UB file and creates a swiss cheese
+        # wavelengths are calculated from the UB and notch widths are
+        # calculated with a simple polynomical of the form 
+        # a0+a1*lam+a2*lam**2+... widthCoef is the list [a0,a1,a2,...]
+
+        from mantid.geometry import CrystalStructure   
+    
+        #Define diamond crystal structure object (note, origin choice 1 is needed)
+        cs = CrystalStructure('3.567 3.567 3.567', 
+        'F d -3 m',   
+        'C 0.000 0.000 0.000 1.0 0.00843')
+
+        wsIn = CloneWorkspace(InputWorkspace=donorWS)
+
+        ws = mtd["wsIn"]
+        ws.sample().setCrystalStructure(cs)
+
+        #load UB into peaks workspace
+        LoadIsawUB(InputWorkspace=wsIn,
+            Filename=UBPath)
+    
+        SetGoniometer(Workspace=wsIn, Axis0='omega, 0,1,0,1')
+    
+        #Create an empty peaks workspace
+        wsPks = f'{wsIn}_pks'
+        CreatePeaksWorkspace(InstrumentWorkspace=wsIn,
+            OutputWorkspace=wsPks)
+
+        
+
+        #predict all peaks for UB and crystal structure
+        PredictPeaks(InputWorkspace=wsIn,
+            WavelengthMin=0.5,
+            MinDSpacing=0.5,
+            ReflectionCondition='All-face centred',
+            CalculateStructureFactors=True,
+            OutputType='LeanElasticPeak',
+            CalculateWavelength=True,
+            OutputWorkspace=wsPks)
+    
+        #calculate the wavelength for all of these peaks and write to workspace
+        for pk in mtd[wsPks]:
+            Q = pk.getQLabFrame()
+            magQ = np.linalg.norm(Q)
+            alp = np.degrees(np.arccos(-Q[2]/magQ))
+            ttheta = np.radians(-(180 - 2*alp))
+            lam = 4*np.pi*np.sin(ttheta/2.0)/magQ
+            pk.setWavelength(lam)
+        
+        #remove peaks below 0.5 Ang
+        FilterPeaks(InputWorkspace=wsPks,
+            OutputWorkspace=wsPks,
+            FilterVariable='Wavelength',
+            FilterValue=0.5,
+            Operator='>')
+
+        #remove weak and zero intensity peaks
+        FilterPeaks(InputWorkspace=wsPks,
+            OutputWorkspace=wsPks,
+            FilterVariable='Intensity',
+            FilterValue=100,
+            Operator='>')
+        
+        #extract wavelengths 
+        lamList = []
+        for pk in mtd[wsPks]:
+            lam = pk.getWavelength()
+            if lam not in lamList:
+                lamList.append(lam)
+
+        #create eyes
+        eyeList = []
+        for lam in lamList: 
+            #calculate width
+            width = 0
+            for i in range(len(widthCoef)):
+                width += widthCoef[i]*lam**i
+
+            #create eye
+            if isLite:
+                inputWorkspaceIndexSet = '0-18431'
+            else:
+                inputWorkspaceIndexSet = '0-1179647'
+
+            oneEye = eye(xMin=lam-width/2,
+                         xMax=lam+width/2,
+                         xUnits='Wavelength',
+                         inputWorkspaceIndexSet=inputWorkspaceIndexSet,
+                         isLite=True)
+            
+            #add to list
+            self.eyeList.append(oneEye)
+        
+        print(f"calculated {len(lamList)} notches in {UBPath}")
+        print(f"at wavelengths of: {lamList}")
+
+        self.processCheese()
+        #delete workspaces
+        # DeleteWorkspace(Workspace=wsIn)
+        # DeleteWorkspace(Workspace=wsPks)
+
     def extractFromWorkspaceHistory(self,wsName):
         #this function supports extracting the swiss cheese from a workspace where a user
         #has manually created a mask in showInstrument view
