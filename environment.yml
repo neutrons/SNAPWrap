@@ -6,7 +6,7 @@ channels:
   - mantid-ornl/label/rc
   - neutrons/label/rc
 dependencies:
-  - snapred==1.2.0rc2
+  - snapred==1.2.0rc3
   # SNAPBlue specific dependencies
   - scikit-image
   # -- Runtime dependencies
