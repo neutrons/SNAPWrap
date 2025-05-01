@@ -359,6 +359,162 @@ class swissCheese:
 
         self.processCheese()
 
+    def notchFromList(self,xUnits,notchList,isLite):
+        #this function creates a swiss cheese from a list of notches
+        #the notches are defined as a list of tuples (xMin,xMax)
+
+        for i in range(len(notchList)):
+            xMin = notchList[i][0]
+            xMax = notchList[i][1]
+            #TODO: check notches sort notchlist[i]
+            units = xUnits
+            if isLite:
+                inputWorkspaceIndexSet = '0-18431'
+            else:
+                inputWorkspaceIndexSet = '0-1179647'        
+
+            #create eye
+            oneEye = eye(xMin=xMin,
+                         xMax=xMax,
+                         xUnits=units,
+                         inputWorkspaceIndexSet=inputWorkspaceIndexSet,
+                         isLite=isLite)
+            
+            #add to list
+            self.eyeList.append(oneEye)
+
+        self.processCheese()
+
+    def notchFromUB(self,wsName,UBPath,widthCoef,isLite,lamMin=0.5):
+
+        # accepts a path to an ISAW UB file and creates a swiss cheese
+        # wavelengths are calculated from the UB and notch widths are
+        # calculated with a simple polynomical of the form 
+        # a0+a1*lam+a2*lam**2+... widthCoef is the list [a0,a1,a2,...]
+
+        from mantid.geometry import CrystalStructure, ReflectionGenerator   
+    
+        #Define diamond crystal structure object (note, origin choice 1 is needed)
+        diamond = CrystalStructure('3.567 3.567 3.567', 
+        'F d -3 m',   
+        'C 0.000 0.000 0.000 1.0 0.00843')
+
+        print("WSName is: ", wsName)
+        ws = mtd[wsName]
+        ws.sample().setCrystalStructure(diamond)
+
+        #load UB into peaks workspace
+        LoadIsawUB(InputWorkspace=wsName,
+            Filename=UBPath)
+    
+        SetGoniometer(Workspace=wsName, Axis0='omega, 0,1,0,1')
+    
+
+        generator = ReflectionGenerator(diamond)
+        hkls = generator.getHKLs(0.5,2.5) #complete list of all HKL
+        UB = ws.sample().getOrientedLattice().getUB()
+        print("Input UB" )
+        print(f"{UB[0,0]:.5f} {UB[0,1]:.5f} {UB[0,2]:.5f}")
+        print(f"{UB[1,0]:.5f} {UB[1,1]:.5f} {UB[1,2]:.5f}")
+        print(f"{UB[2,0]:.5f} {UB[2,1]:.5f} {UB[2,2]:.5f}")
+
+        reflections = []
+        for hkl in hkls:
+            QLab = np.dot(UB, hkl)
+            magQ = np.linalg.norm(QLab) #note ISAW convention i.e. `Q=1/d`
+            alp = np.degrees(np.arccos(-QLab[2]/magQ))
+            ttheta = np.radians(-(180 - 2*alp))
+            d = 1/magQ #d = 1/Q
+            lam = 2*d*np.sin(ttheta/2.0) #Bragg's Law lam = 2dsin(theta) = 2sin(theta)/Q
+            if lam >= lamMin:  
+                ref = {
+                'hkl': hkl,
+                'd': d,
+                'wavelength': lam,
+                'QLab': QLab,
+                }
+                reflections.append(ref)
+        print(f"found {len(reflections)} reflections for wavelength >= {lamMin}")
+
+        #create eyes
+
+        for ref in reflections:
+            lam = ref['wavelength'] 
+            #calculate width
+            width = 0
+            for i in range(len(widthCoef)):
+                width += widthCoef[i]*lam**i
+
+            #create eye
+            if isLite:
+                inputWorkspaceIndexSet = '0-18431'
+            else:
+                inputWorkspaceIndexSet = '0-1179647'
+
+            oneEye = eye(xMin=lam-width/2,
+                         xMax=lam+width/2,
+                         xUnits='Wavelength',
+                         inputWorkspaceIndexSet=inputWorkspaceIndexSet,
+                         isLite=True)
+            
+            #add to list
+            self.eyeList.append(oneEye)
+        
+        print(f"calculated {len(reflections)} notches in {UBPath}")
+        self.processCheese()
+
+    def inspectInWavelength(self,wsName):
+
+        sumWS = f"{wsName}_sum"
+        sumWS_notch = f"{wsName}_notched_sum" 
+        
+        ConvertUnits(InputWorkspace=wsName,
+                     OutputWorkspace=sumWS,
+                     Target='Wavelength')
+        
+        Rebin(InputWorkspace=sumWS,
+                OutputWorkspace=sumWS,
+                Params='0.5,-0.001,4.5',
+                PreserveEvents=False)
+
+        CloneWorkspace(InputWorkspace=sumWS,
+                        OutputWorkspace=sumWS_notch)
+
+        SumSpectra(InputWorkspace=sumWS,
+                    OutputWorkspace=sumWS)
+        
+        #apply the notches
+
+        for oneEye in self.eyeList:
+            try:
+                MaskBins(InputWorkspace=sumWS_notch,
+                    XMin=oneEye.xMin,
+                    XMax=oneEye.xMax,
+                    InputWorkspaceIndexSet=oneEye.inputWorkspaceIndexSet,
+                    OutputWorkspace=sumWS_notch)
+            except:
+                pass
+
+        SumSpectra(InputWorkspace=sumWS_notch,
+                    OutputWorkspace=sumWS_notch)
+        
+        #create ticks workspace
+        allWavelengths = []
+        for oneEye in self.eyeList:
+            allWavelengths.append(0.5*(oneEye.xMin+oneEye.xMax))
+        allWavelengths = np.array(allWavelengths)
+        #get range of y values in summed data
+        ws = mtd[sumWS]
+        yMin = min(ws.dataY(0))
+        yMax = max(ws.dataY(0))
+        #create ticks workspace
+        tickYval = (yMin+0.1*(yMax-yMin))*np.ones_like(allWavelengths)
+        CreateWorkspace(OutputWorkspace='ticks',
+                        DataX=allWavelengths,
+                        DataY=tickYval,
+                        NSpec=1,
+                        UnitX='Wavelength')
+        
     def extractFromWorkspaceHistory(self,wsName):
         #this function supports extracting the swiss cheese from a workspace where a user
         #has manually created a mask in showInstrument view
@@ -467,6 +623,9 @@ class swissCheese:
                 'spectraLsts': unitSpectraLsts
             }
             with open(fileName, "w") as outfile:
+            
                 json.dump(maskBinsTable, outfile, indent=2)
 
             print(f"saved mask to: {fileName}")
+
+ 
