@@ -19,7 +19,7 @@ import sys
 
 class sliceImage:
 
-    def __init__(self,wsName,xMin=0,xMax=100):
+    def __init__(self,wsName,xMin=0.5,xMax=30000):
     
         self.wsName = wsName
         self.xMin = xMin #minimum x-value of slice
@@ -247,7 +247,7 @@ def liLee(sliceImage,removeDark=True):
 def mask2mantid(sliceImage,donorWS,outWS):
     #takes a 2d image mask and converts it to a mantid mask workspace
 
-    inputMask = sliceImage.image
+    inputMask = sliceImage.mask
 
     #get image coordinate to pixelID map
     map = coordSpecIDMap(donorWS)

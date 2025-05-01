@@ -486,7 +486,7 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
         slice.combineMasks=True
         mut.maskGrid(slice,gridWidth=0)
         mut.liLee(slice)
-        print(f"{slice.percentMasked:.2f} pixels masked")
+        print(f"{slice.percentMasked:.2f}% of pixels masked")
 
         if plotOn:
         #show  mask
@@ -506,7 +506,9 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
             fig.show()
 
         # #convert mask back to workspace
-        a = mut.mask2mantid(slice,inputWorkspace,"MaskWorkspace_99")
+        nextMaskWSName = mut.nextMaskWSName()
+        a = mut.mask2mantid(slice,inputWorkspace,nextMaskWSName)
+        print(f"Mask: {nextMaskWSName} was created")
 
 
 def reduce(runNumber,
