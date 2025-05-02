@@ -420,11 +420,11 @@ class swissCheese:
 
         reflections = []
         for hkl in hkls:
-            QLab = np.dot(UB, hkl)
+            QLab = 2*np.pi*np.dot(UB, hkl)
             magQ = np.linalg.norm(QLab) #note ISAW convention i.e. `Q=1/d`
             alp = np.degrees(np.arccos(-QLab[2]/magQ))
             ttheta = np.radians(-(180 - 2*alp))
-            d = 1/magQ #d = 1/Q
+            d = 2*np.pi/magQ #d = 1/Q
             lam = 2*d*np.sin(ttheta/2.0) #Bragg's Law lam = 2dsin(theta) = 2sin(theta)/Q
             if lam >= lamMin:  
                 ref = {
