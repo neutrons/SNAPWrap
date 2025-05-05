@@ -206,6 +206,17 @@ class reductionGroup:
             key = run.pixelGroup
             redObjects[key].append(run)
 
+        #sort lists for each key in order of decreasing time
+        for pgs in allPixelGroups:
+            objects = redObjects[pgs] # a list of redObjects un sorted in time
+            sortedObjects = sorted(
+                objects,
+                key = lambda obj: obj.timeStamp,
+                reverse=True
+           ) #This list sorted according to timestamp of objects
+            
+            redObjects[pgs]=sortedObjects #replace list with sorted list
+
         self.objectDict = redObjects
 
 def convertToQ():

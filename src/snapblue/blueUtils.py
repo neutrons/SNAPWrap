@@ -32,6 +32,9 @@ from snapred.meta.Config import Config
 from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
 from snapred.backend.service.SousChef import SousChef
 
+from snapred import __version__ as redVersion
+from snapblue import __version__ as blueVersion
+
 class globalParams:
 
 # This class holds a set of parameters that will be applied during reduction
@@ -66,6 +69,27 @@ def makeDefaultYML(outputYML):
         yaml.dump(params, file)
 
     print('wrote: ',outputYML)
+
+def deploy():
+    #print information regarding the version of snapred/blue being used
+    print(f"snapred version: {redVersion}")
+
+    #attempt to find and print snapblue hash
+    env = "snapred-dev"
+    print(f"\nsnapblue version: {blueVersion}")
+    packagePath = f"/opt/anaconda/envs/{env}/lib/python3.10/site-packages/"
+
+    distInfo = [s for s in os.listdir(packagePath) if "dist-info" in s]
+    blueDist = [s for s in distInfo if "snapblue" in s]
+    blueDistPath = f"{packagePath}{blueDist[0]}/direct_url.json"
+
+    with open(blueDistPath, 'r') as f:
+        deployInfo=json.load(f)
+
+    for key in deployInfo["vcs_info"]:
+        print(f"{key}:{deployInfo['vcs_info'][key]}")
+    print(deployInfo)
+
 
 def makeSEE(outputName,SEEDirectory):
 
@@ -273,6 +297,24 @@ def exportData(exportFormats=['gsa','xye','csv'],
     reducedGroups = blueIO.reducedRuns(exportFormats,prefix)
     
     blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
+
+def workspaceHandles(prefix="reduced_dsp",pgs="bank"):
+
+    #returns a list of redObjects for the requested workspaces
+
+    reducedList = blueIO.reducedRuns([],prefix=prefix)
+
+    handleList = []
+    for red in reducedList:
+        redObj = red.objectDict[pgs][0]
+        handleList.append(redObj)
+
+    if len(handleList) == 0:
+        print("no workspaces found. Check your input")
+    else:
+        print(f"found {len(handleList)} workspaces handles")
+
+    return handleList
     
 def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
 
@@ -394,6 +436,7 @@ def restoreDBins(redObj,originalIngredients):
         print(f"restored binning on {redObj.wsName}")
         
     return
+
 def propagateDifcal(refRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
 
     #This will accept a reference Run number, determine a list of all existing 
