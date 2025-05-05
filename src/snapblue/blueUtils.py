@@ -273,6 +273,24 @@ def exportData(exportFormats=['gsa','xye','csv'],
     reducedGroups = blueIO.reducedRuns(exportFormats,prefix)
     
     blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
+
+def workspaceHandles(prefix="reduced_dsp",pgs="bank"):
+
+    #returns a list of redObjects for the requested workspaces
+
+    reducedList = blueIO.reducedRuns([],prefix=prefix)
+
+    handleList = []
+    for red in reducedList:
+        redObj = red.objectDict[pgs][0]
+        handleList.append(redObj)
+
+    if len(handleList) == 0:
+        print("no workspaces found. Check your input")
+    else:
+        print(f"found {len(handleList)} workspaces handles")
+
+    return handleList
     
 def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
 
@@ -394,6 +412,7 @@ def restoreDBins(redObj,originalIngredients):
         print(f"restored binning on {redObj.wsName}")
         
     return
+
 def propagateDifcal(refRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
 
     #This will accept a reference Run number, determine a list of all existing 
