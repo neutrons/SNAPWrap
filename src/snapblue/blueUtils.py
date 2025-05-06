@@ -88,7 +88,7 @@ def deploy():
 
     for key in deployInfo["vcs_info"]:
         print(f"{key}:{deployInfo['vcs_info'][key]}")
-    print(deployInfo)
+
 
 
 def makeSEE(outputName,SEEDirectory):
@@ -1115,7 +1115,7 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
 
     #clean up after myself
 
-    dirty = ["tof_all_lite_raw",
+    dirty = ["tof_all_lite_",
             #  "tof_all_lite_copy",
              "tof_all_copy",
              "tof_all_raw",
