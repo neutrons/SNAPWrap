@@ -77,6 +77,9 @@ class redObject:
             "backgroundMethod":None
         }
 
+        self.crystalSpecies = [] #an empty list to hold a list ocf mantid crystal structure representing the crystal "species"
+                                 #contributing to the data in the redObject.
+
     def wsProperties(self,wsName):
         #gets some useful attributes of workspace
 

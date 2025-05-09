@@ -514,6 +514,8 @@ class swissCheese:
                         DataY=tickYval,
                         NSpec=1,
                         UnitX='Wavelength')
+        ws = mtd["ticks"]
+        ws.setPlotType("marker")
         
     def extractFromWorkspaceHistory(self,wsName):
         #this function supports extracting the swiss cheese from a workspace where a user
