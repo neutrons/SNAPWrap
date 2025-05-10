@@ -1,0 +1,86 @@
+# environment: integration_test
+# At present:
+#   * this "integration_test.yml" overrides "IPTS.root", and "constants.maskedPixelThreshold";
+#   * "module.root" will still be defined as in "test.yml".
+
+IPTS:
+  # Eventually, for SNAPRed's test framework:
+  #   this should be a shared location on "analysis.sns.gov".
+  # For the moment, each developer needs to set this individually to their local path.
+  root: ${module.root}/data/snapred-data/SNS
+
+constants:
+  # For tests with '46680' this seems to be necessary.
+  maskedPixelThreshold: 1.0
+
+  DetectorPeakPredictor:
+    fwhm: 1.17741002252 # used to convert gaussian to fwhm (2 * log_e(2))
+  CropFactors:
+    lowWavelengthCrop: 0.05
+    lowdSpacingCrop: 0.1
+    highdSpacingCrop: 0.15
+  RawVanadiumCorrection:
+    numberOfSlices: 1
+    numberOfAnnuli: 1
+
+instrument:
+  native:
+    pixelResolution: 72
+    definition:
+      file: ${module.root}/resources/ultralite/CRACKLE_Definition.xml
+  lite:
+    pixelResolution: 18
+    definition:
+      file: ${module.root}/resources/ultralite/CRACKLELite_Definition.xml
+    map:
+      file: ${module.root}/resources/ultralite/CRACKLELiteDataMap.xml
+
+  PVLogs:
+    # Swap these when running with ultralite data
+    # rootGroup: "entry/DASlogs"
+    rootGroup: "/mantid_workspace_1/logs"
+
+    # PV-log keys relating to instrument settings:
+    instrumentPVKeys:
+    - "BL3:Chop:Gbl:WavelengthReq"
+    - "BL3:Chop:Skf1:WavelengthUserReq"
+    - "det_arc1"
+    - "det_arc2"
+    - "BL3:Det:TH:BL:Frequency"
+    - "BL3:Mot:OpticsPos:Pos"
+    - "det_lin1"
+    - "det_lin2"
+
+mantid:
+  workspace:
+    nameTemplate:
+      delimiter: "_"
+      template:
+        run: "{unit},{group},{lite},{auxiliary},{runNumber}"
+        diffCal:
+          input: "{unit},{runNumber},raw"
+          table: "diffract_consts,{runNumber},{version}"
+          output: "{unit},{group},{runNumber},{version}"
+          diagnostic: "diagnostic,{group},{runNumber},{version}"
+          mask: "diffract_consts,mask,{runNumber},{version}"
+          metric: "calib_metrics,{metricName},{runNumber},{version}"
+          timedMetric: "calib_metrics,{metricName},{runNumber},{timestamp}"
+        normCal:
+          rawVanadium: "{unit},{group},{runNumber},raw_van_corr,{version}"
+          focusedRawVanadium: "{unit},{group},{runNumber},raw_van_corr,{version}"
+          smoothedFocusedRawVanadium: "{unit},{group},{runNumber},fitted_van_corr,{version}"
+
+calibration:
+  parameters:
+    default:
+      alpha: 0.1
+      # alpha: 1.1
+      beta:
+        - 0.02
+        - 0.05
+      # beta:
+      #   - 1
+      #   - 2
+  fitting:
+    # minSignal2Noise: 0.0
+    minSignal2Noise: 10

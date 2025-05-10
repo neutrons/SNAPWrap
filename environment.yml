@@ -8,7 +8,9 @@ channels:
 dependencies:
   - snapred==1.2.0rc3
   # SNAPBlue specific dependencies
+  - snapred==1.1.0rc5
   - scikit-image
+  - git-lfs
   # -- Runtime dependencies
   # base: list all base dependencies here
   - python>=3.8  # please specify the minimum version of python here

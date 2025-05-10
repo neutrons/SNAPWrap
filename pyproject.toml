@@ -74,7 +74,7 @@ packagename-cli = "packagenamepy.packagename:main"
 packagenamepy = "packagenamepy.packagename:gui"
 
 [tool.pytest.ini_options]
-addopts = "-v --cov=packagenamepy --cov-report=term-missing"
+addopts = "-m 'not (integration or datarepo)' -v --cov=packagenamepy --cov-report=term-missing"
 pythonpath = [
   ".", "src", "scripts"
 ]
@@ -82,7 +82,10 @@ testpaths = ["tests"]
 python_files = ["test*.py"]
 norecursedirs = [".git", "tmp*", "_tmp*", "__pycache__", "*dataset*", "*data_set*"]
 markers = [
-    "mymarker: example markers goes here"
+    "integration: mark a test as an integration test",
+    "mount_snap: mark a test as using /SNS/SNAP/ data mount",
+    "golden_data(*, path=None, short_name=None, date=None): mark golden data to use with a test",
+    "datarepo: mark a test as using snapred-data repo"
 ]
 
 [tool.ruff]
