@@ -22,7 +22,7 @@ class redObject:
     #and then builds further attributes from these
 
 
-    def __init__(self, wsName,exportFormats=[],requiredPrefix='reduced_dsp'):
+    def __init__(self, wsName,exportFormats=[],requiredPrefix='reduced_dsp',iptsOverride=None):
 
         if '_' not in wsName:
             self.isReducedDataWorkspace = False
@@ -49,8 +49,12 @@ class redObject:
         self.runNumber = parsed[3]
         self.timeStamp = parsed[4]
         self.wsName = wsName #need to keep this too
-        self.ipts = GetIPTS(RunNumber=self.runNumber,
-                            Instrument='SNAP')
+        if iptsOverride is None:
+            self.ipts = GetIPTS(RunNumber=self.runNumber,
+                                Instrument='SNAP')
+        else:
+            self.ipts = f"/SNS/SNAP/IPTS-{iptsOverride}/"
+
         runNumber = str(int(self.runNumber)) # strips leading zero if necessary
         self.stateID = ssm.stateDef(runNumber)[0]
 
@@ -238,7 +242,7 @@ def convertToQ():
             
     #TODO: rebin S(Q) once I know how to do this
 
-def reducedRuns(exportFormats,prefix):#,latestOnly=True,gsaInstPrm=True):
+def reducedRuns(exportFormats,prefix,iptsOverride=None):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a .runNumber attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
@@ -253,7 +257,7 @@ def reducedRuns(exportFormats,prefix):#,latestOnly=True,gsaInstPrm=True):
     redRuns = []
     for ws in allWorkspaces:
 
-        red = redObject(ws,exportFormats,prefix) 
+        red = redObject(ws,exportFormats,prefix,iptsOverride) 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
             redRuns.append(red.runNumber)

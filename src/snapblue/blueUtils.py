@@ -291,10 +291,11 @@ def resample(sampleFactor=1):
 def exportData(exportFormats=['gsa','xye','csv'],
                prefix='reduced_dsp',
                latestOnly=True,
-               gsaInstPrm=True):
+               gsaInstPrm=True,
+               iptsOverride=None):
     #creates reducedGroups and then exports these using the requested export formats
 
-    reducedGroups = blueIO.reducedRuns(exportFormats,prefix)
+    reducedGroups = blueIO.reducedRuns(exportFormats,prefix,iptsOverride=iptsOverride)
     
     blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
 
