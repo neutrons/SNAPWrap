@@ -8,6 +8,8 @@ import os
 import sys
 import copy
 import shutil
+import operator
+import re
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -24,7 +26,7 @@ class SNAPHome():
    # main definition of calibration directory
    def __init__(self):
       self.calib = Config['instrument.calibration.home']
-      self.powder = self.calib + "/Powder/"
+      self.powder = self.calib + "Powder/"
 
 def loadSNAPInstPrm():
 
@@ -69,12 +71,103 @@ def checkStateExists(stateID):
   powderHome = home.powder
   statePath = f"{powderHome}{stateID}/"
 
-  return os.path.exists(statePath) 
- 
-def checkCalibrationStatus(stateID,isLite,calType):
+  return os.path.exists(statePath)
 
-    #checks either difcal or normcal calibrations for a given state and `isLite` setting. Returns dictionary of useful
-    #properties regarding these.
+def matchingCalibrationIndex(calIndexList, runNumber):
+
+    # accept a presorted list of calibration index entries and a run number. Find the most recent
+    # entry that has an "appliesTo" attribute that is consisten with runNumber
+
+    # Define allowed operators
+    ops = {
+        '>': operator.gt,
+        '>=': operator.ge,
+        '<': operator.lt,
+        '<=': operator.le,
+        '==': operator.eq,
+        '!=': operator.ne
+    }
+
+
+    calIndexList = sorted(enumerate(calIndexList), key=lambda x: x[1]['timestamp'], reverse=True)
+   
+
+    for original_index, entry in calIndexList:
+        conditions = entry['appliesTo'].split(',')
+        match = True
+
+        for cond in conditions:
+            cond = cond.strip()
+            # Extract operator and number using regex
+            match_obj = re.match(r'(>=|<=|==|!=|>|<)\s*(\d+)', cond)
+            if not match_obj:
+                match = False
+                break
+
+            op_str, value_str = match_obj.groups()
+            value = int(value_str)
+
+            if not ops[op_str](runNumber, value):
+                match = False
+                break
+
+        if match:
+            return original_index
+
+    return None  # No match found
+
+def VBRunNumberFromVersion(calDict,calFolder):
+        
+        # the vanadium background (VB) run number is useful to have, but is not stored in the
+        # calibration index, so need to locate this by inspecting the corresponding 
+        # NormalizationRecord, which is indexed using the calibration version
+
+
+        v = str(calDict["version"])
+        latestNormcalRecordPath = f"{calFolder}v_{v.zfill(4)}/NormalizationRecord.json"
+
+        #load normRecord
+        f = open(latestNormcalRecordPath)
+        normRec = json.load(f)
+        f.close()
+
+        return normRec["backgroundRunNumber"]
+
+def isCalibrated(runNumber,isLite=True):
+
+    # returns tuple of booleans for difcal and normcal status respectively
+    # values will only be true if valid calibration exists
+
+    difcal = checkCalibrationStatus(runNumber, stateID=None,
+                                    isLite=isLite, 
+                                    calType="difcal")
+    
+    nrmcal = checkCalibrationStatus(runNumber, stateID=None,
+                                    isLite=isLite, 
+                                    calType="normcal")
+    
+    return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"])
+
+def dateFromLinux(ts):
+
+    # takes linux epoch time as a float and returns human readable string
+
+    return datetime.fromtimestamp(int(ts)).strftime('%Y-%m-%d %H:%M:%S')
+    
+def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal"):
+
+    # checks either difcal or normcal calibrations for a given state and `isLite` setting. Returns dictionary of useful
+    # properties regarding these.
+    
+    # an initial version of this function tried to answer the question if a _state_ is calibrated. But, of course this is
+    # incorrect as calibration is contingent on the sample run number satisfying an entry in the index. In the present
+    # version, the main call is now a sample run number. 
+    
+    # it remains useful to pull general information for a state, so the possibility of runNumber == None is allowed. In this case
+    # a stateID must be provided. If a runNumber is provided, it is not necessary to provide a stateID
+
+    # To distinguish between most recent calibration versus most recent _valid_ calibration, additional keys are now added
+    # and their names made more explicit  
 
     #try to fix incoming typos and case errors
     nrmAlt = ["nrmcal"]
@@ -88,6 +181,13 @@ def checkCalibrationStatus(stateID,isLite,calType):
         print("ERROR: unsupported calibration type selected. Options are difcal or normcal")
         return
 
+    #determine stateID corresponding to run number 
+
+    if runNumber is None:
+        pass
+    else: 
+        [stateID, stateDict] = stateDef(runNumber)
+
 
     home = SNAPHome()
     powderHome = home.powder
@@ -97,6 +197,7 @@ def checkCalibrationStatus(stateID,isLite,calType):
     "calibrationType":calType,
     "isLite":isLite
     }
+
 
     #dictionaries to build paths for difference cases
     subFolder = {"difcal":'diffraction',
@@ -115,62 +216,122 @@ def checkCalibrationStatus(stateID,isLite,calType):
         calFolder = f"{powderHome}{stateID}/native/{subFolder[calType]}/"
 
     indexPath = f"{calFolder}{jsonName[calType]}"
-    #first check if index exists
-    if not os.path.isfile(indexPath):
-        calStatus["isCalibrated"] = False
+
+    calStatus["calFolder"] = calFolder
+    calStatus["indexPath"] = indexPath
+
+    #first check if state exists
+
+    if not checkStateExists(calStatus["stateID"]):
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
         calStatus["numberCalibrations"] = 0
-        calStatus["latestCalibration"] = "never"
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = {}
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        # print(f"Run: {runNumber} corresponds to stateID: {stateID}. This state does not exist so run is uncalibrated")
+        
+        return calStatus
+
+
+    #if state exists, but no normcal index exists (impossible to have no difcal index in an existing state)
+    if not os.path.isfile(indexPath) and calType=="normcal":
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = 0
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = {}
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        # print(f"Run: {runNumber} corresponds to stateID: {stateID}. State exists but has no normcal")
         
         return calStatus
 
     #load calibration index     
     f = open(indexPath)
-    calIndex = json.load(f)
-    f.close()    
+    calIndexList = json.load(f) # a list of all calibrations
+    f.close()
 
-    # identify calibration with most recent timesstamp
-    mostRecentCalibTS = 0
-    mostRecentCalib = 0
-    if len(calIndex) > firstIndex[calType]: #this is to manage default difcal being treated as a "zeroth calibration"
-        calStatus["isCalibrated"] = True
-        calStatus["numberCalibrations"] = len(calIndex)-firstIndex[calType]
-        ts = calIndex[-1]["timestamp"] #the time stamp of latest calibration
-        calStatus["latestCalibration"] = datetime.fromtimestamp(int(ts)).strftime('%Y-%m-%d %H:%M:%S')
-        calStatus["calibRuns"] = []
+
+    #check for the case that there is an existing state with no difcal
+
+    if len(calIndexList) == 1 and calType == "difcal":
+
+        # a single calibration indicates that only the default geometric calibration exists
+        # and the state is uncalibrated
+
+        calStatus["calibIndexList"] = calIndexList
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = 0
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = calIndexList[0] # still need to have default index entry
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        # print(f"Run: {runNumber} corresponds to stateID: {stateID}. This state exists but only has default difcal")
         
-        for i,entry in enumerate(calIndex[firstIndex[calType]:]):
-            calStatus["calibRuns"].append(entry["runNumber"])
-            if entry["timestamp"]>= mostRecentCalibTS:
-                mostRecentCalibTS = entry["timestamp"]
-                mostRecentCalib = i + firstIndex[calType] #zeroth index is not counted
+        return calStatus
+
+    # At this point, the state has some calibrations, but we don't know if any calibrations are valid for
+    # the provided run number
+
+    #useful to sort calIndexList in order of calibration timestamps, most recent first.
+    calIndexList.sort(key=lambda d: d["timestamp"], reverse=True)
+
+    calStatus["calibIndexList"] = calIndexList
+
+    # If no runnumber only obtainable information relates to general state calibrations so return
+    # with this
+
+    if runNumber is None:
+        calStatus["stateIsCalibrated"] = True
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = len(calStatus["calibIndexList"])-firstIndex[calType]
+        calStatus["latestCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][0]["timestamp"] )
+        calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        if calType == "normcal":
+            calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
+            calStatus["latestValidVBRunNumber"] = None
+
+        return calStatus
+
+    # Now examine list of existing calibrations in order of date to find the most recent valid one considering the provided
+    # run number. 
+
+    validIndex = matchingCalibrationIndex(calStatus["calibIndexList"], runNumber)
+
+    if validIndex is None:
+
+        calStatus["stateIsCalibrated"] = True
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = len(calStatus["calibIndexList"])-firstIndex[calType]
+        calStatus["latestCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][0]["timestamp"] )
+        calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        if calType == "normcal":
+            calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
+            calStatus["latestValidVBRunNumber"] = None
+
+        return calStatus
 
     else:
-        calStatus["isCalibrated"] = False
-        calStatus["numberCalibrations"] = 0
-        calStatus["latestCalibration"] = "never"
 
-    calStatus["indexPath"] = indexPath
-    calStatus["calibIndex"] = calIndex #list of calibrations
+        calStatus["stateIsCalibrated"] = True
+        calStatus["runIsCalibrated"] = True
+        calStatus["numberCalibrations"] = len(calStatus["calibIndexList"])-firstIndex[calType]
+    
+        calStatus["latestCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][0]["timestamp"] )
+        calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
+        calStatus["latestValidCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][validIndex]["timestamp"] )
+        calStatus["latestValidCalibrationDict"] = calStatus["calibIndexList"][validIndex]
+        if calType == "normcal":
+            calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
+            calStatus["latestValidVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestValidCalibrationDict"],calStatus["calFolder"])
 
-
-    calStatus["mostRecentCalib"] = calIndex[mostRecentCalib] #dict for most recent calibration
-
-    #want to get run number of vanadium background, which isn't held in index, so need to load calibration record
-    #only relevant in normcal calibration obviously
-
-    if calType == "normcal":
-
-        #build the path to the latest Normalization Record
-        v = str(calStatus["mostRecentCalib"]["version"])
-        latestNormcalRecordPath = f"{calFolder}v_{v.zfill(4)}/NormalizationRecord.json"
-
-        #load normRecord
-        f = open(latestNormcalRecordPath)
-        normRec = json.load(f)
-        f.close()
-
-        # copy background run number to calStatus dictionary
-        calStatus["backgroundRunNumber"] = normRec["backgroundRunNumber"]
 
     return calStatus
 
@@ -288,36 +449,25 @@ def createState(runNumber,hrn='none'):
         
         localDataService.initializeState(str(runNumber), True, hrn)
 
-def copyDifcal(donor,dest,propagate=False): # refCal and Cal are CalibrationStatus dictionaries generated by checkCalibrationStatus
+def copyDifcal(donor,recipient,propagate=False): # donor and recipient are CalibrationStatus dictionaries generated by checkCalibrationStatus
 
-    donorCal = donor["mostRecentCalib"] #donor
-    destCal = dest["mostRecentCalib"] #destination
-
-    # print("DONOR")
-    # for key in donorCal:
-    #     print(key,donorCal[key])
-    # print("DESTINATION")
-    # for key in destCal:
-    #     print(key,destCal[key])
-
+    donorCal = donor["latestValidCalibrationDict"] #donor: This is the most recent 
+    recipientCal = recipient["latestCalibrationDict"] #recipient: note, this will be default if state is uncalibrated
 
     donorRun = donorCal["runNumber"]
-    destRun = dest["calibIndex"][0]["runNumber"] #need instantiating run number to ensure it matches state
+    recipientRun = recipient["calibIndexList"][0]["runNumber"] #need instantiating run number to ensure it matches state
  
     print("\ncopying difcal...")
     print(f"\nDONOR STATE: {stateDef(donorRun)[0]} with {donor['numberCalibrations']} total calibrations")
-    print(f"Most recent calibration is version {donorCal['version']} this will be copied:")
+    print(f"Most recent valid calibration is version {donorCal['version']} this will be copied:")
 
 
-    # for key in refCalDict:
-    #     print(f"{key} : {refCalDict[key]}")
-
-    print(f"\nDESTINATION STATE: {stateDef(destRun)[0]} with {dest['numberCalibrations']} total calibrations")
-    newVersion = destCal['version']+1
-    print(f"Most recent calibration is version {destCal['version']} this will be updated to version {newVersion}")
+    print(f"\nRECIPIENT STATE: {stateDef(recipientRun)[0]} with {recipient['numberCalibrations']} total calibrations")
+    newVersion = recipientCal['version']+1
+    print(f"Most recent calibration is version {recipientCal['version']} this will be updated to version {newVersion}")
 
     newIE = IndexEntry(version=newVersion, #one more than most recent
-        runNumber=destCal["runNumber"],
+        runNumber=recipientCal["runNumber"],
         useLiteMode=donorCal["useLiteMode"],
         appliesTo = donorCal["appliesTo"],
         comments = f"(copied from run:{donorCal['runNumber']} version:{donorCal['version']})  original comments: {donorCal['comments']}",
@@ -326,43 +476,43 @@ def copyDifcal(donor,dest,propagate=False): # refCal and Cal are CalibrationStat
         )
     
     #build directory name and create directory
-    donorVersion = donor["mostRecentCalib"]["version"]
+    donorVersion = donor["latestValidCalibrationDict"]["version"]
     donorDir = f"{os.path.dirname(donor['indexPath'])}/v_{str(donorVersion).zfill(4)}"
-    destDir = f"{os.path.dirname(dest['indexPath'])}/v_{str(newIE.version).zfill(4)}"
+    recipientDir = f"{os.path.dirname(recipient['indexPath'])}/v_{str(newIE.version).zfill(4)}"
 
     print("\nFolder paths:")
     print("donor:",donorDir)
-    print("dest:",destDir)
+    print("recipient:",recipientDir)
 
     if propagate:
 
         print(f"propagation requested, new calibration will be version {newIE.version}")
 
         #first check if folder exists
-        if os.path.isdir(destDir):
-            print(f"Error directory already exists: {destDir}")
+        if os.path.isdir(recipientDir):
+            print(f"Error directory already exists: {recipientDir}")
             print("can\'t overwrite existing directory!") 
             print("Confirm versioning in calibration indexing is consistent with actual folders")
             return
         else: #safe to make a copy
             print("copying...")
-            shutil.copytree(donorDir,destDir)
-            os.remove(f"{destDir}/CalibrationRecord.json") # it will be replaced with franken CR
-            os.remove(f"{destDir}/CalibrationParameters.json")
+            shutil.copytree(donorDir,recipientDir)
+            os.remove(f"{recipientDir}/CalibrationRecord.json") # it will be replaced with franken CR
+            os.remove(f"{recipientDir}/CalibrationParameters.json")
             print("reversioning...")
             #need to manually change version in file names
-            reVersionDifcal(donorDir,destDir,donorRun,destRun)
+            reVersionDifcal(donorDir,recipientDir,donorRun,recipientRun)
             print(" - Calibration folder has been copied and reVersioned")
-            print("updating destination calibration record...")            
+            print("updating recipient calibration record...")            
             newCR = frankenRecord(donorRun=donorRun,
                 donorVersion=donorVersion,
-                destRun = destRun, #only used to define destination state
-                destVersion = newIE.version,
+                recipientRun = recipientRun, #only used to define recipient state
+                recipientVersion = newIE.version,
                 isLite=donorCal["useLiteMode"],
                 printRecord=True #used for debugging
                 )
             print("saving...")
-            saveCalibrationRecord(newCR,newIE,destRun)
+            saveCalibrationRecord(newCR,newIE)
             print("COMPLETE - Calibration Record, Parameters and Index have been updated")
 
     if not propagate:
@@ -370,28 +520,28 @@ def copyDifcal(donor,dest,propagate=False): # refCal and Cal are CalibrationStat
 
     return
 
-def reVersionDifcal(donorDir,destDir,donorRun,destRun):
+def reVersionDifcal(donorDir,recipientDir,donorRun,recipientRun):
 
     # this function will conduct various operations to update version info between
     # a copied difcal folder and the original donor folder
 
     donorVersion = donorDir.split('/')[-1].split('_')[1]
-    destVersion = destDir.split('/')[-1].split('_')[1]
+    recipientVersion = recipientDir.split('/')[-1].split('_')[1]
 
     #rename one at a time:
 
     donorRun = str(donorRun).zfill(6)
-    destRun = str(destRun).zfill(6)
+    recipientRun = str(recipientRun).zfill(6)
 
 
-    os.rename(f"{destDir}/dsp_column_{donorRun}_v{donorVersion.zfill(4)}.nxs.h5",
-              f"{destDir}/dsp_column_{destRun}_v{destVersion.zfill(4)}.nxs.h5")
+    os.rename(f"{recipientDir}/dsp_column_{donorRun}_v{donorVersion.zfill(4)}.nxs.h5",
+              f"{recipientDir}/dsp_column_{recipientRun}_v{recipientVersion.zfill(4)}.nxs.h5")
     
-    os.rename(f"{destDir}/diffract_consts_{donorRun}_v{donorVersion.zfill(4)}.h5",
-              f"{destDir}/diffract_consts_{destRun}_v{destVersion.zfill(4)}.h5")
+    os.rename(f"{recipientDir}/diffract_consts_{donorRun}_v{donorVersion.zfill(4)}.h5",
+              f"{recipientDir}/diffract_consts_{recipientRun}_v{recipientVersion.zfill(4)}.h5")
     
-    os.rename(f"{destDir}/diagnostic_column_{donorRun}_v{donorVersion.zfill(4)}.nxs.h5",
-              f"{destDir}/diagnostic_column_{destRun}_v{destVersion.zfill(4)}.nxs.h5")
+    os.rename(f"{recipientDir}/diagnostic_column_{donorRun}_v{donorVersion.zfill(4)}.nxs.h5",
+              f"{recipientDir}/diagnostic_column_{recipientRun}_v{recipientVersion.zfill(4)}.nxs.h5")
 
 def loadCalibrationRecord(runNum,isLite,version):
 
@@ -405,7 +555,7 @@ def loadCalibrationRecord(runNum,isLite,version):
 
     return cr
 
-def saveCalibrationRecord(calibrationRecord,indexEntry,destinationRun):
+def saveCalibrationRecord(calibrationRecord,indexEntry):
 
     localDataService=LocalDataService()
     localDataService.writeCalibrationRecord(calibrationRecord,indexEntry)
@@ -413,7 +563,7 @@ def saveCalibrationRecord(calibrationRecord,indexEntry,destinationRun):
     return
 
 def frankenRecord(donorRun,
-    donorVersion, destRun, destVersion, isLite, printRecord=False):
+    donorVersion, recipientRun, recipientVersion, isLite, printRecord=False):
 
     from snapred.meta.mantid.WorkspaceNameGenerator import (
     WorkspaceType as wngt,
@@ -421,25 +571,25 @@ def frankenRecord(donorRun,
 
     #this will copy the calibration record (CR) corresponding to the state associated with "donorRun"
     #and with version "donorVersion". Then it will get the default calibration record ("v_0000")
-    #corresponding to state of destRun. isLite must be the same for both.
+    #corresponding to state of recipientRun. isLite must be the same for both.
     #
     #a copy is made of the donor CR is made, then its attributes updated.
     # The frankenCR is returned
 
     donorCR = loadCalibrationRecord(donorRun,isLite,donorVersion)
 
-    destDefaultCR = loadCalibrationRecord(destRun,isLite,0)
+    recipientDefaultCR = loadCalibrationRecord(recipientRun,isLite,0)
     franken = copy.deepcopy(donorCR)
 
     print("copied original calibration record")
 
-    franken.version = destVersion
-    franken.runNumber = destRun
-    franken.calculationParameters.version = destVersion
-    franken.calculationParameters.instrumentState = destDefaultCR.calculationParameters.instrumentState
-    franken.calculationParameters.seedRun = destDefaultCR.calculationParameters.seedRun
-    franken.calculationParameters.creationDate = destDefaultCR.calculationParameters.creationDate
-    franken.calculationParameters.name = destDefaultCR.calculationParameters.name
+    franken.version = recipientVersion
+    franken.runNumber = recipientRun
+    franken.calculationParameters.version = recipientVersion
+    franken.calculationParameters.instrumentState = recipientDefaultCR.calculationParameters.instrumentState
+    franken.calculationParameters.seedRun = recipientDefaultCR.calculationParameters.seedRun
+    franken.calculationParameters.creationDate = recipientDefaultCR.calculationParameters.creationDate
+    franken.calculationParameters.name = recipientDefaultCR.calculationParameters.name
     #need to rewrite workspace names
 
     "Donor workspaces:"
@@ -449,17 +599,17 @@ def frankenRecord(donorRun,
 
     print("updating workspace names")
     franken.workspaces = {
-        wngt.DIFFCAL_OUTPUT : [f"dsp_column_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}"],
-        wngt.DIFFCAL_DIAG : [f"diagnostic_column_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}"],
-        wngt.DIFFCAL_TABLE : [f"diffract_consts_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}"],
-        wngt.DIFFCAL_MASK : [f"diffract_consts_mask_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}"]
+        wngt.DIFFCAL_OUTPUT : [f"dsp_column_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}"],
+        wngt.DIFFCAL_DIAG : [f"diagnostic_column_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}"],
+        wngt.DIFFCAL_TABLE : [f"diffract_consts_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}"],
+        wngt.DIFFCAL_MASK : [f"diffract_consts_mask_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}"]
     }
 
     
-    # print(f"dsp_column_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}")
-    # print(f"diagnostic_column_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}")
-    # print(f"diffract_consts_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}")
-    # print(f"diffract_consts_mask_{str(destRun).zfill(6)}_v{str(destVersion).zfill(4)}")
+    # print(f"dsp_column_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}")
+    # print(f"diagnostic_column_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}")
+    # print(f"diffract_consts_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}")
+    # print(f"diffract_consts_mask_{str(recipientRun).zfill(6)}_v{str(recipientVersion).zfill(4)}")
 
 
     if printRecord:

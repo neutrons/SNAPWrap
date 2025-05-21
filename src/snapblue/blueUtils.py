@@ -110,6 +110,7 @@ def loadSEE(seeDefinition,SEEFolder):
 
     return seeDict
 
+
 def purgeNormalisation(isLite=True,purge=False):
     #this removes all existing normalization folders. User with caution!!!!!!!!!!!
     allAvailableStates = ssm.availableStates()
@@ -117,8 +118,11 @@ def purgeNormalisation(isLite=True,purge=False):
 
     print("Existing Normalization calibrations:\n")
     for stateID in allAvailableStates:
-        nrmcal = ssm.checkCalibrationStatus(stateID,isLite,calType='normcal')
-        if nrmcal["isCalibrated"]:
+        nrmcal = ssm.checkCalibrationStatus(runNumber=None,
+                                            stateID=stateID,
+                                            isLite=isLite,
+                                            calType='normcal')
+        if nrmcal["stateIsCalibrated"]:
             nrmDir = os.path.dirname(nrmcal['indexPath'])
             print(f"{nrmDir}")
                   
@@ -127,8 +131,11 @@ def purgeNormalisation(isLite=True,purge=False):
         if doubleCheck == 'yes':
             nDeleted = 0
             for stateID in allAvailableStates:
-                nrmcal = ssm.checkCalibrationStatus(stateID,isLite,calType='normcal')
-                if nrmcal["isCalibrated"]:
+                nrmcal = ssm.checkCalibrationStatus(runNumber=None,
+                                            stateID=stateID,
+                                            isLite=isLite,
+                                            calType='normcal')
+                if nrmcal["stateIsCalibrated"]:
                     nrmDir = os.path.dirname(nrmcal['indexPath'])
                     shutil.rmtree(nrmDir)
                     nDeleted += 1
@@ -138,42 +145,48 @@ def purgeNormalisation(isLite=True,purge=False):
         print("\nRe-run with purge=True to actually delete these")
 
 def indexStates(isLite=True):
-    #prints an index of existing states and their calibration statuses
-    
+
+    #prints an index of existing states with general information on their calibration statuses
 
     allAvailableStates = ssm.availableStates()
     
-
     outputStrings = []
     statuses = []
     for stateID in allAvailableStates:
 
         stateDict = ssm.pullStateDict(stateID)
-        difcal = ssm.checkCalibrationStatus(stateID,isLite,calType='difcal')
-        nrmcal = ssm.checkCalibrationStatus(stateID,isLite,calType='normcal')
+
+        difcal = ssm.checkCalibrationStatus(runNumber=None,
+                                            stateID=stateID,
+                                            isLite=isLite,
+                                            calType='difcal')
+        
+        nrmcal = ssm.checkCalibrationStatus(runNumber=None,
+                                            stateID=stateID,
+                                            isLite=isLite,
+                                            calType='normcal')
 
         # parse possible scenarios
-        if difcal["isCalibrated"] and nrmcal["isCalibrated"]:
+        if difcal["stateIsCalibrated"] and nrmcal["stateIsCalibrated"]:
             calStatus = '*CALIB*'
-        if not difcal["isCalibrated"] or not nrmcal["isCalibrated"]:
+        if not difcal["stateIsCalibrated"] or not nrmcal["stateIsCalibrated"]:
             calStatus = "PARTIAL"
-        if not difcal["isCalibrated"] and not nrmcal["isCalibrated"]:
+        if not difcal["stateIsCalibrated"] and not nrmcal["stateIsCalibrated"]:
             calStatus = "UNCALIB"
 
         desc = ssm.autoStateName(stateDict)
         nDifcal = difcal['numberCalibrations']
 
-        if difcal['latestCalibration'] != "never":
-
-            latestDifcalRun = difcal['mostRecentCalib']['runNumber']
+        if difcal['latestCalibrationDate'] != "never":
+            latestDifcalRun = difcal['latestCalibrationDict']['runNumber']
         else:
             latestDifcalRun = ""
 
         nNrmcal = nrmcal['numberCalibrations']
 
-        if nrmcal['latestCalibration'] != "never":
-            latestNrmcalRun = nrmcal['mostRecentCalib']['runNumber']
-            latestNrmcalBack = nrmcal["backgroundRunNumber"]
+        if nrmcal['latestCalibrationDate'] != "never":
+            latestNrmcalRun = nrmcal['latestCalibrationDict']['runNumber']
+            latestNrmcalBack = nrmcal['latestVBRunNumber']
         else:
             latestNrmcalRun = ""
             latestNrmcalBack = ""
@@ -442,62 +455,82 @@ def restoreDBins(redObj,originalIngredients):
         
     return
 
-def propagateDifcal(refRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
+def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
 
     #This will accept a reference Run number, determine a list of all existing 
-    # states with equivalent detector positions propagate and their (diff) calibration status
+    # states with equivalent detector positions
     # if propagate==True, the latest calibration from the state corresponding to 
-    # refRunNumber will be propagates to other compatible states as if it's a formal
+    # refRunNumber will be propagated to other compatible states as if it's a formal
     # calibration
  
-    refStateID,refStateDict = ssm.stateDef(refRunNumber)
-    refDetConfig = ssm.detectorConfig(refStateDict,includeGuideStatus)
+    donorStateID,donorStateDict = ssm.stateDef(donorRunNumber)
+    donorDetConfig = ssm.detectorConfig(donorStateDict,includeGuideStatus)
 
     # check diffraction calibration status of reference run
-    refCalStatus = ssm.checkCalibrationStatus(refStateID,isLite,"difcal")
+
+    donorCalStatus = ssm.checkCalibrationStatus(runNumber=donorRunNumber,
+                                            stateID=None,
+                                            isLite=isLite,
+                                            calType='difcal')
+
+
     # if state is uncalibrated, stop. Nothing to propagate
-    if not refCalStatus["isCalibrated"]:
-        print("ERROR: Reference State is uncalibrated! Please calibrate or choose a different reference")
+    if not donorCalStatus["runIsCalibrated"]:
+        print(f"ERROR: provided run number: {donorRunNumber} of state: {donorStateID} does not have a valid difcal")
         return
     else:
          print(f"""
 /_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 propagateDifcal: Utility to copy calibrations
 /_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
-Origin calibration info
-    - Run:  {refRunNumber}
-    - State: {refStateID}
-    - Detector config: {refDetConfig}
-    - calibrated: {refCalStatus['numberCalibrations']} times
-    - latest version: {refCalStatus['mostRecentCalib']['version']}           
+Donor calibration info
+    - Donor Run:  {donorRunNumber}
+    - State: {donorStateID}
+    - Detector config: {donorDetConfig}
+    - calibrated: {donorCalStatus['numberCalibrations']} times
+    - latest valid version: {donorCalStatus['latestValidCalibrationDict']['version']}       
+    - most recent valid calibration on: {donorCalStatus['latestValidCalibrationDate']}    
     """)
 
     nCompatibleStates = 0
-    toPropagateCal = []
-    toPropagateState = []
-    toPropagateDetConfig = []
+    recipientCalStatus = []
+    recipientState = []
+    recipientDetConfig = []
+
+    # The calibration being propagated will become the latest calibration in the receiving state
+    # However, the validity of the propagated state will follow that of the donor calibration
+
     for stateID in ssm.availableStates():
-        if stateID != refStateID:
+        if stateID != donorStateID:
             stateDict = ssm.pullStateDict(stateID) ##
             detConfig = ssm.detectorConfig(stateDict,includeGuideStatus)
-            if detConfig == refDetConfig:
-                calStatus = ssm.checkCalibrationStatus(stateID,isLite,"difcal")
-                toPropagateCal.append(calStatus)
-                toPropagateState.append(stateID)
-                toPropagateDetConfig.append(detConfig)
+            if detConfig == donorDetConfig:
+                calStatus = ssm.checkCalibrationStatus(runNumber=None,
+                                                       stateID=stateID,
+                                                       isLite=isLite,
+                                                       calType="difcal")
+                recipientCalStatus.append(calStatus)
+                recipientState.append(stateID)
+                recipientDetConfig.append(detConfig)
                      
                 nCompatibleStates += 1
 
     print(f"\n{nCompatibleStates} state(s) found with matching detector configs\n")
 
     print("Existing compatible states are:")
-    for state in toPropagateState:
+    for state in recipientState:
         print(state)
 
     if propagate:
-        print("\nThese will be propagated")
-        for cal in toPropagateCal:
-            ssm.copyDifcal(refCalStatus,cal,propagate)
+        print("\nThese will be states will accept the donor calibration")
+        for calStatus in recipientCalStatus:
+
+            print("recipient:")
+            for key in calStatus:
+               
+                print("    ",key," : ",calStatus[key])
+
+            ssm.copyDifcal(donorCalStatus,calStatus,propagate)
     else:
         print("\nPropagatation of calibration was not requested")
         
