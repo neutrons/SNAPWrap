@@ -292,10 +292,14 @@ def exportData(exportFormats=['gsa','xye','csv'],
                prefix='reduced_dsp',
                latestOnly=True,
                gsaInstPrm=True,
-               iptsOverride=None):
+               iptsOverride=None,
+               fileTag=None):
     #creates reducedGroups and then exports these using the requested export formats
 
-    reducedGroups = blueIO.reducedRuns(exportFormats,prefix,iptsOverride=iptsOverride)
+    reducedGroups = blueIO.reducedRuns(exportFormats,
+                                       prefix,
+                                       iptsOverride=iptsOverride,
+                                       fileTag=fileTag)
     
     blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
 

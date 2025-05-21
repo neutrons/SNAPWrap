@@ -22,7 +22,10 @@ class redObject:
     #and then builds further attributes from these
 
 
-    def __init__(self, wsName,exportFormats=[],requiredPrefix='reduced_dsp',iptsOverride=None):
+    def __init__(self, wsName,exportFormats=[],
+                 requiredPrefix='reduced_dsp',
+                 iptsOverride=None,
+                 fileTag=None):
 
         if '_' not in wsName:
             self.isReducedDataWorkspace = False
@@ -54,6 +57,8 @@ class redObject:
                                 Instrument='SNAP')
         else:
             self.ipts = f"/SNS/SNAP/IPTS-{iptsOverride}/"
+        
+        self.fileTag = fileTag
 
         runNumber = str(int(self.runNumber)) # strips leading zero if necessary
         self.stateID = ssm.stateDef(runNumber)[0]
@@ -158,6 +163,12 @@ class redObject:
                                 f'{self.pixelGroup}'),
                     "ext" : '.csv'
                     }
+        
+        if self.fileTag is not None:
+
+            for dict in [gsaDict,xyeDict,csvDict]:
+
+                dict["prefix"] = dict["prefix"] + f"_{self.fileTag}"
             
 
         exportPaths = []
@@ -242,7 +253,7 @@ def convertToQ():
             
     #TODO: rebin S(Q) once I know how to do this
 
-def reducedRuns(exportFormats,prefix,iptsOverride=None):#,latestOnly=True,gsaInstPrm=True):
+def reducedRuns(exportFormats,prefix,iptsOverride=None, fileTag=None):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a .runNumber attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
@@ -257,7 +268,7 @@ def reducedRuns(exportFormats,prefix,iptsOverride=None):#,latestOnly=True,gsaIns
     redRuns = []
     for ws in allWorkspaces:
 
-        red = redObject(ws,exportFormats,prefix,iptsOverride) 
+        red = redObject(ws,exportFormats,prefix,iptsOverride,fileTag) 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
             redRuns.append(red.runNumber)
