@@ -223,6 +223,31 @@ def nextMaskWSName():
         nextName = f"MaskWorkspace_{latest}"
         return nextName
 
+def latestMaskIndex():
+        #returns the latest index of any present mask workspaces
+
+        allWS = mtd.getObjectNames()
+        maskWS = []
+        for ws in allWS: 
+            if "MaskWorkspace" in ws:
+                maskWS.append(ws)
+        
+        if len(maskWS) == 0:
+            print("error: no mask workspace exists")
+            return False
+        
+        maskIndices = []
+        for mask in maskWS:
+
+            if '_' not in mask:
+                maskIndices.append(1)
+            else:
+                maskIndices.append(int(mask.split('_')[-1]))
+
+        latestIndex = max(maskIndices)
+
+        return latestIndex
+
 def liLee(sliceImage,removeDark=True):
     #generates a mask by applying Li thresholding https://scikit-image.org/docs/stable/auto_examples/developers/plot_threshold_li.html
     # a scikit-image filter
@@ -514,6 +539,8 @@ class swissCheese:
                         DataY=tickYval,
                         NSpec=1,
                         UnitX='Wavelength')
+        ws = mtd["ticks"]
+        ws.setPlotType("marker")
         
     def extractFromWorkspaceHistory(self,wsName):
         #this function supports extracting the swiss cheese from a workspace where a user

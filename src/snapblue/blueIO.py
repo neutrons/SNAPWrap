@@ -22,7 +22,10 @@ class redObject:
     #and then builds further attributes from these
 
 
-    def __init__(self, wsName,exportFormats=[],requiredPrefix='reduced_dsp'):
+    def __init__(self, wsName,exportFormats=[],
+                 requiredPrefix='reduced_dsp',
+                 iptsOverride=None,
+                 fileTag=None):
 
         if '_' not in wsName:
             self.isReducedDataWorkspace = False
@@ -49,8 +52,14 @@ class redObject:
         self.runNumber = parsed[3]
         self.timeStamp = parsed[4]
         self.wsName = wsName #need to keep this too
-        self.ipts = GetIPTS(RunNumber=self.runNumber,
-                            Instrument='SNAP')
+        if iptsOverride is None:
+            self.ipts = GetIPTS(RunNumber=self.runNumber,
+                                Instrument='SNAP')
+        else:
+            self.ipts = f"/SNS/SNAP/IPTS-{iptsOverride}/"
+        
+        self.fileTag = fileTag
+
         runNumber = str(int(self.runNumber)) # strips leading zero if necessary
         self.stateID = ssm.stateDef(runNumber)[0]
 
@@ -76,6 +85,9 @@ class redObject:
             "attenuationMethod": None,
             "backgroundMethod":None
         }
+
+        self.crystalSpecies = [] #an empty list to hold a list ocf mantid crystal structure representing the crystal "species"
+                                 #contributing to the data in the redObject.
 
     def wsProperties(self,wsName):
         #gets some useful attributes of workspace
@@ -151,6 +163,12 @@ class redObject:
                                 f'{self.pixelGroup}'),
                     "ext" : '.csv'
                     }
+        
+        if self.fileTag is not None:
+
+            for dict in [gsaDict,xyeDict,csvDict]:
+
+                dict["prefix"] = dict["prefix"] + f"_{self.fileTag}"
             
 
         exportPaths = []
@@ -235,7 +253,7 @@ def convertToQ():
             
     #TODO: rebin S(Q) once I know how to do this
 
-def reducedRuns(exportFormats,prefix):#,latestOnly=True,gsaInstPrm=True):
+def reducedRuns(exportFormats,prefix,iptsOverride=None, fileTag=None):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a .runNumber attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
@@ -250,7 +268,7 @@ def reducedRuns(exportFormats,prefix):#,latestOnly=True,gsaInstPrm=True):
     redRuns = []
     for ws in allWorkspaces:
 
-        red = redObject(ws,exportFormats,prefix) 
+        red = redObject(ws,exportFormats,prefix,iptsOverride,fileTag) 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
             redRuns.append(red.runNumber)
