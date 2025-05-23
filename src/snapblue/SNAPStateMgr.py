@@ -26,7 +26,7 @@ class SNAPHome():
    # main definition of calibration directory
    def __init__(self):
       self.calib = Config['instrument.calibration.home']
-      self.powder = self.calib + "Powder/"
+      self.powder = self.calib + "/Powder/"
 
 def loadSNAPInstPrm():
 
@@ -88,6 +88,9 @@ def matchingCalibrationIndex(calIndexList, runNumber):
         '!=': operator.ne
     }
 
+    #runNumber must be int and somehow isn't always
+
+    runNumber = int(runNumber)
 
     calIndexList = sorted(enumerate(calIndexList), key=lambda x: x[1]['timestamp'], reverse=True)
    
@@ -106,6 +109,9 @@ def matchingCalibrationIndex(calIndexList, runNumber):
 
             op_str, value_str = match_obj.groups()
             value = int(value_str)
+
+            # print("runNumber:",type(runNumber))
+            # print("value", type(value))
 
             if not ops[op_str](runNumber, value):
                 match = False
@@ -146,6 +152,17 @@ def isCalibrated(runNumber,isLite=True):
                                     isLite=isLite, 
                                     calType="normcal")
     
+    if difcal['runIsCalibrated']:
+        print(f"difcal: is calibrated: {difcal['runIsCalibrated']} with run {difcal['latestValidCalibrationDict']['runNumber']} ")
+    else:
+        print(f"difcal: is calibrated: {difcal['runIsCalibrated']}")
+
+    if nrmcal['runIsCalibrated']:
+        print(f"nrmcal: is calibrated: {nrmcal['runIsCalibrated']} with run {nrmcal['latestValidCalibrationDict']['runNumber']} (and background {nrmcal['latestValidVBRunNumber']})")
+    else:
+        print(f"nrmcal: is calibrated: {nrmcal['runIsCalibrated']}")
+    
+
     return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"])
 
 def dateFromLinux(ts):
