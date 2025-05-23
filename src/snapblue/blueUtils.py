@@ -633,7 +633,7 @@ def reduce(runNumber,
     #TODO: update default to final shared repo path
 
     if YMLOverride == 'none':
-        defaultYML = "/SNS/SNAP/shared/code/SNAPBlue/defaultRedConfig.yml" #this will live in repo
+        defaultYML = "/SNS/SNAP/shared/Malcolm/code/SNAPBlue/src/snapblue/defaultRedConfig.yml" #this will live in repo
     else:
         defaultYML = YMLOverride
 
