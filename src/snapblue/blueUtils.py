@@ -710,6 +710,8 @@ def reduce(runNumber,
 
     reductionService.validateReduction(reductionRequest)
 
+    
+
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
 

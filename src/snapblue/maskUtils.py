@@ -295,7 +295,7 @@ def mask2mantid(sliceImage,donorWS,outWS):
 
 def createCompatibleMask(maskWSName: str, templateWSName: str, maskInfo):
     """
-    Create a `MaskWorkspace` compatible with a template workspace
+    Create a `MaskWorkspace` compatible with a template (or "donor") workspace
     """
     pixelCount = mtd[templateWSName].getNumberHistograms()
     mask = CreateWorkspace(
