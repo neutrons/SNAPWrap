@@ -455,7 +455,7 @@ def restoreDBins(redObj,originalIngredients):
         
     return
 
-def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
+def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatus=False):
 
     #This will accept a reference Run number, determine a list of all existing 
     # states with equivalent detector positions
@@ -709,6 +709,8 @@ def reduce(runNumber,
     print(reductionRequest)
 
     reductionService.validateReduction(reductionRequest)
+
+    
 
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
