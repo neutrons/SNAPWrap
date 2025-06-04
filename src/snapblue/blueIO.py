@@ -593,8 +593,10 @@ def buildBankDict(bankID,Ltot,ttheta,difc):
         "Z":0.0,
         "difC":difc,
         "beta-q":0.0,
-        "Bank":f"{bankID}" #MUST BE AN INTEGER!
+        "Bank":f"{int(bankID)}" #MUST BE AN INTEGER!
                 }
+
+            
     return bankDict
 
 def readGSASFXYE(fname,gsasKeyWords):
@@ -699,11 +701,61 @@ def writeGSASFXYE(fname,allBankData,mainHead,bankHead):
     f.close()
     return fname
 
+def processResolutionWS(resWSName,bankID):
+
+    # accepts a resolution workspace and returns a string containing 
+    # the resolution data in "pdabc" format that can be written to the 
+    # instprm file.
+
+    ws = mtd[resWSName]
+    d = ws.dataX(bankID)
+    sig = ws.dataY(bankID)
+    bet = np.zeros_like(sig)
+    alp = np.zeros_like(sig)
+    ConvertUnits(InputWorkspace=resWSName,
+                OutputWorkspace="tmp",
+                Target="TOF")
+    ws = mtd["tmp"]
+    tof = ws.dataX(bankID)
+
+    DeleteWorkspace("tmp")
+
+    # all arrays have to be identical size
+    assert all(len(d) == len(a) for a in (tof, sig, bet, alp))
+    print(f"Found {len(d)} entries")
+
+    # GSAS uses sig in TOF, so need to convert from d-space here:
+
+    sig = tof/d*sig
+
+    i = 0
+    resString = f"pdabc:\"\"\"{d[i]:.4f}, {tof[i]:8.1f}, {alp[i]:8.6f}, {bet[i]:8.6f}, {sig[i]:8.6f}\n"
+    for i in range(1,len(d)-1):
+        resString+=f"{d[i]:7.4f}, {tof[i]:8.1f}, {alp[i]:8.6f}, {bet[i]:8.6f}, {sig[i]:8.6f}\n"
+
+    resString+=f"{d[-1]:7.4f}, {tof[-1]:8.1f}, {alp[-1]:8.6f}, {bet[-1]:8.6f}, {sig[-1]:8.6f}\"\"\"\n"
+
+    return resString
+
+
 def createGSASInstPrm(gsaPath):
 
     allBankData,mainHead,bankHead,bankInfo=readGSASFXYE(gsaPath,[])
 
     iPath = os.path.splitext(gsaPath)[0] + ".instprm"
+    baseName = os.path.splitext(os.path.basename(gsaPath))[0]
+    pgs = baseName.split("_")[1] #should always be pgs
+    runNumber =  baseName.split("_")[0][4:]
+    resWSName = f"resolution_dsp_{pgs.lower()}_{runNumber.zfill(6)}"
+
+    print(f"export test: basename:{baseName} pgs: {pgs} runNumber {runNumber}")
+    
+    if resWSName in mtd.getObjectNames():
+        resExists = True
+    else:
+        resExists = False
+
+    print(f"Resolution w name: {resWSName}, exists: {resExists}")
 
     f = open(iPath,'w')
     
@@ -717,6 +769,21 @@ def createGSASInstPrm(gsaPath):
         
 
         for key in bankDict:
-            f.write(f'{key}:{bankDict[key]}\n')
+            if key != "Bank": #this needs to be the final entry
+                f.write(f'{key}:{bankDict[key]}\n')
+
+
+    # if user has created resolution files, assume that these are to be used and include them in 
+    # InstPrm file.
+
+    # first decompose gsaPath to get pgs and run number
+        if resExists:
+
+            resString = processResolutionWS(resWSName,i)
+            f.write(resString)
+
+    # finally write bank ID entry
+        f.write(f"Bank:{bankDict['Bank']}\n")
+
     f.close()
     print(f'created instPrm file: {iPath}')

@@ -316,6 +316,48 @@ def createCompatibleMask(maskWSName: str, templateWSName: str, maskInfo):
 
     return mask
 
+def LoadH5GroupingDefinition(donorWSName,groupingFilePath,gWS,addInst=False):
+
+	#This is a copy of a SNAPRed method to load grouping files in h5 format (mantid can't do this)
+	LoadDiffCal(Filename=groupingFilePath,
+			 MakeGroupingWorkspace=True,
+			 MakeCalWorkspace=False,
+			 MakeMaskWorkspace=False,
+			 InputWorkspace=donorWSName,
+			 WorkspaceName='temp')
+	
+	RenameWorkspace(InputWorkspace=f"temp_group",
+				  OutputWorkspace=gWS)
+	
+
+	#for diagnostic purposes, helpful to add instrument to group
+
+	addInst = False
+
+	if addInst:
+		print('adding instrument')
+		ws = mtd[gWS]
+		logs = ws.getRun().getLogData()
+		for log in logs:
+
+			if log.name == 'det_arc1':
+				print(log.value[0])
+				AddSampleLog(Workspace=gWS,LogName='det_arc1',LogText=log.value[0],LogType='Number Series')
+			if log.name == 'det_arc2':
+				print(log.value[0])
+				AddSampleLog(Workspace=gWS,LogName='det_arc2',LogText=log.value[0],LogType='Number Series')
+			if log.name == 'det_lin1':
+				print(log.value[0])
+				AddSampleLog(Workspace=gWS,LogName='det_lin1',LogText=log.value[0],LogType='Number Series')
+			if log.name == 'det_lin2':
+				print(log.value[0])
+				AddSampleLog(Workspace=gWS,LogName='det_lin2',LogText=log.value[0],LogType='Number Series')
+
+		LoadInstrument(Workspace=gWS,
+			InstrumentName='SNAP', 
+			MonitorList='-2--1', 
+			RewriteSpectraMap=False)
+
 class eye:
 
     #an "eye" is a single bubble in a swiss cheese 

@@ -15,6 +15,8 @@ import snapblue.SNAPStateMgr as ssm
 importlib.reload(ssm)
 import snapblue.blueIO as blueIO
 importlib.reload(blueIO)
+import snapblue.maskUtils as mut
+importlib.reload(mut)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -213,6 +215,205 @@ def indexStates(isLite=True):
         if statuses[i] == "*CALIB*":
             print(string) 
 
+def makeResolutionWorkspace(prefix,
+                            runNumber,
+                            pixelMask=None,
+                            isLite=True):
+    
+    # This function will use donor workspace to create a resolution workspace
+    # any present swiss cheese masks and a specified pixel mask will be used
+    # to calculated the full unfocused resolution workspace. If pgs is not none,
+    # the unfocused resolution workspace will be diffraction focused accordingly
+
+    #TODO: fix that pgs capitalisation is different from saved workspaces :( 
+
+    if isLite:
+        donorWSName = f"dsp_unfoc_lite_{str(runNumber).zfill(6)}"
+    else:
+        donorWSName = f"dsp_unfoc_{str(runNumber).zfill(6)}"
+
+    #unfocused workspace must exist to proceed
+    if donorWSName not in mtd.getObjectNames():
+        raise Exception(f"Error: unfocussed, d-space workspace must exist. {donorWSName} not found")
+
+    handles = workspaceHandles(prefix=prefix,
+                               runNumber = runNumber) #returns latest ws for runNumber
+
+    # find list of pgs needed
+
+    pgsList = []
+    for handle in handles:
+        pgsList.append(handle.pixelGroup)
+    print(f"Found {len(pgsList)} pixel groups: {pgsList}")
+
+    #get instrument state to extract resolution parameters 
+    farmFresh = FarmFreshIngredients(
+        runNumber=str(runNumber),
+        useLiteMode=isLite,
+        focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
+        )
+    instrumentState = SousChef().prepInstrumentState(farmFresh)
+
+    L1 = instrumentState.instrumentConfig.L1
+    L2 = instrumentState.instrumentConfig.L2
+    Ltot = L1 + L2
+    delTOverT = instrumentState.instrumentConfig.delTOverT
+    delLOverL = instrumentState.instrumentConfig.delLOverL
+    #divergence is guide dependent
+    if instrumentState.detectorState.guideStat == 1:
+        delTh = instrumentState.instrumentConfig.delThWithGuide
+    elif instrumentState.detectorState.guideStat == 2:
+        delTh = instrumentState.instrumentConfig.delThNoGuide
+    else:
+        raise Exception(f"ERROR: unexpected guide status {instrumentState.detectorState.guideStat} for run {runNumber}")
+
+    #make delDOverD workspace
+    print(f"Resolution params: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.4f}")
+
+    ConvertUnits(InputWorkspace=donorWSName,
+        OutputWorkspace=donorWSName,
+        Target="dSpacing")
+    
+    #this calculates delta_d/d for each pixel using the TOF resolution equation
+    EstimateResolutionDiffraction(InputWorkspace=donorWSName,
+        DeltaTOFOverTOF = delTOverT,
+        SourceDeltaL = delLOverL*Ltot,
+        SourceDeltaTheta = delTh,
+        PartialResolutionWorkspaces="partial",
+        OutputWorkspace="delDOverD")
+    
+    #TODO: delete partial workspaces
+
+    #get grouping workspaces
+
+    snap = ssm.SNAPHome()
+    calibrationHome = snap.calib
+
+    for pgs in pgsList:
+        pgsDefinition = f"{calibrationHome}/Powder/PixelGroupingDefinitions/SNAPFocGroup_{pgs.capitalize()}.lite.hdf"
+        if isLite:
+            gpWSName= f"SNAPLite_grouping__{pgs.capitalize()}"
+        else:
+            gpWSName = f"SNAP_grouping__{pgs.capitalize()}"
+
+        if not mtd.doesExist(gpWSName):
+            mut.LoadH5GroupingDefinition(donorWSName=donorWSName,
+                                        groupingFilePath=pgsDefinition,
+                                        gWS=gpWSName)    
+
+    resWSName = f"resolution_dsp_unfoc_{str(runNumber).zfill(6)}"
+    CloneWorkspace(InputWorkspace=donorWSName,
+            OutputWorkspace=resWSName)
+    
+
+    # get global d limits
+    ws = mtd[resWSName]
+    xMin = 100000.0
+    xMax = 0.0
+    for i in range(ws.getNumberHistograms()):
+        x = ws.dataX(i)
+        if np.max(x) >= xMax:
+            xMax = np.max(x)
+        if np.min(x) <= xMin:
+            xMin = np.min(x)
+    
+   
+    Rebin(InputWorkspace=resWSName,
+          OutputWorkspace=resWSName,
+          Params=(xMin,-0.005,xMax),
+          PreserveEvents=False)
+    
+    ws = mtd[resWSName]
+    wsDoD = mtd["delDOverD"]
+    nPix = wsDoD.getNumberHistograms()
+
+    #populate workspace with values for del_d as a function of d
+    for pix in range(nPix):
+        
+        delDOverD = wsDoD.dataY(pix)
+
+        xVals = ws.dataX(pix)
+        xMids = 0.5*(xVals[0:-1]+xVals[1:])
+        
+        yVals = delDOverD*xMids #delta_d as a function of d-space
+        
+        ws.setY(pix,yVals)
+
+    #apply pixel mask if provided
+    if pixelMask is not None:
+        if mtd.doesExist(pixelMask):
+            print(f"Applying pixel mask: {pixelMask}")
+            MaskDetectors(Workspace=resWSName,
+                           MaskedWorkspace=pixelMask,
+                           )
+        else:
+            print(f"ERROR: pixel mask {pixelMask} does not exist")
+            return
+        
+    # apply full set of masks: pixel and bin to resWSName
+
+    #bin masks: pending proper snapred 4.0 this follows the very imperfect strategy
+    # of applying any workspace with string "maskBins_" in its name found in the ADS. 
+
+    maskBinTables = [table for table in mtd.getObjectNames() if "maskBins_" in table]
+    print(f"found {len(maskBinTables)} bin mask workspaces")
+    for table in maskBinTables:
+        
+        maskBinUnit = table.split("_")[1]
+
+        ConvertUnits(InputWorkspace=resWSName,
+            OutputWorkspace=resWSName,
+            Target=maskBinUnit)
+            
+        print(f"Masking bins with: {table}")
+        MaskBinsFromTable(InputWorkspace=resWSName,
+            MaskingInformation=table,
+            OutputWorkspace=resWSName)
+
+    #return resolutionws to original units        
+    ConvertUnits(InputWorkspace=resWSName,
+        OutputWorkspace=resWSName,
+        Target="dSpacing")
+
+    #GroupDetectors for all pgs present in ws handle. 
+    # By selecting `Behaviour='Average'` populate
+    # each grouped output spectrum to contain averaged del_d. 
+
+    for handle in handles:
+
+        pgs = handle.pixelGroup
+
+        if isLite:
+            gpWSName = f"SNAPLite_grouping__{pgs}"
+        else:
+            gpWSName = f"SNAP_grouping__{pgs}"
+
+        outWS = f"resolution_dsp_{pgs.lower()}_{str(runNumber).zfill(6)}"
+
+        GroupDetectors(InputWorkspace=resWSName, 
+            OutputWorkspace=outWS, 
+            IgnoreGroupNumber=False,
+            Behaviour='Average', 
+            PreserveEvents=False,
+            CopyGroupingFromWorkspace=gpWSName)
+
+        ConvertToPointData(InputWorkspace=outWS,
+        OutputWorkspace=outWS)
+
+        # RebinRagged(InputWorkspace=outWS,
+        #             OutputWorkspace=outWS,
+        #             XMin=handle.xMin,
+        #             XMax=handle.xMax,
+        #             Delta=handle.delta,
+        #             FullBinsOnly=True)
+
+        # ws = mtd[outWS]
+        # ws.setDistribution=False
+
+        print(f"created resolution workspace: {outWS}")
+
+    return 
+
 def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
 
 #creates a Workspace Group called cabinetName.
@@ -316,23 +517,49 @@ def exportData(exportFormats=['gsa','xye','csv'],
     
     blueIO.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
 
-def workspaceHandles(prefix="reduced_dsp",pgs="bank"):
+def workspaceHandles(prefix="reduced_dsp",pgs=None,runNumber=None):
 
-    #returns a list of redObjects for the requested workspaces
+    # returns a list of redObjects for the requested workspaces matching arguments
+    # 20250530 modified to allow specific pgs or run number to be optionally specified
+    # otherwise everything will be found.
 
-    reducedList = blueIO.reducedRuns([],prefix=prefix)
+    #currently only the latest timestamp is returned.
+
+    reducedList = blueIO.reducedRuns([],prefix=prefix) #first argument is a list that isn't used but needs to exist
+
+    if not reducedList:
+        print("No matching workspaces found")
+        return
+    
+    #if a pgs is specified filter only those matching, otherwise do nothing here
 
     handleList = []
     for red in reducedList:
-        redObj = red.objectDict[pgs][0]
-        handleList.append(redObj)
+        pgsList = red.objectDict.keys()
+        if runNumber == None:
+            for p in pgsList:                
+                redObj = red.objectDict[p][0]
+                handleList.append(redObj)
+        else:
+            if int(red.runNumber) == runNumber:
+                for p in pgsList:
+                    redObj = red.objectDict[p][0]
+                    handleList.append(redObj)
 
-    if len(handleList) == 0:
-        print("no workspaces found. Check your input")
+    # at this point all, pgs are included. If none is specified, return here otherwise
+    # purge to match requested pgs
+
+    if pgs == None:
+        print(f"Found {len(handleList)} matching workspaces")
+        return handleList
     else:
-        print(f"found {len(handleList)} workspaces handles")
+        purgeHandleList = []
+        for h in handleList:
+            if h.pixelGroup == pgs:
+                purgeHandleList.append(h)
+        print(f"Found {len(purgeHandleList)} matching workspaces")
+        return purgeHandleList 
 
-    return handleList
     
 def confirmIPTS(ipts,comment="SNAPRed/Blue", subNum=1, redType="Scripts"):
 
@@ -708,9 +935,9 @@ def reduce(runNumber,
 
     print(reductionRequest)
 
+
     reductionService.validateReduction(reductionRequest)
 
-    
 
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
@@ -746,6 +973,7 @@ def reduce(runNumber,
     # print(groceries["inputWorkspace"])
     print("groceries")
     print(groceries)
+    
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #  Load the metadata i.e. ingredients
@@ -753,6 +981,7 @@ def reduce(runNumber,
 
     # 1. load reduction ingredients
     ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))
+    
     ingredients.artificialNormalizationIngredients = artificialNormalizationIngredients
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
