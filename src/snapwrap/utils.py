@@ -1019,20 +1019,20 @@ def reduce(runNumber,
     # Determine calibration status and process this
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    stateID = dataFactoryService.constructStateId(runNumber)
+    [stateID,stateDict] = ssm.stateDef(runNumber)
 
     dataFactoryService = DataFactoryService()
     calibrationPath = dataFactoryService.getCalibrationDataPath(
                 useLiteMode=useLiteMode, 
                 version = VersionState.LATEST,
-                state = stateID[0]
+                state = stateID
             )
     # print(calibrationPath)
     calibrationRecord = dataFactoryService.getCalibrationRecord(
                 runId=runNumber, 
                 useLiteMode=useLiteMode, 
                 version = VersionState.LATEST,
-                state = stateID[0]
+                state = stateID
             )
     
     if calibrationRecord.version == 0 and not continueNoDifcal:
@@ -1049,14 +1049,14 @@ def reduce(runNumber,
     normalizationPath = dataFactoryService.getNormalizationDataPath(
                 useLiteMode=useLiteMode, 
                 version = VersionState.LATEST,
-                state = stateID[0]
+                state = stateID
             )
     # print(normalizationPath)
     normalizationRecord = dataFactoryService.getNormalizationRecord(
                 runId=runNumber, 
                 useLiteMode=useLiteMode, 
                 version = VersionState.LATEST,
-                state = stateID[0]
+                state = stateID
             )
     
     if type(normalizationRecord) == None:
@@ -1084,8 +1084,8 @@ def reduce(runNumber,
                 - Run Number: {ingredients.runNumber}
 
                 - state: 
-                    - ID: {stateID[0]},
-                    - definition: {stateID[1]}
+                    - ID: {stateID},
+                    - definition: {stateDict}
 
                 - Pixel Groups to process: {allPixelGroups}
 
@@ -1152,7 +1152,7 @@ def reduce(runNumber,
         runNumber=runNumber,
         useLiteMode=useLiteMode,
         focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
-        state=stateID[0])
+        state=stateID)
         instrumentState = SousChef().prepInstrumentState(farmFresh)
 
     if qsp:
