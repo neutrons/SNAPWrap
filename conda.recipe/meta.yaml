@@ -12,7 +12,7 @@
 {% set build_number = 0 %}
 
 package:
-  name: snapblue
+  name: snapwrap
   version: {{ version_number }}
 
 source:

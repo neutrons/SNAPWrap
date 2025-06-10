@@ -1,11 +1,11 @@
 import pytest
 
 def test_import():
-    import snapblue.blueUtils
-    import snapblue.blueIO
-    import snapblue.SNAPStateMgr
+    import snapwrap.utils
+    import snapwrap.io
+    import snapwrap.snapStateMgr
 
 def test_import_fail():
     with pytest.raises(ImportError):
-        import snapblue.garbage as foo
+        import snapwrap.garbage as foo
 

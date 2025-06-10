@@ -1,5 +1,5 @@
 [project]
-name = "snapblue"
+name = "snapwrap"
 description = "Instrument Scientist Scripting Interface into SNAPRed"
 dynamic = ["version"]
 requires-python = ">=3.10"
@@ -39,7 +39,7 @@ dirty = "{version}+d{build_date:%Y%m%d}"
 distance-dirty = "{next_version}.dev{distance}+d{build_date:%Y%m%d%H%M}"
 
 [tool.versioningit.write]
-file = "src/snapblue/_version.py"
+file = "src/snapwrap/_version.py"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -93,13 +93,13 @@ select = ["A", "ARG","ASYNC","BLE","C90", "E", "F", "I", "N", "UP032", "W"]
 [tool.pixi.project]
 authors = ["Michael Walsh <walshmm@ornl.gov>"]
 channels = ["conda-forge", "mantid/label/nightly", "mantid-ornl", "mantid-ornl/label/rc", "neutrons/label/rc"]
-name = "SNAPBlue"
+name = "snapwrap"
 platforms = ["linux-64"]
 version = "0.1.0"
 
 
 [tool.pixi.pypi-dependencies]
-snapblue = { path = ".", editable = true }
+snapwrap = { path = ".", editable = true }
 bm3d-streak-removal = "*"
 pytest-playwright = "*"
 

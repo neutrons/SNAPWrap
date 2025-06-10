@@ -44,4 +44,4 @@ jobs:
           # below to build the conda package in your local machine
           CHANNELS="--channel mantid/label/main --channel conda-forge --channel mantid/label/nightly --channel mantid-ornl --channel mantid-ornl/label/rc --channel neutrons/label/rc"
           VERSION=$(versioningit ../) conda mambabuild $CHANNELS --output-folder . .
-          conda verify noarch/snapblue*.tar.bz2
+          conda verify noarch/snapwrap*.tar.bz2

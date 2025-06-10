@@ -819,9 +819,16 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
         print(f"Mask: {nextMaskWSName} was created")
 
 
+def cheeseMask(binMaskList):
+
+    #TODO
+    print("test")
+
+
 def reduce(runNumber,
                sampleEnv='none',
                pixelMaskIndex='none',
+            #    binMaskList=[],
                YMLOverride='none',
                continueNoDifcal = False,
                continueNoVan = False,
@@ -918,7 +925,31 @@ def reduce(runNumber,
                 print(f"ERROR: you requested mask workspace {maskName} but this doesn\'t exist")
                 assert False
             pixelMasks.append(maskName)
-    
+
+    # if binMaskList:
+    #     # users can specify a list of table bin workspace names. If these are not found
+    #     # look in a standardised folder (ipts-12345/shared/masks) and attempt to load them. If they do not 
+    #     # exist, give a helpful error.
+        
+    #     for bMask in binMaskList:
+
+    #         if bMask not in mtd.getObjectNames():
+
+    #             #attempt to load from standard location
+    #             ipts = GetIPTS(Instrument="SNAP",
+    #                         RunNumber=runNumber)
+    #             maskFolder = f"{ipts}masks/"
+    #             maskPath = f"{maskFolder}bMask.json"
+    #             cheese=mut.swissCheese()
+    #             try: 
+    #                 cheese.load(maskPath)
+    #             except: 
+    #                 raise Exception(f"Requested bin mask workspace doesn\'t exist and attempt to load: {maskPath} failed!")
+
+
+    #     print("bin masks processed")
+
+    print("Calling reduction service")
     reductionService = ReductionService()
     timestamp = reductionService.getUniqueTimestamp()
 
@@ -988,14 +1019,20 @@ def reduce(runNumber,
     # Determine calibration status and process this
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+    [stateID,stateDict] = ssm.stateDef(runNumber)
 
     dataFactoryService = DataFactoryService()
     calibrationPath = dataFactoryService.getCalibrationDataPath(
-                runNumber, useLiteMode, VersionState.LATEST
+                useLiteMode=useLiteMode, 
+                version = VersionState.LATEST,
+                state = stateID
             )
     # print(calibrationPath)
     calibrationRecord = dataFactoryService.getCalibrationRecord(
-                runNumber, useLiteMode, VersionState.LATEST
+                runId=runNumber, 
+                useLiteMode=useLiteMode, 
+                version = VersionState.LATEST,
+                state = stateID
             )
     
     if calibrationRecord.version == 0 and not continueNoDifcal:
@@ -1010,11 +1047,16 @@ def reduce(runNumber,
 
     # print(calibrationRecord.version)
     normalizationPath = dataFactoryService.getNormalizationDataPath(
-                runNumber, useLiteMode, VersionState.LATEST
+                useLiteMode=useLiteMode, 
+                version = VersionState.LATEST,
+                state = stateID
             )
     # print(normalizationPath)
     normalizationRecord = dataFactoryService.getNormalizationRecord(
-                runNumber, useLiteMode, VersionState.LATEST
+                runId=runNumber, 
+                useLiteMode=useLiteMode, 
+                version = VersionState.LATEST,
+                state = stateID
             )
     
     if type(normalizationRecord) == None:
@@ -1026,11 +1068,6 @@ def reduce(runNumber,
 
             """)
         
-    
-    # print(normalizationRecord.version)
-    stateID = dataFactoryService.constructStateId(runNumber)
-
-
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Pretty print useful information regarding reduction status
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 
@@ -1047,8 +1084,8 @@ def reduce(runNumber,
                 - Run Number: {ingredients.runNumber}
 
                 - state: 
-                    - ID: {stateID[0]},
-                    - definition: {stateID[1]}
+                    - ID: {stateID},
+                    - definition: {stateDict}
 
                 - Pixel Groups to process: {allPixelGroups}
 
@@ -1115,7 +1152,7 @@ def reduce(runNumber,
         runNumber=runNumber,
         useLiteMode=useLiteMode,
         focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
-        )
+        state=stateID)
         instrumentState = SousChef().prepInstrumentState(farmFresh)
 
     if qsp:
