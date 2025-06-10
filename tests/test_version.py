@@ -1,4 +1,4 @@
-from snapblue import __version__
+from snapwrap import __version__
 
 
 def test_version():

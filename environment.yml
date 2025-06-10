@@ -1,4 +1,4 @@
-name: SNAPBlue
+name: snapwrap
 channels:
   - conda-forge
   - mantid/label/nightly
@@ -7,7 +7,7 @@ channels:
   - neutrons/label/rc
 dependencies:
   - snapred==1.2.0rc3
-  # SNAPBlue specific dependencies
+  # snapwrap specific dependencies
   - scikit-image
   # -- Runtime dependencies
   # base: list all base dependencies here

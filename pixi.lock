@@ -6759,7 +6759,7 @@ packages:
   size: 16385
   timestamp: 1733381032766
 - pypi: .
-  name: snapblue
+  name: snapwrap
   version: 0.1.0.dev41+d202504011452
   sha256: ab361540b88b4aa7ba0dac161c0661d9511ded2ea0a63f4241b3db1223e61c0c
   requires_dist:
