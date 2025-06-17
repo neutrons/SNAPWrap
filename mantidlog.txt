@@ -1,31 +1,14 @@
-[33;20manalysis-node18 - 2025-05-16 11:54:39,737 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:39,737 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:50,829 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:50,931 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:51,021 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:51,106 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:51,191 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:54:51,286 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:14,658 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:17,816 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:17,933 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:18,079 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:18,211 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:18,334 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:26,512 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:29,733 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:29,870 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:30,002 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:30,117 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:55:30,216 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:56:07,184 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:56:09,319 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:56:09,421 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:56:09,528 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:56:09,645 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 11:56:09,756 - WARNING  - Mantid - Output error table workspace[0m
-[33;20manalysis-node18 - 2025-05-16 12:03:41,944 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node18 - 2025-05-16 12:03:41,946 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node18 - 2025-05-16 12:03:48,582 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node18 - 2025-05-16 12:03:48,582 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[31;20manalysis-node18 - 2025-05-19 18:06:15,034 - ERROR    - Mantid - logging set to error priority[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:29,727 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:29,727 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:41,628 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:41,905 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:42,220 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:42,605 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:42,914 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:38:43,299 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:39:22,894 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:39:24,001 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:39:24,315 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:39:24,698 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:39:25,009 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-06-17 17:39:25,395 - WARNING  - Mantid - Output error table workspace[0m

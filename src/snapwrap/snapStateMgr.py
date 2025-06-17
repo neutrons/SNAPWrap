@@ -568,7 +568,8 @@ def loadCalibrationRecord(runNum,isLite,version):
         runNum=str(runNum)    
     
     localDataService=LocalDataService()
-    cr = localDataService.readCalibrationRecord(runNum,isLite,version)
+    stateID,stateDict = stateDef(runNumber=runNum)
+    cr = localDataService.readCalibrationRecord(runNum,isLite,stateID,version)
 
     return cr
 
