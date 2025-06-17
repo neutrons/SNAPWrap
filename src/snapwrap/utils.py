@@ -246,10 +246,15 @@ def makeResolutionWorkspace(prefix,
         pgsList.append(handle.pixelGroup)
     print(f"Found {len(pgsList)} pixel groups: {pgsList}")
 
+    #get stateID
+
+    stateID,stateDict=ssm.stateDef(runNumber=runNumber)
+
     #get instrument state to extract resolution parameters 
     farmFresh = FarmFreshIngredients(
         runNumber=str(runNumber),
         useLiteMode=isLite,
+        state=stateID,
         focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
         )
     instrumentState = SousChef().prepInstrumentState(farmFresh)
