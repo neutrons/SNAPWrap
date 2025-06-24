@@ -1,4 +1,4 @@
-name: snapwrap1p0
+name: snapwrap
 channels:
   - conda-forge
   - mantid/label/nightly
