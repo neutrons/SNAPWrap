@@ -1,10 +1,10 @@
-name: snapwrap
+name: snapwrap1p0
 channels:
   - conda-forge
   - mantid/label/nightly
   - mantid-ornl
   - mantid-ornl/label/rc
-  - neutrons/label/rc
+  - neutrons
 dependencies:
   - snapred>=1.3.0
   # snapwrap specific dependencies
