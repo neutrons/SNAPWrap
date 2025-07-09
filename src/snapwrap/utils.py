@@ -33,6 +33,7 @@ from snapred.meta.Config import Config
 # from snapred.backend.data import LocalDataService as lds
 from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
 from snapred.backend.service.SousChef import SousChef
+from snapred.backend.dao.Hook import Hook
 
 from snapred import __version__ as redVersion
 from snapwrap import __version__ as snapwrapVersion
@@ -818,6 +819,68 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
         a = mut.mask2mantid(slice,inputWorkspace,nextMaskWSName)
         print(f"Mask: {nextMaskWSName} was created")
 
+########## Define SNAPRed hook functions here ##################
+
+def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWSName=None):
+
+    # TODO: validate input ws match sample workspace: need to be from same state
+    # note this is post hook to preprocessReductionRecipe, so outputWS starts as unfocussed TOF
+    # and needs to end this way too.
+
+    if backgroundWSName is not None:
+
+        # if background workspace is specified, subtract it before attenuation correction
+
+        # background must be in TOF too
+
+        self.mantidSnapper.ConvertUnits(InputWorkspace=backgroundWSName,
+                                        OutputWorkspace=backgroundWSName,
+                                        Target="TOF")
+        
+        # rebin to match sample data
+
+        self.mantidSnapper.RebinToWorkspace(WorkspaceToRebin=backgroundWSName,
+                                            WorkspaceToMatch=self.outputWs,
+                                            OutputWorkspace=backgroundWSName,
+                                            PreserveEvents=True) 
+
+        # sample ws needs to be NBC here
+        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay(
+                                InputWorkspace=self.outputWs,
+                                OutputWorkspace=self.outputWs)
+        # and background too
+        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay(
+                                InputWorkspace=backgroundWSName,
+                                OutputWorkspace=backgroundWSName)
+        
+
+        self.mantidSnapper.Minus(LHSWorkspace=self.outputWs,
+                                 RHSWorkspace=backgroundWSName,
+                                 OutputWorkspace=self.outputWs)
+        
+    if attenuationWSName is not None:
+
+        # if attenuation workspace is specified divide by it
+
+        self.mantidSnapper.ConvertUnits(InputWorkspace=self.outputWs,
+                                        OutputWorkspace=self.outputWs,
+                                        Target="Wavelength")
+        
+        self.mantidSnapper.RebinToWorkspace(WorkspaceToRebin=attenuationWSName,
+                                            WorkspaceToMatch=self.outputWs,
+                                            OutputWorkspace=attenuationWSName,
+                                            PreserveEvents=True) 
+
+        self.mantidSnapper.Divide(LHSWorkspace=self.outputWs,
+                                  RHSWorkspace=attenuationWSName,
+                                  OutputWorkspace=self.outputWs)
+        
+        self.mantidSnapper.ConvertUnits(InputWorkspace=self.outputWs,
+                                        OutputWorkspace=self.outputWs,
+                                        Target="TOF")
+        
+    self.mantidSnapper.executeQueue()
+
 
 def cheeseMask(binMaskList):
 
@@ -830,6 +893,8 @@ def reduce(runNumber,
                pixelMaskIndex='none',
             #    binMaskList=[],
                YMLOverride='none',
+               backgroundWSName = None,
+               attenuationWSName = None,
                continueNoDifcal = False,
                continueNoVan = False,
                verbose=False,
@@ -953,16 +1018,42 @@ def reduce(runNumber,
     reductionService = ReductionService()
     timestamp = reductionService.getUniqueTimestamp()
 
-    reductionRequest = ReductionRequest(
-        runNumber=runNumber,
-        useLiteMode=useLiteMode,
-        timestamp=timestamp,
-        continueFlags=continueFlags,
-        pixelMasks=pixelMasks,
-        keepUnfocused=keepUnfocussed,
-        convertUnitsTo=convertUnitsTo,
-        artificialNormalizationIngredients=artificialNormalizationIngredients
-    )
+    if backgroundWSName is not None or attenuationWSName is not None: # do if either is true
+
+        #define hook
+
+        hook = Hook(func=BackgroundAttenuationCorrection,
+                    attenuationWSName = attenuationWSName, #TODO: correctly manage ws names 
+                    backgroundWSName= backgroundWSName) #TODO: correctly manage ws names
+
+        hooks = {
+            "PostPreprocessReductionRecipe" : [hook, hook]
+        }
+
+        reductionRequest = ReductionRequest(
+            runNumber=runNumber,
+            useLiteMode=useLiteMode,
+            timestamp=timestamp,
+            continueFlags=continueFlags,
+            pixelMasks=pixelMasks,
+            keepUnfocused=keepUnfocussed,
+            convertUnitsTo=convertUnitsTo,
+            artificialNormalizationIngredients=artificialNormalizationIngredients,
+            hooks = hooks,
+        )
+
+    else:
+
+        reductionRequest = ReductionRequest(
+            runNumber=runNumber,
+            useLiteMode=useLiteMode,
+            timestamp=timestamp,
+            continueFlags=continueFlags,
+            pixelMasks=pixelMasks,
+            keepUnfocused=keepUnfocussed,
+            convertUnitsTo=convertUnitsTo,
+            artificialNormalizationIngredients=artificialNormalizationIngredients
+        )
 
     print(reductionRequest)
 
