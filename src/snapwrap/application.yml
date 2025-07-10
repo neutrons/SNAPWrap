@@ -1,3 +1,9 @@
 isLite: true
-outputJSONDir: "/SNS/SNAP/shared/SEEMeta/json"
-materialsDatabase: "/SNS/SNAP/shared/SEEMeta/materials/materials.db"
+SEE:
+  home: /SNS/SNAP/shared/SEEMeta
+  json: 
+     home: ${SEE.home}/jsons
+     components: ${SEE.json.home}/components
+     cylinderCells: ${SEE.json.home}/cylinderCells
+     opposedAnvilCells: ${SEE.json.home}/opposedAnvilCells 
+  materialsDatabase: ${SEE.home}/materials/materials.db

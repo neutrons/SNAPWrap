@@ -5,22 +5,40 @@ pn.extension()
 import os
 import json
 import traceback
-from snapwrap.SEEMeta.utils import material,opposedAnvilCell,anvil
-from sqlalchemy import create_engine
+
+from snapwrap.SEEMeta.material import material
+from snapwrap.SEEMeta.assembly import opposedAnvilCell
+from snapwrap.SEEMeta.component import anvil,cylinder
+from snapwrap.wrapConfig import WrapConfig
+# from sqlalchemy import create_engine
 
 # ===================== LOAD MATERIALS DATABASE ================
-# Connect to your DB
-engine = create_engine("sqlite:///materials/materials.db")
-# Load all materials into a list
-materials = material.load_all(engine)
+# # Connect to your DB
+# engine = create_engine("sqlite:///materials/materials.db")
+# # Load all materials into a list
+
+# n.b. materials already imports database.
+
+materials = material.load_all()
+jsonComponentDir = WrapConfig.get("SEE/json/components") 
+jsonAnvilDir = f"{jsonComponentDir}/anvils"
+jsonCylinderDir = f"{jsonComponentDir}/cylinders"
+jsonOACDir = WrapConfig.get("SEE/json/opposedAnvilCells")
+jsonCCDir = WrapConfig.get("SEE/json/cylinderCells")
+
+print(jsonComponentDir)
+print(jsonAnvilDir)
+print(jsonCylinderDir)
+print(jsonOACDir)
+
 # ===================== ANVIL BUILDER ==========================
 
 # assign materials
-zta = material(engine,name="zta")
-wc = material(engine,name="wc")
-sinteredDiamond = material(engine,name="sintereddiamond")
-sxldiamond = material(engine,name="singlecrystaldiamond")
-cbn = material(engine,name="cbn")
+zta = material(name="zta")
+wc = material(name="wc")
+sinteredDiamond = material(name="sintereddiamond")
+sxldiamond = material(name="singlecrystaldiamond")
+cbn = material(name="cbn")
 
 
 type_options = ["polycrystalline", "single-crystal"]
@@ -68,11 +86,11 @@ update_dependent_fields(anvil_type.value)
 
 output = pn.pane.JSON(name="Anvil JSON", depth=2, theme="light")
 save_directory = pn.widgets.TextInput(name="Save Directory", 
-                                      value="/Users/66j/Documents/ORNL/code/SEEMeta/")
+                                      value=jsonAnvilDir)
 save_status = pn.pane.Markdown("")
 
 def update_anvil_file_selector():
-    directory = os.path.join(save_directory.value.strip(), "anvils")
+    directory = jsonAnvilDir
     if os.path.isdir(directory):
         files = [f for f in os.listdir(directory) if f.startswith("anvil") and f.endswith(".json")]
         anvil_file_selector.options = ["Select a file..."] + files
@@ -182,12 +200,12 @@ oac_type = pn.widgets.Select(name="Type", options=["paris-edinburgh", "DAC"], va
 
 # assign materials
 
-tizr = material(engine,name="tizr")
-zr = material(engine,name="zr")
-pyrophyllite = material(engine,name="pyrophillite")
-re = material(engine,name="re")
-ss301 = material(engine,name="ss301")
-w = material(engine,name="w")
+tizr = material(name="tizr")
+zr = material(name="zr")
+pyrophyllite = material(name="pyrophillite")
+re = material(name="re")
+ss301 = material(name="ss301")
+w = material(name="w")
 
 model_map_oac = {
     "paris-edinburgh": ["VX1", "VX3", "VX5"],
@@ -242,7 +260,7 @@ def update_oac_fields(tval):
     temp_oac.value = "None"
 
     
-    anvil_dir = os.path.join(save_directory.value.strip(), "anvils")
+    anvil_dir = jsonAnvilDir
     if os.path.isdir(anvil_dir):
         files = [f for f in os.listdir(anvil_dir) if f.startswith("anvil") and f.endswith(".json")]
         anvil_file_oac.options = files
@@ -252,7 +270,7 @@ def update_oac_fields(tval):
         anvil_file_oac.options = []
         anvil_file_oac.value = None
 
-    oac_files = [f for f in os.listdir(save_directory.value.strip()) if f.endswith(".json")]
+    oac_files = [f for f in jsonOACDir if f.endswith(".json")]
     oac_file_selector.options = ["Select a file..."] + oac_files
     oac_file_selector.value = "Select a file..."
 
@@ -330,7 +348,7 @@ def populate_oac_fields_from_obj(oac_obj):
 
     # Set the anvil file selector to match the loaded anvil if possible
     # (Assumes the anvil JSON file exists and matches stringDescriptor)
-    anvil_dir = os.path.join(save_directory.value.strip(), "anvils")
+    anvil_dir = jsonAnvilDir
     anvil_json_name = f"{oac_obj.anvils[0].stringDescriptor}.json"
     if anvil_json_name in anvil_file_oac.options:
         anvil_file_oac.value = anvil_json_name
@@ -339,7 +357,7 @@ def populate_oac_fields_from_obj(oac_obj):
 def load_oac_from_file(selected_file):
     if not selected_file or selected_file == "Select a file...":
         return
-    directory = save_directory.value.strip()
+    directory = jsonOACDir
     file_path = os.path.join(directory, selected_file)
     try:
         with open(file_path, "r") as f:
@@ -368,7 +386,7 @@ def save_oac(event):
         json_data = json.dumps(oac_obj.to_dict(), indent=2)
         filename = f"{oac_obj.stringDescriptor}.json"
 
-        directory = save_directory.value.strip()
+        directory = jsonOACDir
         if not directory:
             raise ValueError("Please specify a save directory.")
 
