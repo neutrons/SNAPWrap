@@ -10,13 +10,10 @@ import shutil
 import importlib
 import copy
 
-
+from .wrapConfig import WrapConfig
 import snapwrap.snapStateMgr as ssm
-importlib.reload(ssm)
 import snapwrap.io as io
-importlib.reload(io)
 import snapwrap.maskUtils as mut
-importlib.reload(mut)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -32,10 +29,9 @@ from snapred.backend.dao.indexing.Versioning import Version, VersionState
 from snapred.meta.mantid.WorkspaceNameGenerator import WorkspaceNameGenerator as wng
 from snapred.meta.Config import Config
 from snapred.backend.api.InterfaceController import InterfaceController
-# from snapred.backend.data import LocalDataService as lds
 from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
 from snapred.backend.service.SousChef import SousChef
-from snapred.backend.dao.Hook import Hook
+# from snapred.backend.dao.Hook import Hook
 
 from snapred import __version__ as redVersion
 from snapwrap import __version__ as snapwrapVersion
@@ -93,28 +89,6 @@ def deploy():
 
     for key in deployInfo["vcs_info"]:
         print(f"{key}:{deployInfo['vcs_info'][key]}")
-
-
-
-def makeSEE(outputName,SEEDirectory):
-
-    #TODO: make function to initialise SEE (=  Sample Environment Equipment) definition with mandatory inputs
-    ymlOut = SEEDirectory + outputName
-    return ymlOut 
-
-def loadSEE(seeDefinition,SEEFolder):
-
-    #loads Parameters from SEE definition as a dictionary
-
-    #TODO: add this to application.yml
-    inputYML = f"{SEEFolder}/{seeDefinition}.yml"
-
-    #TODO: manage errors when file doesn't exist etc.
-    with open(inputYML,'r') as file:
-            seeDict = yaml.safe_load(file)
-
-    return seeDict
-
 
 def purgeNormalisation(isLite=True,purge=False):
     #this removes all existing normalization folders. User with caution!!!!!!!!!!!

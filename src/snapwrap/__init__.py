@@ -1,4 +1,10 @@
 """Contains the entry point for the application"""
+from .wrapConfig import WrapConfig
+
+WrapConfig.load()
+
+__all__ = ["WrapConfig"]
+
 
 try:
     from ._version import __version__  # noqa: F401

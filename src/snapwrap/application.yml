@@ -1,0 +1,3 @@
+isLite: true
+outputJSONDir: "/SNS/SNAP/shared/SEEMeta/json"
+materialsDatabase: "/SNS/SNAP/shared/SEEMeta/materials/materials.db"
