@@ -22,6 +22,7 @@ importlib.reload(mut)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 from snapred.backend.dao.ingredients.ArtificialNormalizationIngredients import ArtificialNormalizationIngredients
 from snapred.backend.dao.request import ReductionExportRequest
+from snapred.backend.dao import SNAPRequest
 from snapred.backend.dao.request.ReductionRequest import ReductionRequest
 from snapred.backend.data.DataFactoryService import DataFactoryService
 from snapred.backend.error.ContinueWarning import ContinueWarning
@@ -30,6 +31,7 @@ from snapred.backend.service.ReductionService import ReductionService
 from snapred.backend.dao.indexing.Versioning import Version, VersionState
 from snapred.meta.mantid.WorkspaceNameGenerator import WorkspaceNameGenerator as wng
 from snapred.meta.Config import Config
+from snapred.backend.api.InterfaceController import InterfaceController
 # from snapred.backend.data import LocalDataService as lds
 from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
 from snapred.backend.service.SousChef import SousChef
@@ -821,6 +823,10 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
 
 ########## Define SNAPRed hook functions here ##################
 
+def doNothingHook(self):
+
+    pass
+
 def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWSName=None):
 
     # TODO: validate input ws match sample workspace: need to be from same state
@@ -833,28 +839,28 @@ def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWS
 
         # background must be in TOF too
 
-        self.mantidSnapper.ConvertUnits(InputWorkspace=backgroundWSName,
+        self.mantidSnapper.ConvertUnits("",InputWorkspace=backgroundWSName,
                                         OutputWorkspace=backgroundWSName,
                                         Target="TOF")
         
         # rebin to match sample data
 
-        self.mantidSnapper.RebinToWorkspace(WorkspaceToRebin=backgroundWSName,
+        self.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=backgroundWSName,
                                             WorkspaceToMatch=self.outputWs,
                                             OutputWorkspace=backgroundWSName,
                                             PreserveEvents=True) 
 
         # sample ws needs to be NBC here
-        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay(
+        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
                                 InputWorkspace=self.outputWs,
                                 OutputWorkspace=self.outputWs)
         # and background too
-        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay(
+        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
                                 InputWorkspace=backgroundWSName,
                                 OutputWorkspace=backgroundWSName)
         
 
-        self.mantidSnapper.Minus(LHSWorkspace=self.outputWs,
+        self.mantidSnapper.Minus("",LHSWorkspace=self.outputWs,
                                  RHSWorkspace=backgroundWSName,
                                  OutputWorkspace=self.outputWs)
         
@@ -862,22 +868,22 @@ def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWS
 
         # if attenuation workspace is specified divide by it
 
-        self.mantidSnapper.ConvertUnits(InputWorkspace=self.outputWs,
+        self.mantidSnapper.ConvertUnits("",InputWorkspace=self.outputWs,
                                         OutputWorkspace=self.outputWs,
                                         Target="Wavelength")
         
-        self.mantidSnapper.RebinToWorkspace(WorkspaceToRebin=attenuationWSName,
+        self.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=attenuationWSName,
                                             WorkspaceToMatch=self.outputWs,
                                             OutputWorkspace=attenuationWSName,
                                             PreserveEvents=True) 
 
-        self.mantidSnapper.Divide(LHSWorkspace=self.outputWs,
+        self.mantidSnapper.Divide("",LHSWorkspace=self.outputWs,
                                   RHSWorkspace=attenuationWSName,
                                   OutputWorkspace=self.outputWs)
-        
-        self.mantidSnapper.ConvertUnits(InputWorkspace=self.outputWs,
-                                        OutputWorkspace=self.outputWs,
-                                        Target="TOF")
+    
+    self.mantidSnapper.ConvertUnits("",InputWorkspace=self.outputWs,
+                                    OutputWorkspace=self.outputWs,
+                                    Target="dSpacing")
         
     self.mantidSnapper.executeQueue()
 
@@ -1016,18 +1022,27 @@ def reduce(runNumber,
 
     print("Calling reduction service")
     reductionService = ReductionService()
+    interfaceController = InterfaceController()
+
     timestamp = reductionService.getUniqueTimestamp()
+
+    print(f"backgroundWSName is: {backgroundWSName}")
+    print(f"attenuationWSName is: {attenuationWSName}")
+
+    hooks = None
 
     if backgroundWSName is not None or attenuationWSName is not None: # do if either is true
 
+        print("\nHOOK WILL BE APPLIED!!!!\n")
         #define hook
 
         hook = Hook(func=BackgroundAttenuationCorrection,
                     attenuationWSName = attenuationWSName, #TODO: correctly manage ws names 
                     backgroundWSName= backgroundWSName) #TODO: correctly manage ws names
 
+        emptyHook = Hook(func=doNothingHook)
         hooks = {
-            "PostPreprocessReductionRecipe" : [hook, hook]
+            "PostPreprocessReductionRecipe" : [hook, emptyHook]
         }
 
         reductionRequest = ReductionRequest(
@@ -1055,11 +1070,12 @@ def reduce(runNumber,
             artificialNormalizationIngredients=artificialNormalizationIngredients
         )
 
+
+    snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
+
     print(reductionRequest)
 
-
     reductionService.validateReduction(reductionRequest)
-
 
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
@@ -1276,33 +1292,16 @@ def reduce(runNumber,
 
     if reduceData:
 
-        if lambdaCrop:
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-            #  Crop data in wavelength space prior to reduction
-            #  This was used while troubleshooting spectral edges
-            #
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-            ConvertUnits(InputWorkspace=groceries["inputWorkspace"],
-                        OutputWorkspace=groceries["inputWorkspace"],
-                        Target="Wavelength")
-            
-            CropWorkspace(InputWorkspace=groceries["inputWorkspace"],
-                        OutputWorkspace=groceries["inputWorkspace"],
-                        XMin = instrumentState.particleBounds.wavelength.minimum,
-                        XMax = instrumentState.particleBounds.wavelength.maximum)
-            
-            ConvertUnits(InputWorkspace=groceries["inputWorkspace"],
-                        OutputWorkspace=groceries["inputWorkspace"],
-                        Target="TOF")
-
-
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Execute reduction here
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        data = ReductionRecipe().cook(ingredients, groceries)
-        record = reductionService._createReductionRecord(reductionRequest, ingredients, data["outputs"])
+        # TODO: This breaks Q-space option...
+
+        # data = ReductionRecipe().cook(ingredients, groceries)
+        data = interfaceController.executeRequest(snapRequest).data
+        # record = reductionService._createReductionRecord(reductionRequest, ingredients, data["outputs"])
+        record=data.record
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
