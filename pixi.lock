@@ -6665,8 +6665,8 @@ packages:
   timestamp: 1750342247797
 - pypi: ./
   name: snapwrap
-  version: 0.1.0.dev21+d202507101801
-  sha256: 0f39dc3598b2c7f31b2295c5c1d8185f8d86fafd53691ad24f9b6ae2fa29ced5
+  version: 0.1.0.dev22
+  sha256: 1b1bb1a46aaf5daa3f1a4705ea9921ad12b519099609b20de5231be92d30be9f
   requires_dist:
   - scikit-image
   requires_python: '>=3.8'
