@@ -174,3 +174,11 @@ cython_debug/
 *.egg-info
 src/packagenamepy/_version.py
 
+# Auto-generated version files
+src/snapwrap/_version.py
+
+# Conda build artifacts
+conda.recipe/linux-64/
+conda.recipe/noarch/
+conda.recipe/channeldata.json
+conda.recipe/index.html
