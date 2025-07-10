@@ -2,20 +2,18 @@
 name = "snapwrap"
 description = "Instrument Scientist Scripting Interface into SNAPRed"
 dynamic = ["version"]
-requires-python = ">=3.10"
-license = { text = "MIT" }
-keywords = ["neutrons", "example", "python"]
+requires-python = ">=3.8"
+license = "MIT"
+keywords = ["neutrons", "neutron-scattering", "data-reduction", "snapred"]
 readme = "README.md"
 dependencies = [
   "scikit-image"
 ]
-    # PyPI dependencies
 
 [project.urls]
-homepage = "https://github.com/neutrons/python_project_template/"  # if no homepage, use repo url
-repository = "https://github.com/neutrons/python_project_template/"
-# documentation = add_url_to_readthedoc_here
-issues = "https://github.com/neutrons/python_project_template/issues"
+homepage = "https://github.com/neutrons/SNAPWrap/"
+repository = "https://github.com/neutrons/SNAPWrap/"
+issues = "https://github.com/neutrons/SNAPWrap/issues"
 
 [build-system]
 requires = [
@@ -49,7 +47,7 @@ exclude = ["tests*", "scripts*", "docs*", "notebooks*"]
 "*" = [
   "*.yml",
   "*.yaml",
-  "*.ini", 
+  "*.ini",
   "*.css",
   "*.doctree",
   "*.html",
@@ -64,17 +62,14 @@ exclude = ["tests*", "scripts*", "docs*", "notebooks*"]
   "*.ttf",
   "*.txt",
   "*.woff2",
-  "*.yml",
 ]
 
-[project.scripts]
-packagename-cli = "packagenamepy.packagename:main"
-
-[project.gui-scripts]
-packagenamepy = "packagenamepy.packagename:gui"
+# No console scripts defined for snapwrap currently
+# [project.scripts]
+# snapwrap-cli = "snapwrap.main:main"
 
 [tool.pytest.ini_options]
-addopts = "-v --cov=packagenamepy --cov-report=term-missing"
+addopts = "-v --cov=snapwrap --cov-report=xml --cov-report=term-missing"
 pythonpath = [
   ".", "src", "scripts"
 ]
@@ -97,7 +92,6 @@ name = "snapwrap"
 platforms = ["linux-64"]
 version = "0.1.0"
 
-
 [tool.pixi.pypi-dependencies]
 snapwrap = { path = ".", editable = true }
 bm3d-streak-removal = "*"
@@ -113,7 +107,7 @@ clean-pypi = { cmd = "rm -rf dist", description = "Clean the PyPI build artifact
 #       this is because the conda build will complain about build environment in source and refuse to build.
 build-conda = { cmd = "cd conda.recipe && VERSION=$(versioningit ../) conda mambabuild --channel conda-forge --channel mantid/label/nightly --channel mantid-ornl --channel mantid-ornl/label/rc --channel neutrons/label/rc --output-folder . .", description = "Build the package for conda" }
 verify-conda = { cmd = "conda verify conda.recipe/noarch/*.tar.bz2", description = "Verify the conda package", depends-on = ["build-conda"] }
-publish-conda = { cmd = "anaconda upload conda.recipe/noarch/*/*.tar.bz2", description = "Publish the package to conda", depends-on = ["verify-conda"] }
+publish-conda = { cmd = "anaconda upload conda.recipe/noarch/*.tar.bz2", description = "Publish the package to conda", depends-on = ["verify-conda"] }
 clean-conda = { cmd = "sh -c \"find conda.recipe/* ! -name 'meta.yaml' -exec rm -rf {} +\"", description = "Clean the conda build artifacts" }
 # Documentation tasks
 build-docs = { cmd = "sphinx-build -b html docs docs/_build", description = "Build the documentation" }
@@ -124,7 +118,8 @@ test = { cmd = "pytest", description = "Run the tests" }  # pytest config above 
 clean-all = { description = "Clean all build artifacts", depends-on = ["clean-pypi", "clean-conda", "clean-docs"] }
 
 [tool.pixi.dependencies]
-snapred = ">=1.3.0"
+snapred = ">=1.3.0rc1"  # Available in neutrons/label/rc channel
+mantid = "*"  # Available in mantid/label/nightly channel
 scikit-image = "*"
 python = ">=3.8"
 panel = ">=1.7.0"
@@ -151,3 +146,4 @@ pytest = "*"
 pytest-cov = "*"
 pytest-xdist = "*"
 pip = "*"
+h5py = "*"
