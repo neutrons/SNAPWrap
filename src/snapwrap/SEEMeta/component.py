@@ -28,7 +28,6 @@ class anvil:
     def validate(self):
 
         assert self.type in ["polycrystalline", "single-crystal"]
-        assert self.material in ["ZTA","WC","diamond","CBN","sintered diamond"]
         assert self.culetGeometry in ["single toroid", "double toroid", "flat"]
         assert type(self.culetDiameter) is float
 
