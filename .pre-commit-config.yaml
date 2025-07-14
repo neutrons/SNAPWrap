@@ -17,4 +17,4 @@ repos:
   rev: v2.4.1
   hooks:
     - id: codespell
-      exclude: ".*\\.lock$|tests/cis_tests/.*"
+      exclude: ".*\\.lock$|tests/cis_tests/.*|pixi\\.lock"

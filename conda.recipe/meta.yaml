@@ -1,7 +1,7 @@
 # load information from pyproject.toml
 {% set pyproject = load_file_data('pyproject.toml') %}
 {% set project = pyproject.get('project', {}) %}
-{% set license = project.get('license').get('text') %}
+{% set license = project.get('license') %}
 {% set description = project.get('description') %}
 {% set project_url = pyproject.get('project', {}).get('urls') %}
 {% set url = project_url.get('homepage') %}
@@ -26,22 +26,36 @@ build:
 
 requirements:
   host:
-    - python
+    - python >=3.8
     - versioningit
-    - setuptools>=42
+    - setuptools >=42
     - wheel
+    - pip
 
   build:
-    - setuptools>=42
+    - python >=3.8
+    - setuptools >=42
     - versioningit
 
   run:
-    - python
+    - python >=3.8
     - mantidworkbench
-    - snapred
+    - snapred >=1.3.0rc1
     - scikit-image
     - panel = ">=1.7.0"
     - sqlalchemy = ">=2.0.0"
+
+test:
+  imports:
+    - snapwrap
+  commands:
+    - python -c "import snapwrap; print('SNAPWrap version:', snapwrap.__version__)"
+
+test:
+  imports:
+    - snapwrap
+  commands:
+    - python -c "import snapwrap; print('SNAPWrap version:', snapwrap.__version__)"
 
 about:
   home: {{ url }}
