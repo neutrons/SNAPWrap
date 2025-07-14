@@ -10,18 +10,16 @@ import shutil
 import importlib
 import copy
 
-
+from .wrapConfig import WrapConfig
 import snapwrap.snapStateMgr as ssm
-importlib.reload(ssm)
 import snapwrap.io as io
-importlib.reload(io)
 import snapwrap.maskUtils as mut
-importlib.reload(mut)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 from snapred.backend.dao.ingredients.ArtificialNormalizationIngredients import ArtificialNormalizationIngredients
 from snapred.backend.dao.request import ReductionExportRequest
+from snapred.backend.dao import SNAPRequest
 from snapred.backend.dao.request.ReductionRequest import ReductionRequest
 from snapred.backend.data.DataFactoryService import DataFactoryService
 from snapred.backend.error.ContinueWarning import ContinueWarning
@@ -30,9 +28,10 @@ from snapred.backend.service.ReductionService import ReductionService
 from snapred.backend.dao.indexing.Versioning import Version, VersionState
 from snapred.meta.mantid.WorkspaceNameGenerator import WorkspaceNameGenerator as wng
 from snapred.meta.Config import Config
-# from snapred.backend.data import LocalDataService as lds
+from snapred.backend.api.InterfaceController import InterfaceController
 from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
 from snapred.backend.service.SousChef import SousChef
+# from snapred.backend.dao.Hook import Hook
 
 from snapred import __version__ as redVersion
 from snapwrap import __version__ as snapwrapVersion
@@ -90,28 +89,6 @@ def deploy():
 
     for key in deployInfo["vcs_info"]:
         print(f"{key}:{deployInfo['vcs_info'][key]}")
-
-
-
-def makeSEE(outputName,SEEDirectory):
-
-    #TODO: make function to initialise SEE (=  Sample Environment Equipment) definition with mandatory inputs
-    ymlOut = SEEDirectory + outputName
-    return ymlOut 
-
-def loadSEE(seeDefinition,SEEFolder):
-
-    #loads Parameters from SEE definition as a dictionary
-
-    #TODO: add this to application.yml
-    inputYML = f"{SEEFolder}/{seeDefinition}.yml"
-
-    #TODO: manage errors when file doesn't exist etc.
-    with open(inputYML,'r') as file:
-            seeDict = yaml.safe_load(file)
-
-    return seeDict
-
 
 def purgeNormalisation(isLite=True,purge=False):
     #this removes all existing normalization folders. User with caution!!!!!!!!!!!
@@ -818,6 +795,72 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
         a = mut.mask2mantid(slice,inputWorkspace,nextMaskWSName)
         print(f"Mask: {nextMaskWSName} was created")
 
+########## Define SNAPRed hook functions here ##################
+
+def doNothingHook(self):
+
+    pass
+
+def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWSName=None):
+
+    # TODO: validate input ws match sample workspace: need to be from same state
+    # note this is post hook to preprocessReductionRecipe, so outputWS starts as unfocussed TOF
+    # and needs to end this way too.
+
+    if backgroundWSName is not None:
+
+        # if background workspace is specified, subtract it before attenuation correction
+
+        # background must be in TOF too
+
+        self.mantidSnapper.ConvertUnits("",InputWorkspace=backgroundWSName,
+                                        OutputWorkspace=backgroundWSName,
+                                        Target="TOF")
+        
+        # rebin to match sample data
+
+        self.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=backgroundWSName,
+                                            WorkspaceToMatch=self.outputWs,
+                                            OutputWorkspace=backgroundWSName,
+                                            PreserveEvents=True) 
+
+        # sample ws needs to be NBC here
+        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
+                                InputWorkspace=self.outputWs,
+                                OutputWorkspace=self.outputWs)
+        # and background too
+        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
+                                InputWorkspace=backgroundWSName,
+                                OutputWorkspace=backgroundWSName)
+        
+
+        self.mantidSnapper.Minus("",LHSWorkspace=self.outputWs,
+                                 RHSWorkspace=backgroundWSName,
+                                 OutputWorkspace=self.outputWs)
+        
+    if attenuationWSName is not None:
+
+        # if attenuation workspace is specified divide by it
+
+        self.mantidSnapper.ConvertUnits("",InputWorkspace=self.outputWs,
+                                        OutputWorkspace=self.outputWs,
+                                        Target="Wavelength")
+        
+        self.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=attenuationWSName,
+                                            WorkspaceToMatch=self.outputWs,
+                                            OutputWorkspace=attenuationWSName,
+                                            PreserveEvents=True) 
+
+        self.mantidSnapper.Divide("",LHSWorkspace=self.outputWs,
+                                  RHSWorkspace=attenuationWSName,
+                                  OutputWorkspace=self.outputWs)
+    
+    self.mantidSnapper.ConvertUnits("",InputWorkspace=self.outputWs,
+                                    OutputWorkspace=self.outputWs,
+                                    Target="dSpacing")
+        
+    self.mantidSnapper.executeQueue()
+
 
 def cheeseMask(binMaskList):
 
@@ -830,6 +873,8 @@ def reduce(runNumber,
                pixelMaskIndex='none',
             #    binMaskList=[],
                YMLOverride='none',
+               backgroundWSName = None,
+               attenuationWSName = None,
                continueNoDifcal = False,
                continueNoVan = False,
                verbose=False,
@@ -951,24 +996,60 @@ def reduce(runNumber,
 
     print("Calling reduction service")
     reductionService = ReductionService()
+    interfaceController = InterfaceController()
+
     timestamp = reductionService.getUniqueTimestamp()
 
-    reductionRequest = ReductionRequest(
-        runNumber=runNumber,
-        useLiteMode=useLiteMode,
-        timestamp=timestamp,
-        continueFlags=continueFlags,
-        pixelMasks=pixelMasks,
-        keepUnfocused=keepUnfocussed,
-        convertUnitsTo=convertUnitsTo,
-        artificialNormalizationIngredients=artificialNormalizationIngredients
-    )
+    print(f"backgroundWSName is: {backgroundWSName}")
+    print(f"attenuationWSName is: {attenuationWSName}")
+
+    hooks = None
+
+    if backgroundWSName is not None or attenuationWSName is not None: # do if either is true
+
+        print("\nHOOK WILL BE APPLIED!!!!\n")
+        #define hook
+
+        hook = Hook(func=BackgroundAttenuationCorrection,
+                    attenuationWSName = attenuationWSName, #TODO: correctly manage ws names 
+                    backgroundWSName= backgroundWSName) #TODO: correctly manage ws names
+
+        emptyHook = Hook(func=doNothingHook)
+        hooks = {
+            "PostPreprocessReductionRecipe" : [hook, emptyHook]
+        }
+
+        reductionRequest = ReductionRequest(
+            runNumber=runNumber,
+            useLiteMode=useLiteMode,
+            timestamp=timestamp,
+            continueFlags=continueFlags,
+            pixelMasks=pixelMasks,
+            keepUnfocused=keepUnfocussed,
+            convertUnitsTo=convertUnitsTo,
+            artificialNormalizationIngredients=artificialNormalizationIngredients,
+            hooks = hooks,
+        )
+
+    else:
+
+        reductionRequest = ReductionRequest(
+            runNumber=runNumber,
+            useLiteMode=useLiteMode,
+            timestamp=timestamp,
+            continueFlags=continueFlags,
+            pixelMasks=pixelMasks,
+            keepUnfocused=keepUnfocussed,
+            convertUnitsTo=convertUnitsTo,
+            artificialNormalizationIngredients=artificialNormalizationIngredients
+        )
+
+
+    snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
 
     print(reductionRequest)
 
-
     reductionService.validateReduction(reductionRequest)
-
 
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
@@ -1185,33 +1266,16 @@ def reduce(runNumber,
 
     if reduceData:
 
-        if lambdaCrop:
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-            #  Crop data in wavelength space prior to reduction
-            #  This was used while troubleshooting spectral edges
-            #
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-            ConvertUnits(InputWorkspace=groceries["inputWorkspace"],
-                        OutputWorkspace=groceries["inputWorkspace"],
-                        Target="Wavelength")
-            
-            CropWorkspace(InputWorkspace=groceries["inputWorkspace"],
-                        OutputWorkspace=groceries["inputWorkspace"],
-                        XMin = instrumentState.particleBounds.wavelength.minimum,
-                        XMax = instrumentState.particleBounds.wavelength.maximum)
-            
-            ConvertUnits(InputWorkspace=groceries["inputWorkspace"],
-                        OutputWorkspace=groceries["inputWorkspace"],
-                        Target="TOF")
-
-
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Execute reduction here
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        data = ReductionRecipe().cook(ingredients, groceries)
-        record = reductionService._createReductionRecord(reductionRequest, ingredients, data["outputs"])
+        # TODO: This breaks Q-space option...
+
+        # data = ReductionRecipe().cook(ingredients, groceries)
+        data = interfaceController.executeRequest(snapRequest).data
+        # record = reductionService._createReductionRecord(reductionRequest, ingredients, data["outputs"])
+        record=data.record
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
