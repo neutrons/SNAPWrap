@@ -3,19 +3,34 @@ import json
 import os
 from sqlalchemy import create_engine, text
 import re
-from snapwrap.wrapConfig import WrapConfig
 
+import h5py
+from mantid.simpleapi import GetIPTS #TODO: this import is soley to access GetIPTS find a more efficient way to do this...
+
+from snapwrap.wrapConfig import WrapConfig
 from snapwrap.SEEMeta.material import material
 from snapwrap.SEEMeta.db import engine
 
 
-def SEEMetaLoader(filePath):
+def SEEJsonLoader(filePath):
     #Loads SEEMeta json file as a dictionary
     
     with open(filePath, "r") as f:
         data = json.load(f)
 
     return data
+
+def SEEH5Loader(filePath):
+
+    f = h5py.File(filePath,'r')
+    try:
+        bObject = f.get('entry/DASlogs/BL3:SE:SEEMeta:JSON/value')[0] #bytes object
+        data = json.loads(bObject[0].decode("utf-8"))
+    except: 
+        print("no SEE metadata found in .nxs.h5 file")
+        data = None
+    return data
+
 
 def SEEMetaSaver(dict,filePath):
     #save SEEMeta dictionary to file.
@@ -35,6 +50,36 @@ def toString(data,compact=True):
         jsonString = json.dumps(data, indent=4)
 
     return jsonString
+
+def acquireMeta(runNumber):
+    # This function will acquire SEE metadata by locating json-serialised input from two alternate locations. 
+    # The schema is that the software will look for an embedded json inside the .nxs.h5 file. It will also
+    # look for an override, which will be stored in:
+    # IPTS-{ipts}/shared/SEE/SEE{runNumber}.json
+    # If this is found, it will override the content of the embedded json (allowing for post experiment modifications)
+
+    #TODO: confirm that runNumber can be string or int
+
+    iptsPath = GetIPTS(Instrument="SNAP",runNumber=runNumber)
+    overridePath = f"{iptsPath}shared/SEE/SEE{str(runNumber).zfill(6)}.json"
+    h5Path = f"{iptsPath}nexus/SNAP_{str(runNumber)}.nxs.h5"
+
+    print(f"checking: {overridePath}")
+    print(f"checking: {h5Path}")
+
+
+    #first check if an override is present
+    if os.path.isfile(overridePath):
+        print("SEE Override located in {overridePath}")
+        SEEDict = SEEJsonLoader(overridePath)
+        return SEEDict
+    
+    if os.path.isfile(h5Path):
+        SEEDict = SEEH5Loader(h5Path)
+        return SEEDict
+    
+    print("No SEE metadata found")
+    return None
 
 
 # SQLite database tools
