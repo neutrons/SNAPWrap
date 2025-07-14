@@ -51,6 +51,12 @@ test:
   commands:
     - python -c "import snapwrap; print('SNAPWrap version:', snapwrap.__version__)"
 
+test:
+  imports:
+    - snapwrap
+  commands:
+    - python -c "import snapwrap; print('SNAPWrap version:', snapwrap.__version__)"
+
 about:
   home: {{ url }}
   license: {{ license }}
