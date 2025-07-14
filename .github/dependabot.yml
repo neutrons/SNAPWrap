@@ -9,3 +9,11 @@ updates:
     directory: "/" # Workflow files stored in the default location of `.github/workflows`
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "pip" # Monitor Python dependencies in pyproject.toml
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Note: PIXI lockfiles are handled by the update-lockfiles.yml workflow
+  # which automatically creates PRs for PIXI dependency updates
