@@ -9,8 +9,6 @@ dependencies:
   - snapred>=1.3.0
   # snapwrap specific dependencies
   - scikit-image
-  - panel = ">=1.7.0"
-  - sqalchemy = ">=2.0.0"
   # -- Runtime dependencies
   # base: list all base dependencies here
   - python>=3.8  # please specify the minimum version of python here

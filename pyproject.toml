@@ -127,8 +127,6 @@ clean-all = { description = "Clean all build artifacts", depends-on = ["clean-py
 snapred = ">=1.3.0"
 scikit-image = "*"
 python = ">=3.8"
-panel = ">=1.7.0"
-sqlalchemy = ">=2.0.0"
 versioningit = "*"
 numpy = "*"
 pandas = "*"

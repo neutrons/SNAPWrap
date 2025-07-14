@@ -40,8 +40,6 @@ requirements:
     - mantidworkbench
     - snapred
     - scikit-image
-    - panel = ">=1.7.0"
-    - sqlalchemy = ">=2.0.0"
 
 about:
   home: {{ url }}
