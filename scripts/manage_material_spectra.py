@@ -55,6 +55,7 @@ mat_sinteredDiamond = {"name":"SinteredDiamond",
 
 materials = [mat_zta, mat_TiZr, mat_wc, mat_sinteredDiamond]
 
+# add spectra to database
 for mat in materials:
 
     dbEntry = material.material(name=mat["name"])
@@ -71,19 +72,7 @@ for mat in materials:
                 # remove existing spectra if requested
                 utils.remove_spectrum_from_material(matID, spec["id"])
 
-    # allocate material ID to spectrum_data
+    # allocate material ID to spectrum_data dictionary
     mat["spectrum_data"]["material_id"] = matID
     # link spectral_data to material
     utils.link_spectrum_to_material(matID, mat["spectrum_data"])
-
-
-#remove a spectrum
-# utils.remove_spectrum_from_material(zta.get_id(),1)
-# utils.remove_spectrum_from_material(zta.get_id(),3)
-# utils.remove_spectrum_from_material(zta.get_id(),4)        
-
-
-
-#link a new spectrum to the material
-
-# utils.link_spectrum_to_material(zta.get_id(), spectrum_data)
