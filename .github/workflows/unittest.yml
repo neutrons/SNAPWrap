@@ -28,4 +28,4 @@ jobs:
       - name: build test
         run: |
           echo "testing package build"
-          pixi run build-pypi
+          pixi run build-conda
