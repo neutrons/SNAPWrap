@@ -25,7 +25,3 @@ jobs:
         if: github.actor != 'dependabot[bot]'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-      - name: build conda package
-        run: |
-          echo "build and verify conda package"
-          pixi run verify-conda

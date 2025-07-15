@@ -15,21 +15,6 @@ jobs:
         with:
           pixi-version: v0.41.4
           manifest-path: pyproject.toml
-      - name: build conda package
-        run: |
-          echo "build and verify conda package"
-          pixi run verify-conda
-      - name: upload conda package to anaconda
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
-          IS_RC: ${{ contains(github.ref, 'rc') }}
-        run: |
-          # label is main or rc depending on the tag-name
-          CONDA_LABEL="main"
-          if [ "${IS_RC}" = "true" ]; then CONDA_LABEL="rc"; fi
-          echo pushing ${{ github.ref }} with label $CONDA_LABEL
-          pixi run -- anaconda upload --label $CONDA_LABEL conda.recipe/noarch/snapwrap*.tar.bz2
 
   pypi-publish:
     name: upload release to PyPI

@@ -65,18 +65,15 @@ SNAPWrap provides several pre-configured commands for common tasks:
 
 ### Building Packages
 - **`pixi run build-pypi`** - Create a Python package (.whl file) for distribution
-- **`pixi run build-conda`** - Create a Conda package (.tar.bz2 file) for conda environments
 - **`pixi run build-docs`** - Generate HTML documentation from the source code
 
 ### Cleanup
 - **`pixi run clean-all`** - Remove all temporary build files and start fresh
 - **`pixi run clean-docs`** - Remove only documentation build files
 - **`pixi run clean-pypi`** - Remove only Python build files
-- **`pixi run clean-conda`** - Remove only Conda build files
 
 ### Publishing (Maintainers Only)
 - **`pixi run publish-pypi`** - Upload the package to PyPI (requires credentials)
-- **`pixi run publish-conda`** - Upload the package to Conda (requires credentials)
 
 ## 🔬 Key Features
 
