@@ -25,3 +25,7 @@ jobs:
         if: github.actor != 'dependabot[bot]'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+      - name: build test
+        run: |
+          echo "testing package build"
+          pixi run build-pypi
