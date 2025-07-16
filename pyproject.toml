@@ -85,8 +85,8 @@ pytest-playwright = "*"
 build = "*"
 
 [tool.pixi.tasks]
-# Python packaging tasks
-build-conda = { cmd = "python -m build", description = "Build the package for conda" }
+# Conda packaging tasks
+build-conda = { cmd = "conda-build recipe/", description = "Build the package for conda" }
 clean-conda = { cmd = "rm -rf ./dist", description = "Clean the conda build artifacts" }
 # Documentation tasks
 build-docs = { cmd = "sphinx-build -b html docs docs/_build", description = "Build the documentation" }
