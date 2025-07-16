@@ -17,52 +17,57 @@ issues = "https://github.com/neutrons/SNAPWrap/issues"
 
 [build-system]
 requires = [
-  "setuptools>= 42",
-  "wheel",
-  "toml",
-  "versioningit"
+  "hatchling",
+  "hatch-vcs"
 ]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
 
-[tool.versioningit.vcs]
-method = "git"
-default-tag = "0.1.0"
+# Versioningit configuration - now using hatch-vcs instead
+# [tool.versioningit.vcs]
+# method = "git"
+# default-tag = "0.1.0"
 
-[tool.versioningit.next-version]
-method = "minor"
+# [tool.versioningit.next-version]
+# method = "minor"
 
-[tool.versioningit.format]
-distance = "{next_version}.dev{distance}"
-dirty = "{version}+d{build_date:%Y%m%d}"
-distance-dirty = "{next_version}.dev{distance}+d{build_date:%Y%m%d%H%M}"
+# [tool.versioningit.format]
+# distance = "{next_version}.dev{distance}"
+# dirty = "{version}+d{build_date:%Y%m%d}"
+# distance-dirty = "{next_version}.dev{distance}+d{build_date:%Y%m%d%H%M}"
 
-[tool.versioningit.write]
-file = "src/snapwrap/_version.py"
+[tool.hatch.version]
+source = "vcs"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.hooks.vcs]
+version-file = "src/snapwrap/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/snapwrap"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/snapwrap" = "snapwrap"
+
+[tool.hatch.build]
 exclude = ["tests*", "scripts*", "docs*", "notebooks*"]
 
-[tool.setuptools.package-data]
-"*" = [
-  "*.yml",
-  "*.yaml",
-  "*.ini",
-  "*.css",
-  "*.doctree",
-  "*.html",
-  "*.inv",
-  "*.jpg",
-  "*.js",
-  "*.map",
-  "*.md",
-  "*.png",
-  "*.po",
-  "*.svg",
-  "*.ttf",
-  "*.txt",
-  "*.woff2",
-]
+[tool.hatch.build.targets.wheel.shared-data]
+"src/snapwrap/*.yml" = "snapwrap/"
+"src/snapwrap/*.yaml" = "snapwrap/"
+"src/snapwrap/*.ini" = "snapwrap/"
+"src/snapwrap/*.css" = "snapwrap/"
+"src/snapwrap/*.doctree" = "snapwrap/"
+"src/snapwrap/*.html" = "snapwrap/"
+"src/snapwrap/*.inv" = "snapwrap/"
+"src/snapwrap/*.jpg" = "snapwrap/"
+"src/snapwrap/*.js" = "snapwrap/"
+"src/snapwrap/*.map" = "snapwrap/"
+"src/snapwrap/*.md" = "snapwrap/"
+"src/snapwrap/*.png" = "snapwrap/"
+"src/snapwrap/*.po" = "snapwrap/"
+"src/snapwrap/*.svg" = "snapwrap/"
+"src/snapwrap/*.ttf" = "snapwrap/"
+"src/snapwrap/*.txt" = "snapwrap/"
+"src/snapwrap/*.woff2" = "snapwrap/"
 
 # No console scripts defined for snapwrap currently
 # [project.scripts]
@@ -99,7 +104,7 @@ pytest-playwright = "*"
 
 [tool.pixi.tasks]
 # Conda packaging tasks
-build-conda = { cmd = "python -m build", description = "Build the package for conda" }
+build-conda = { cmd = "pixi build", description = "Build the package for conda" }
 clean-conda = { cmd = "rm -rf ./dist", description = "Clean the conda build artifacts" }
 # Documentation tasks
 build-docs = { cmd = "sphinx-build -b html docs docs/_build", description = "Build the documentation" }
@@ -126,9 +131,7 @@ pre-commit = "*"
 libmamba = "*"
 libarchive = "*"
 anaconda-client = "*"
-boa = "*"
 conda-build = "<4"
-conda-verify = "*"
 sphinx = "*"
 sphinx_rtd_theme = "*"
 myst-parser = "*"
@@ -137,4 +140,3 @@ pytest-cov = "*"
 pytest-xdist = "*"
 pip = "*"
 h5py = "*"
-python-build = "*"

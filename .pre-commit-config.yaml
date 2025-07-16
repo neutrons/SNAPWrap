@@ -17,3 +17,12 @@ repos:
   hooks:
     - id: codespell
       exclude: ".*\\.lock$|tests/cis_tests/.*|pixi\\.lock"
+
+- repo: local
+  hooks:
+    - id: pixi-lock
+      name: Check pixi lock file is up to date
+      entry: pixi install --locked
+      language: system
+      files: ^(pixi\.toml|pyproject\.toml)$
+      pass_filenames: false
