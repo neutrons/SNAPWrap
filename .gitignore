@@ -1,7 +1,7 @@
 # project specific ignores
 testUtils.py
 mantidlog.txt
-
+snapwrap-*.conda
 
 
 # Byte-compiled / optimized / DLL files
