@@ -1,8 +1,6 @@
 # project specific ignores
 testUtils.py
 mantidlog.txt
-snapwrap-*.conda
-
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -175,3 +173,5 @@ cython_debug/
 
 # Auto-generated version files
 src/snapwrap/_version.py
+
+snapwrap-*.conda
