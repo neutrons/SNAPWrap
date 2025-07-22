@@ -60,20 +60,27 @@ This runs automated tests to ensure:
 
 SNAPWrap provides several pre-configured commands for common tasks:
 
+### Analysis Tools
+- **`pixi run workbench`** - Launch Mantid Workbench for interactive data analysis
+
 ### Testing and Validation
 - **`pixi run test`** - Run all tests to verify your installation works
 
-### Building Packages
-- **`pixi run build-pypi`** - Create a Python package (.whl file) for distribution
+### Documentation
 - **`pixi run build-docs`** - Generate HTML documentation from the source code
+- **`pixi run test-docs`** - Test that documentation builds correctly
 
 ### Cleanup
 - **`pixi run clean-all`** - Remove all temporary build files and start fresh
 - **`pixi run clean-docs`** - Remove only documentation build files
-- **`pixi run clean-pypi`** - Remove only Python build files
+- **`pixi run clean-conda`** - Remove only conda build files
 
-### Publishing (Maintainers Only)
-- **`pixi run publish-pypi`** - Upload the package to PyPI (requires credentials)
+### Package Building (Maintainers Only)
+- **`pixi run conda-build`** - Build conda package for distribution
+- **`pixi run conda-publish`** - Upload package to anaconda.org (requires credentials)
+
+### Development Tools
+- **`pixi run audit-deps`** - Check for security vulnerabilities in dependencies
 
 ## 🔬 Key Features
 

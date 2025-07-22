@@ -143,6 +143,8 @@ build-docs = { cmd = 'sphinx-build -b html docs docs/_build/html', description =
 test-docs = { cmd = "sphinx-build -M doctest docs docs/_build/html", description = "Test building the documentation" }
 # Testing
 test = { description = "Run the test suite", cmd = "pytest" }
+# Mantid Workbench
+workbench = { cmd = "python -m workbench", description = "Launch Workbench" }
 # Packaging
 conda-build-command = { cmd = "pixi build", description = "Wrapper for building the conda package - used by `conda-build`" }
 conda-build = { description = "Build the conda package", depends-on = [
