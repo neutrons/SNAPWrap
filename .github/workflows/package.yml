@@ -2,6 +2,7 @@ name: conda packaging and deployment
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [qa, main]
     tags: ['v*']
@@ -12,15 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.3
+
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.8.11
         with:
-          pixi-version: v0.41.4
+          pixi-version: v0.49.0
           manifest-path: pyproject.toml
-      - name: build package
+          
+      - name: Build package
         run: |
-          echo "building package"
-          pixi run build-conda
-      - name: upload package to anaconda
+          pixi run conda-build
+          mkdir -p /tmp/local-channel/linux-64
+          cp *.conda /tmp/local-channel/linux-64
+      
+      - name: Verify conda package
+        uses: neutrons/conda-verify
+        with:
+          package-name: snapwrap
+          local-channel: /tmp/local-channel
+          python-version: "3.10"
+          extra-channels: mantid/labels/nightly neutrons
+
+      - name: Upload package to anaconda
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}

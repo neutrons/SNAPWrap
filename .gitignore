@@ -2,8 +2,6 @@
 testUtils.py
 mantidlog.txt
 
-
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -175,3 +173,5 @@ cython_debug/
 
 # Auto-generated version files
 src/snapwrap/_version.py
+
+snapwrap-*.conda
