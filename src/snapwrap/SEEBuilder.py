@@ -263,6 +263,8 @@ anvil_map = {
 model_oac = pn.widgets.Select(name="Model")
 gasket_oac = pn.widgets.Select(name="Gasket Material")
 gtype_oac = pn.widgets.Select(name="Gasket Type")
+gasketThickness_oac = pn.widgets.FloatInput(name="Gasket Thickness (mm)", value = 1.0, step= 0.1)
+gasketID_oac = pn.widgets.FloatInput(name="Gasket ID (mm)", value=1.0, step=0.1)    
 loadaxis_oac = pn.widgets.Select(name="Load Axis (Mantid Convention)")
 temp_oac = pn.widgets.Select(name="Temperature Control")
 oac_comment = pn.widgets.TextAreaInput(name="Comment", placeholder="optional")
@@ -282,6 +284,12 @@ def update_oac_fields(tval):
     gasket_oac.value = gasket_oac.options[0]
     gtype_oac.options = gtype_map[tval]
     gtype_oac.value = gtype_oac.options[0]
+    if gtype_oac.value == "flat":
+        gasketThickness_oac.value = 0.1 # default thickness for flat gasket
+        gasketID_oac.value = 0.5
+    elif gtype_oac.value == "encapsulating" or gtype_oac.value == "non-encapsulating":
+        gasketThickness_oac.value = 1.6
+        gasketID_oac.value = 6.0
     loadaxis_oac.options = loadaxis_map[tval]
     loadaxis_oac.value = loadaxis_oac.options[0]
     temp_oac.options = temp_map[tval]
@@ -341,6 +349,8 @@ def update_oac_output(*_):
             gasketType=gtype_oac.value,
             loadAxis=loadaxis_oac.value
         )
+        oac.gasketThickness = gasketThickness_oac.value
+        oac.gasketID = gasketID_oac.value
         oac.temperatureControl = temp_oac.value
         oac.comment = oac_comment.value
         oac.manufacturer = oac_manufacturer.value
@@ -361,7 +371,6 @@ oac_preview = pn.pane.JSON(name="OAC JSON Preview", depth=2, theme="light")
 update_oac_fields(oac_type.value)
 update_oac_output()
 
-
 #load json
 def populate_oac_fields_from_obj(oac_obj):
     # Set widget values from an opposedAnvilCell instance
@@ -369,6 +378,8 @@ def populate_oac_fields_from_obj(oac_obj):
     model_oac.value = oac_obj.model
     gasket_oac.value = oac_obj.gasketMaterial
     gtype_oac.value = oac_obj.gasketType
+    gasketThickness_oac.value = oac_obj.gasketThickness
+    gasketID_oac.value = oac_obj.gasketID
     loadaxis_oac.value = oac_obj.loadAxis
     temp_oac.value = oac_obj.temperatureControl if oac_obj.temperatureControl else "None"
     oac_comment.value = oac_obj.comment
@@ -439,6 +450,8 @@ oac_tab = pn.Column(
     model_oac,
     gasket_oac,
     gtype_oac,
+    gasketThickness_oac,
+    gasketID_oac,
     loadaxis_oac,
     temp_oac,
     oac_comment,

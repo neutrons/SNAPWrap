@@ -14,6 +14,15 @@ class opposedAnvilCell:
         self.anvils = anvils
         self.gasketMaterial = gasketMaterial
         self.gasketType = gasketType
+        if self.gasketType == "flat":
+            self.gasketThickness = 0.1 # default thickness for flat gasket
+            self.gasketID = 0.5
+        elif self.gasketType == "encapsulating" or self.gasketType == "non_encapsulating":
+            self.gasketThickness = 1.6
+            self.gasketID = 6.0
+        else:
+            self.gasketThickness = 1.0
+        self.gasketThickness 
         self.loadAxis = loadAxis
 
         self.stringDescriptor = self.buildStringDescriptor()
@@ -58,6 +67,8 @@ class opposedAnvilCell:
             "anvils": [anvil.to_dict() for anvil in self.anvils],
             "gasketMaterial": self.gasketMaterial,
             "gasketType": self.gasketType,
+            "gasketThickness": self.gasketThickness,
+            "gasketID": self.gasketID,
             "loadAxis": self.loadAxis,
             "temperatureControl": self.temperatureControl,
             "cadFile": self.cadFile,
@@ -78,6 +89,8 @@ class opposedAnvilCell:
             gasketType=data["gasketType"],
             loadAxis=data["loadAxis"]
         )
+        obj.gasketThickness = data.get("gasketThickness", 1.0)
+        obj.gasketID = data.get("gasketID", 1.0)
         obj.temperatureControl = data.get("temperatureControl", "")
         obj.cadFile = data.get("cadFile", "")
         obj.manufacturer = data.get("manufacturer", "")
