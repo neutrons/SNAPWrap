@@ -896,11 +896,9 @@ def reduce(runNumber,
     else:
         config.setLogLevel(0, quiet=True)
 
-
     if cisMode:
         Config._config["cis_mode.enabled"] = True
         Config._config["cis_mode.preserveDiagnosticWorkspaces"] = True
-
     else:
         Config._config["cis_mode.enabled"] = False
 
@@ -926,8 +924,12 @@ def reduce(runNumber,
 
     #process continue flags
     continueFlags = ContinueWarning.Type.UNSET #by default do not continue
+    artificialNormalizationIngredients = None
 
-    if continueNoVan:
+    if continueNoDifcal and not continueNoVan:
+        continueFlags = ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
+
+    elif continueNoVan and not continueNoVan:
         artificialNormalizationIngredients = ArtificialNormalizationIngredients(
         peakWindowClippingSize = Config["constants.ArtificialNormalization.peakWindowClippingSize"],
         smoothingParameter=snapwrapGlob.AN_smoothingParameter,
@@ -935,9 +937,17 @@ def reduce(runNumber,
         lss=snapwrapGlob.AN_lss
         )
         continueFlags = ContinueWarning.Type.MISSING_NORMALIZATION
-        
-    else:
-        artificialNormalizationIngredients = None
+    
+    elif continueNoVan and continueNoDifcal:
+        artificialNormalizationIngredients = ArtificialNormalizationIngredients(
+        peakWindowClippingSize = Config["constants.ArtificialNormalization.peakWindowClippingSize"],
+        smoothingParameter=snapwrapGlob.AN_smoothingParameter,
+        decreaseParameter=snapwrapGlob.AN_decreaseParameter,
+        lss=snapwrapGlob.AN_lss
+        )
+        continueFlags = ContinueWarning.Type.MISSING_NORMALIZATION
+        continueFlags |= ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
+    
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # process input arguments
@@ -1030,9 +1040,7 @@ def reduce(runNumber,
             artificialNormalizationIngredients=artificialNormalizationIngredients,
             hooks = hooks,
         )
-
     else:
-
         reductionRequest = ReductionRequest(
             runNumber=runNumber,
             useLiteMode=useLiteMode,
