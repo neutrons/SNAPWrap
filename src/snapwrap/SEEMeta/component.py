@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict, fields, field, is_dataclass
 from typing import Any, ClassVar, Dict, Mapping, Optional, Tuple, Type, get_args, get_origin
 import json
+import re
 
 import snapwrap.SEEMeta.utils as SEE
 
@@ -24,7 +25,7 @@ class numVal:
         return {"value": self.value, "units": self.units, "source": self.source}
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "NumVal":
+    def from_dict(cls, d: Mapping[str, Any]) -> "numVal":
         return cls(value=d["value"], units=d["units"], source=d.get("source"))
     
     def __str__(self):
@@ -49,7 +50,8 @@ def _is_dataclass_type(tp: Any) -> Optional[Type]:
     if isinstance(tp, type) and is_dataclass(tp):
         return tp
     origin = get_origin(tp)
-    if origin is Optional or origin is Union := getattr(__import__("typing"), "Union", None):
+    Union = getattr(__import__("typing"), "Union", None)
+    if origin is Optional or origin is Union:
         for arg in get_args(tp):
             if arg is type(None):
                 continue
@@ -91,6 +93,14 @@ class Component:
     kind: ClassVar[str] = "component"
     # Schema version for this specific kind
     version: ClassVar[int] = 1
+
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serialNumber: Optional[str] = None
+    location: Optional[str] = None
+    # Optional human-readable description
+    comment: Optiona[str] = None
+    stlFile: Optional[str] = None
 
     # ---- Serialization ----
     def to_dict(self) -> Dict[str, Any]:
@@ -135,208 +145,130 @@ class Component:
         return obj
 
 @register
-@dataclass(slots=True)
-class Anvil(Component):
-    kind: ClassVar[str] = "anvil"
-    type: str
-    material: str
-    numberOfToroids: Optional[int] = None
-    culetDiameter: Optional[numVal] = None
-    innerDiameter: Optional[numVal] = None
-    hasBindingRing: Optional[bool] = None
-    manufacturer: str = ""
-    comment: str = ""
+@dataclass(slots=True, kw_only=True)
+class DACAnvil(Component):
+    kind: ClassVar[str] = "anvil.dac"
+    culetDiameter: numVal  # required, now keyword-only
+    material: str = "singleCrystalDiamond"
     stringDescriptor: str = field(init=False)
-    stlFile: str = field(init=False)
     UB: Optional[list] = field(default=None)
+    Notches: Optional[list] = field(default=None)
 
     def __post_init__(self):
-        # Validate type
-        if self.type not in ("DAC", "toroidal"):
-            raise ValueError(f"Invalid anvil type: {self.type}. Must be 'DAC' or 'toroidal'.")
         # Validate material
         if not SEE.materialInDatabase(self.material):
             raise ValueError(f"Material '{self.material}' not found in database.")
         matprop = SEE.get_material_details(self.material)
         self.UB = [] if matprop.get("isSingleCrystal") else None
 
-        # Per-type fields
-        if self.type == "DAC":
-            if self.culetDiameter is None:
-                raise ValueError("culetDiameter must be provided for DAC anvils")
-            self.hasBindingRing = False
-            self.numberOfToroids = None
-            self.innerDiameter = None
-        else:  # "toroidal"
-            if self.numberOfToroids is None:
-                raise ValueError("numberOfToroids must be provided for toroidal anvils")
-            self.innerDiameter = numVal(6 if self.numberOfToroids == 1 else 3, "mm")
-            self.culetDiameter = None
-            self.hasBindingRing = True
-
         self.stringDescriptor = self.buildStringDescriptor()
         self.stlFile = f"{self.stringDescriptor}.stl"
 
     def buildStringDescriptor(self):
-        if self.type == "DAC":
-            d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
-            return f"anvil_DAC_{self.material}_culet_{d}".replace(" ","_")
-        else:
-            return f"anvil_toroidal_{self.material}_ntor_{self.numberOfToroids}".replace(" ","_")
+        d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
+        return f"anvil_DAC_{self.material}_culet_{d}".replace(" ","_")
 
-class gasket:
-    def __init__(self, model, material, initialIndentThickness=None, initialHoleDiameter=None):
-        self.type = "gasket"
-        if not SEE.materialInDatabase(material):
-            raise ValueError(f"Material '{material}' not found in database.")
-        self.material = material
+    def setMantidMaterial(self, material_name: str, required: Optional[list] = None) -> Dict[str, Any]:
+        """
+        Fetch a subset of material properties from the SEE DB and return a dict
+        mapped to keys suitable for creating a Mantid material.
+        - Validates material exists.
+        - Converts isSingleCrystal to bool.
+        - Ensures required keys (default: formula and density) are present.
 
-        self.allowedModels = ["flat", "toroidal"]
-        model_l = model.lower()
-        if model_l not in self.allowedModels:
-            raise ValueError(f"{model} isn't supported, options are: {self.allowedModels}")
-        self.model = model_l
-
-        self.initialIndentThickness = numVal(initialIndentThickness, "mm") if initialIndentThickness is not None else None
-        if self.initialIndentThickness: self.initialIndentThickness.source = "measured"
-
-        self.initialHoleDiameter = numVal(initialHoleDiameter, "mm") if initialHoleDiameter is not None else None
-        if self.initialHoleDiameter: self.initialHoleDiameter.source = "measured"
-
-        self.stringDescriptor = self.buildStringDescriptor()
-        self.stlFile = f"{self.stringDescriptor}.stl"
-        self.manufacturer = ""
-        self.comment = ""
-
-    def to_dict(self):
-        return {
-            "type": "gasket",
-            "model": self.model,
-            "material": self.material,
-            "initialIndentThickness": self.initialIndentThickness.to_dict() if self.initialIndentThickness else None,
-            "initialHoleDiameter": self.initialHoleDiameter.to_dict() if self.initialHoleDiameter else None,
-            "stringDescriptor": self.stringDescriptor,
-            "stlFile": self.stlFile,
-            "manufacturer": self.manufacturer,
-            "comment": self.comment
-        }
-
-    @classmethod
-    def from_dict(cls, data):
-        obj = cls(
-            model=data["model"],
-            material=data["material"],
-            initialIndentThickness=(data["initialIndentThickness"]["value"] if data.get("initialIndentThickness") else None),
-            initialHoleDiameter=(data["initialHoleDiameter"]["value"] if data.get("initialHoleDiameter") else None),
-        )
-        obj.manufacturer = data.get("manufacturer", "")
-        obj.stlFile = data.get("stlFile", obj.stlFile)
-        obj.comment = data.get("comment", "")
-        return obj
-
-
-    def buildStringDescriptor(self):
-        return f"gasket_{self.material}_{self.model}".replace(" ","_")
-
-class cylinder:
-    #class to define a generic cylinder component
-
-    def __init__(self,
-                 material,
-                 ID,
-                 OD,
-                 height,
-                 axis=[0.0,1.0,0.0],
-                 center=[0.0,0.0,0.0]):
-
-        # validate material
-        materialFound = SEE.materialInDatabase(material)
-        if materialFound: 
-            self.material = material
-        else:
-            raise ValueError(f"Material '{material}' not found in database.")
-        
+        Returns dict with keys: 'formula', 'density', 'composition',
+        'is_single_crystal', 'grade', 'source'.
+        Raises ValueError on missing material or missing required properties.
+        """
         try:
-            self.chemicalFormula = SEE.get_material_details(material)["chemical_formula"]
-            self.massDensity = SEE.get_material_details(material)["mass_density_g_cm3"]
-        except KeyError as e:
-            raise ValueError(f"Material '{material}' missing required properties: {e}")
-        
-        self.ID = numVal(ID,"mm")
-        self.OD = numVal(OD,"mm")
-        self.height = numVal(height,"mm")
-        self.center = center
-        self.axis=axis
+            if not SEE.materialInDatabase(material_name):
+                raise ValueError(f"Material '{material_name}' not found in database.")
 
-        self.stringDescriptor = self.buildStringDescriptor()
-        self.stlFile = f"{self.stringDescriptor}.stl"
-        self.manufacturer=""
-        self.comment=""
+            details = SEE.get_material_details(material_name)
+            if not isinstance(details, dict):
+                raise ValueError(f"Unexpected material details type for '{material_name}'")
 
-        self.validate()
-        self.buildMantidDictionaries() 
+            # mantid-friendly keys -> SEE DB keys
+            mapping = {
+                "ChemicalFormula": "chemical_formula",
+                "MassDensity": "mass_density_g_cm3",
+            }
 
-    def to_dict(self):
-        return {
-            "type": "cylinder",
-            "material": self.material,
-            "ID": self.ID.value,
-            "OD": self.OD.value,
-            "height": self.height.value,
-            "axis": self.axis,
-            "center": self.center,
-            "stringDescriptor": self.stringDescriptor,
-            "cadFile": self.stlFile,
-            "comment": self.comment
-        }
-    
-    @classmethod
-    def from_dict(cls, data):
-        #instantiate class from data dictionary
-        obj = cls(
-            material=data["material"],
-            ID=data["ID"],
-            OD=data["OD"],
-            height=data["height"],
-            axis=data.get("axis", [0.0, 1.0, 0.0]),
-            center=data.get("center", [0.0, 0.0, 0.0])
-        )
-        obj.cadFile = data.get("cadFile", "")
-        obj.comment = data.get("comment", "")
-        return obj
+            out: Dict[str, Any] = {}
+            for out_key, db_key in mapping.items():
+                val = details.get(db_key)
+                if val is not None:
+                    out[out_key] = val
 
-    def validate(self):
+            # Validate chemical formula syntax if present
+            formula = out.get("ChemicalFormula")
+            if formula is not None and not _validate_chemical_formula(formula):
+                raise ValueError(f"Material '{material_name}' has invalid ChemicalFormula syntax: '{formula}'")
 
-        #boiler plate validation for the cylinder class
+            # default required fields
+            if required is None:
+                required = ["ChemicalFormula", "MassDensity"]
+            missing_required = [k for k in required if out.get(k) in (None, "", [])]
 
-        assert self.ID.value<=self.OD.value, "ID must be less than or equal to OD"
-        assert type(self.OD.value) is float
-        assert self.OD.value > 0, "OD must be greater than zero"
+            if missing_required:
+                raise ValueError(f"Material '{material_name}' missing required properties: {missing_required}")
 
-        for vector in [self.axis, self.center]:
-            assert type(vector) is list, f"{vector} must be a list"
-            assert len(vector) == 3, f"{vector} must be a 3-element list"
-            for element in vector:
-                assert type(element) is float, f"All elements of {vector} must be floats"
+            return out
 
-    def buildMantidDictionaries(self):
+        except Exception as e:
+            # keep message concise for callers; re-raise to allow caller handling
+            raise
 
-        #create the mantid dictionaries that are needed for absorption corrections
-        self.mantidContainerGeometry = {
-            "shape":"HollowCylinder",
-            "height":self.height,
-            "InnerRadius":self.ID.value/2,
-            "OuterRadius":self.OD.value/2,
-            "Center":self.center,
-            "Axis":self.axis
-        }
+# --- helper placed near top-level of module ---
 
-        self.mantidContainerMaterial={
-            "ChemicalFormula":self.chemicalFormula,
-            "NumberDensity":1.0,
-            "MassDensity":self.massDensity       
-        }
+def _validate_chemical_formula(formula: str) -> bool:
+    """
+    Conservative validator for Mantid-style chemical formulas.
+
+    Accepted forms:
+    - Hyphen-separated species, e.g. "(Li7)2-C-H4-N-Cl6"
+    - Concatenated element tokens like "H2O" (parsed by element symbols)
+    Species may be:
+      - an isotope: (ElementSymbolMassNumber) optionally followed by a multiplicity (int or float)
+        e.g. (Li7)2
+      - an element symbol: ElementSymbol optionally followed by multiplicity (int or float)
+        e.g. Cl6 or C or H4.5
+
+    Returns True if the formula matches these conservative rules, False otherwise.
+    """
+    if not isinstance(formula, str) or not formula:
+        return False
+
+    # hyphen-separated full-match regex:
+    # species = (isotope_group | element_symbol) [count]
+    # isotope_group: \( [A-Z][a-z]? \d+ \)
+    # element_symbol: [A-Z][a-z]?
+    # count: integer or float (e.g. 2 or 2.0 or 2.5)
+    species_re = r"(?:\([A-Z][a-z]?\d+\)|[A-Z][a-z]?)(?:\d+(?:\.\d+)?)?"
+    hyphenated_re = re.compile(rf"^{species_re}(?:-{species_re})*$")
+    if hyphenated_re.match(formula):
+        return True
+
+    # if not hyphenated, try to parse concatenated tokens like H2O, C6H12O6, etc.
+    idx = 0
+    L = len(formula)
+    token_re = re.compile(r"^\(?([A-Z][a-z]?\d+)\)?(?:\d+(?:\.\d+)?)?")
+    # simpler parser: iterate consuming either isotope group or element symbol + optional count
+    while idx < L:
+        # try isotope group at current index
+        if formula[idx] == "(":
+            m = re.match(r"^\(([A-Z][a-z]?\d+)\)(\d+(?:\.\d+)?)?", formula[idx:])
+            if not m:
+                return False
+            idx += m.end()
+            continue
+        # try element symbol + optional count
+        m = re.match(r"^[A-Z][a-z]?(?:\d+(?:\.\d+)?)?", formula[idx:])
+        if not m:
+            return False
+        idx += m.end()
+
+    # if we consumed all characters it's valid
+    return idx == L
 
 
-    def buildStringDescriptor(self):
-        return f"cyl_{self.material}_{self.ID.value:.1}{self.ID.units}_{self.height.value:.1}{self.ID.units}".replace(" ","_")
