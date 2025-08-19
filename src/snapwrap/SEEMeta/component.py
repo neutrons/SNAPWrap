@@ -1,113 +1,188 @@
-# import json
-# import os
+from __future__ import annotations
+from dataclasses import dataclass, asdict, fields, field, is_dataclass
+from typing import Any, ClassVar, Dict, Mapping, Optional, Tuple, Type, get_args, get_origin
+import json
 
 import snapwrap.SEEMeta.utils as SEE
 
-
+# ---------- Value-with-units ----------
+@dataclass(frozen=True, slots=True)
 class numVal:
-    def __init__(self, value, units):
-        self.value = float(value)
-        allowed = {'ang','nm','um','mm','cm','m','deg','rad'}
-        units_l = units.lower()
-        if units_l not in allowed:
-            raise ValueError(f"Invalid units specified: {units}. options are {sorted(allowed)}")
-        self.units = units_l
-        self.source = None
+    value: float
+    units: str
+    source: Optional[str] = None
 
-    def to_dict(self):
+    _ALLOWED: ClassVar[set[str]] = {"ang", "nm", "um", "mm", "cm", "m", "deg", "rad"}
+
+    def __post_init__(self):
+        u = self.units.lower()
+        if u not in self._ALLOWED:
+            raise ValueError(f"Invalid units: {self.units}. Allowed: {sorted(self._ALLOWED)}")
+        object.__setattr__(self, "units", u)
+
+    def to_dict(self) -> Dict[str, Any]:
         return {"value": self.value, "units": self.units, "source": self.source}
 
     @classmethod
-    def from_dict(cls, data):
-        obj = cls(data["value"], data["units"])
-        obj.source = data.get("source")
-        return obj
+    def from_dict(cls, d: Mapping[str, Any]) -> "NumVal":
+        return cls(value=d["value"], units=d["units"], source=d.get("source"))
     
     def __str__(self):
         return f"{self.value} {self.units}"
 
-class anvil:
-    def __init__(self, type, material, numberOfToroids=None, culetDiameter=None):
-        # validate type
-        if type not in ("DAC", "toroidal"):
-            raise ValueError(f"Invalid anvil type: {type}. Must be 'DAC' or 'toroidal'.")
-        self.type = type
+# ---------- Component base + registry ----------
 
-        # material
-        if not SEE.materialInDatabase(material):
-            raise ValueError(f"Material '{material}' not found in database.")
-        self.material = material
-        matprop = SEE.get_material_details(material)
+_REGISTRY: Dict[str, Type["Component"]] = {}
+
+def register(cls: Type["Component"]) -> Type["Component"]:
+    """Decorator to register a component class by its .kind tag."""
+    key = getattr(cls, "kind", None)
+    if not key:
+        raise ValueError(f"{cls.__name__} must define a ClassVar[str] 'kind'.")
+    if key in _REGISTRY and _REGISTRY[key] is not cls:
+        raise ValueError(f"Duplicate component kind: {key}")
+    _REGISTRY[key] = cls
+    return cls
+
+def _is_dataclass_type(tp: Any) -> Optional[Type]:
+    """Return the dataclass type if tp is a dataclass or Optional[dataclass], else None."""
+    if isinstance(tp, type) and is_dataclass(tp):
+        return tp
+    origin = get_origin(tp)
+    if origin is Optional or origin is Union := getattr(__import__("typing"), "Union", None):
+        for arg in get_args(tp):
+            if arg is type(None):
+                continue
+            if isinstance(arg, type) and is_dataclass(arg):
+                return arg
+    return None
+
+def _coerce_init_kwargs(kls: Type, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Filter unknown keys and coerce nested dataclass fields using .from_dict if present."""
+    allowed = {f.name: f for f in fields(kls)}
+    kwargs: Dict[str, Any] = {}
+    # get_type_hints handles Optional/Union
+    try:
+        from typing import get_type_hints
+        hints = get_type_hints(kls)
+    except Exception:
+        hints = {f.name: f.type for f in fields(kls)}
+
+    for name, f in allowed.items():
+        if name not in payload:
+            continue
+        val = payload[name]
+        hinted = hints.get(name, f.type)
+        dcls = _is_dataclass_type(hinted)
+        if dcls and isinstance(val, Mapping):
+            # Prefer custom from_dict if available
+            if hasattr(dcls, "from_dict"):
+                kwargs[name] = dcls.from_dict(val)  # type: ignore
+            else:
+                kwargs[name] = dcls(**val)  # naive
+        else:
+            kwargs[name] = val
+    return kwargs
+
+@dataclass(slots=True)
+class Component:
+    """Base class with shared (de)serialization and schema migration."""
+    # Stable wire identifier for this concrete class, e.g. "anvil.dac"
+    kind: ClassVar[str] = "component"
+    # Schema version for this specific kind
+    version: ClassVar[int] = 1
+
+    # ---- Serialization ----
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["type"] = self.kind
+        d["version"] = self.version
+        return d
+
+    @classmethod
+    def upgrade(cls, payload: Dict[str, Any], from_version: int) -> Dict[str, Any]:
+        """Override in subclasses to migrate payloads forward. Default: no-op."""
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Component":
+        """Dispatch via 'type' tag, apply migrations, and hydrate nested dataclasses."""
+        t = payload.get("type")
+        if not t:
+            raise ValueError("Missing 'type' in payload")
+        kls = _REGISTRY.get(t)
+        if not kls:
+            raise ValueError(f"Unknown component type: {t}")
+
+        # Work on a copy; strip meta
+        data = dict(payload)
+        data.pop("type", None)
+        from_version = int(data.pop("version", 1))
+
+        # Migrate to current class version
+        while from_version < kls.version:
+            data = kls.upgrade(data, from_version)
+            from_version += 1
+
+        # Filter/convert init kwargs
+        init_kwargs = _coerce_init_kwargs(kls, data)
+        obj = kls(**init_kwargs)  # type: ignore[misc]
+
+        # Apply any extra non-init fields from payload that survived (forward-compat)
+        for k, v in data.items():
+            if hasattr(obj, k) and k not in init_kwargs:
+                setattr(obj, k, v)
+        return obj
+
+@register
+@dataclass(slots=True)
+class Anvil(Component):
+    kind: ClassVar[str] = "anvil"
+    type: str
+    material: str
+    numberOfToroids: Optional[int] = None
+    culetDiameter: Optional[numVal] = None
+    innerDiameter: Optional[numVal] = None
+    hasBindingRing: Optional[bool] = None
+    manufacturer: str = ""
+    comment: str = ""
+    stringDescriptor: str = field(init=False)
+    stlFile: str = field(init=False)
+    UB: Optional[list] = field(default=None)
+
+    def __post_init__(self):
+        # Validate type
+        if self.type not in ("DAC", "toroidal"):
+            raise ValueError(f"Invalid anvil type: {self.type}. Must be 'DAC' or 'toroidal'.")
+        # Validate material
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+        matprop = SEE.get_material_details(self.material)
         self.UB = [] if matprop.get("isSingleCrystal") else None
 
-        # per-type fields
+        # Per-type fields
         if self.type == "DAC":
-            if culetDiameter is None:
+            if self.culetDiameter is None:
                 raise ValueError("culetDiameter must be provided for DAC anvils")
-            self.culetDiameter = numVal(culetDiameter, "mm")
             self.hasBindingRing = False
             self.numberOfToroids = None
             self.innerDiameter = None
-
         else:  # "toroidal"
-            if numberOfToroids is None:
+            if self.numberOfToroids is None:
                 raise ValueError("numberOfToroids must be provided for toroidal anvils")
-            self.numberOfToroids = int(numberOfToroids)
             self.innerDiameter = numVal(6 if self.numberOfToroids == 1 else 3, "mm")
             self.culetDiameter = None
             self.hasBindingRing = True
-
-        # optional
-        self.manufacturer = ""
-        self.comment = ""
 
         self.stringDescriptor = self.buildStringDescriptor()
         self.stlFile = f"{self.stringDescriptor}.stl"
 
     def buildStringDescriptor(self):
-        # pick something that always exists
         if self.type == "DAC":
             d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
             return f"anvil_DAC_{self.material}_culet_{d}".replace(" ","_")
         else:
             return f"anvil_toroidal_{self.material}_ntor_{self.numberOfToroids}".replace(" ","_")
-
-    def to_dict(self):
-        return {
-            "type": self.type,
-            "material": self.material,
-            "culetDiameter": self.culetDiameter.to_dict() if self.culetDiameter else None,
-            "numberOfToroids": self.numberOfToroids,
-            "innerDiameter": self.innerDiameter.to_dict() if self.innerDiameter else None,
-            "hasBindingRing": self.hasBindingRing,
-            "stlFile": self.stlFile,
-            "manufacturer": self.manufacturer,
-            "stringDescriptor": self.stringDescriptor,
-            "comment": self.comment,
-            "UB": self.UB,
-        }
-
-    @classmethod
-    def from_dict(cls, data):
-        t = data["type"]
-        mat = data["material"]
-        cd = data.get("culetDiameter")
-        nt = data.get("numberOfToroids")
-        obj = cls(
-            type=t,
-            material=mat,
-            culetDiameter=cd["value"] if cd else None,
-            numberOfToroids=nt
-        )
-        obj.innerDiameter = numVal.from_dict(data["innerDiameter"]) if data.get("innerDiameter") else obj.innerDiameter
-        obj.hasBindingRing = data.get("hasBindingRing", obj.hasBindingRing)
-        obj.manufacturer = data.get("manufacturer", "")
-        obj.comment = data.get("comment", "")
-        obj.UB = data.get("UB", obj.UB)
-        obj.stringDescriptor = data.get("stringDescriptor", obj.stringDescriptor)
-        obj.stlFile = data.get("stlFile", obj.stlFile)
-        return obj
-
 
 class gasket:
     def __init__(self, model, material, initialIndentThickness=None, initialHoleDiameter=None):

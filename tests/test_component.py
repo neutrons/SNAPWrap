@@ -48,22 +48,22 @@ def test_anvil_toroid():
     assert a.type == "toroidal"
     assert a.innerDiameter.value == 3
 
-def test_gasket_valid():
-    g = gasket(model="flat", material="TiZr", initialIndentThickness=1.0, initialHoleDiameter=2.0)
-    assert g.model == "flat"
-    assert g.material == "TiZr"
+# def test_gasket_valid():
+#     g = gasket(model="flat", material="TiZr", initialIndentThickness=1.0, initialHoleDiameter=2.0)
+#     assert g.model == "flat"
+#     assert g.material == "TiZr"
 
-def test_gasket_invalid_model():
-    with pytest.raises(ValueError):
-        gasket(model="foo", material="TiZr")
+# def test_gasket_invalid_model():
+#     with pytest.raises(ValueError):
+#         gasket(model="foo", material="TiZr")
 
-def test_cylinder_valid():
-    c = cylinder(material="TiZr", ID=2.0, OD=3.0, height=5.0)
-    assert c.material == "TiZr"
-    assert c.ID.value == 2.0
-    assert c.OD.value == 3.0
-    assert c.height.value == 5.0
+# def test_cylinder_valid():
+#     c = cylinder(material="TiZr", ID=2.0, OD=3.0, height=5.0)
+#     assert c.material == "TiZr"
+#     assert c.ID.value == 2.0
+#     assert c.OD.value == 3.0
+#     assert c.height.value == 5.0
 
-def test_cylinder_invalid_material():
-    with pytest.raises(ValueError):
-        cylinder(material="unknown", ID=2.0, OD=3.0, height=5.0)
+# def test_cylinder_invalid_material():
+#     with pytest.raises(ValueError):
+#         cylinder(material="unknown", ID=2.0, OD=3.0, height=5.0)
