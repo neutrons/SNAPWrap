@@ -1,45 +1,101 @@
 # import json
 # import os
 
-import re
+import snapwrap.SEEMeta.utils as SEE
+
+
+class numVal:
+    #class to define a number value with units
+
+    def __init__(self, value, units):
+
+        self.value = value        
+
+        allowedUnits = ['ang','nm','um','mm','cm','m','deg','rad']
+        if units.lower() in allowedUnits:
+            self.units = units.lower()
+        else: 
+            raise ValueError(f"Invalid units specified: {self.type}. options are {allowedUnits}")
+
+        self.source = None # use to track if measured or calculated
+
+    def __str__(self):
+        return f"{self.value} {self.units}"
+
+    def to_dict(self):
+        return {
+            "value": self.value,
+            "units": self.units,
+            "source":self.source
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["value"], data["units"])
 
 class anvil:
     #class to define a generic anvil
 
-    def __init__(self,type,material,culetGeometry,culetDiameter,model):
+    def __init__(self,
+                 type,
+                 material,
+                 numberOfToroids=None,
+                 culetDiameter=None):
 
-        self.units="mm"
-        self.type = type
+        #validate type
+        if self.type not in ["DAC", "toroidal"]:
+            raise ValueError(f"Invalid anvil type: {self.type}. Must be 'DAC' or 'toroidal'.")
+
+        #validate material
+        materialFound = SEE.materialInDatabase(material)
+        if materialFound: 
+            self.material = material
+        else:
+            raise ValueError(f"Material '{material}' not found in database.")
+
+        matprop = SEE.get_material_details(material)
+        if matprop["isSingleCrystal"]:
+            self.UB = [] #only need this attribute for single crystal anvils
+        else:
+            self.UB = None
+
         self.material = material
-        self.culetGeometry = culetGeometry
-        self.culetDiameter = culetDiameter
-        self.validate()
+        self.type = type 
+        if self.type == "DAC":
+            if culetDiameter is None:
+                raise ValueError("culetDiameter must be provided for DAC anvils")
+            self.culetDiameter = numVal(culetDiameter,"mm")
+            self.hasBindingRing = False
 
-        #optional extra info
-        self.model = model
-        
+        if self.type == "toroid":   
+            if numberOfToroids is None:
+                raise ValueError("numberOfToroids must be provided for toroidal anvils")
+            self.numberOfToroids = numberOfToroids
+            if numberOfToroids == 1:
+                self.innerDiameter = numVal(6,"mm")
+            elif numberOfToroids == 2:
+                self.innerDiameter = numVal(3,"mm")
+    
+            self.hasBindingRing = True #default to true, can be overridden
+
+        self.stringDescriptor = self.buildStringDescriptor()
+
+        #optional extra info        
         self.manufacturer = ""
         self.comment = ""
         self.UB = [] #aspirational, but could be included...
-
-        self.stringDescriptor = self.buildStringDescriptor()
-        self.cadFile = f"{self.stringDescriptor}.cad"
-
-    def validate(self):
-
-        assert self.type in ["polycrystalline", "single-crystal"]
-        assert self.culetGeometry in ["single toroid", "double toroid", "flat"]
-        assert type(self.culetDiameter) is float
+        self.stlFile = f"{self.stringDescriptor}.stl"
 
 
     def to_dict(self):
         return {
             "type": self.type,
             "material": self.material,
-            "culetGeometry": self.culetGeometry,
             "culetDiameter": self.culetDiameter,
-            "model": self.model,
-            "cadFile": self.cadFile,
+            "numberOfToroids": self.numberOfToroids,
+            "innerDiameter": getattr(self, 'innerDiameter', None),  # only for toroidal anvils
+            "hasBindingRing": self.hasBindingRing,
+            "stlFile": self.stlFile,
             "manufacturer": self.manufacturer,
             "stringDescriptor": self.stringDescriptor,
             "comment": self.comment,
@@ -74,68 +130,138 @@ class anvil:
         obj.UB = data.get("UB", [])
         return obj
 
+class gasket:
+    #class to define a generic gasket component
+
+    def __init__(self,
+                 model,
+                 material,
+                 initialIndentThickness=None,
+                 initialHoleDiameter=None,
+                 ):
+
+        self.type = "gasket"
+
+        #validate material
+        materialFound = SEE.materialInDatabase(material)
+        if materialFound: 
+            self.material = material
+        else:
+            raise ValueError(f"Material '{material}' not found in database.")
+
+        
+        self.allowedModels = ["flat","toroidal"]
+        if model.lower() in self.allowedModels:
+            self.model = model.lower()
+        else:
+            raise ValueError(f"{model} isn\'t supported, options are:{allowedModels}")
+
+        if initialIndentThickness is not None:
+            self.initialThickness = numVal(initialIndentThickness,"mm")
+            self.initialThicknessDiameter.source = "measured"
+
+        if initialHoleDiameter is not None:
+            self.initialHoleDiameter = numVal(initialHoleDiameter,"mm")
+            self.initialHoleDiameter.source = "measured"
+
+        self.stringDescriptor = self.buildStringDescriptor()
+
+        #optional extra info
+        self.stlFile = f"{self.stringDescriptor}.stl"
+        self.manufacturer=""
+        self.comment=""
+
+        self.validate()
+
+    def to_dict(self):
+        return {
+            "type": "gasket",
+            "model": self.model,
+            "material": self.material,
+            "initialIndentThickness": self.initialIndentThickness,
+            "initialHoleDiameter": self.initialHoleDiameter,
+            "stringDescriptor": self.stringDescriptor,
+            "stlFile": self.stlFile,
+            "manufacturer": self.manufacturer,
+            "comment": self.comment
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        #instantiate class from data dictionary
+        obj = cls(
+            model=data["model"],
+            material=data["material"],
+        )
+        obj.data.get("manufacturer","")
+        obj.stlFile = data.get("stlFile", "")
+        obj.comment = data.get("comment", "")
+        return obj
+
+
+    def buildStringDescriptor(self):
+        return f"gasket_{self.material}_{self.model}".replace(" ","_")
+
 class cylinder:
     #class to define a generic cylinder component
 
     def __init__(self,
                  material,
-                 chemicalFormula,
-                 massDensity,
                  ID,
                  OD,
                  height,
                  axis=[0,1,0],
                  center=[0,0,0]):
 
-        self.units = "mm"
-        self.material = material # a material name that may be different from chemical formula
-        self.chemicalFormula = chemicalFormula
-        self.ID = ID
-        self.OD = OD
-        self.massDensity = massDensity
-        self.height = height
+        # validate material
+        materialFound = SEE.materialInDatabase(material)
+        if materialFound: 
+            self.material = material
+        else:
+            raise ValueError(f"Material '{material}' not found in database.")
+        
+        self.ID = numVal(ID,"mm")
+        self.OD = numVal(OD,"mm")
+        self.height = numVal(height,"mm")
         self.center = center
         self.axis=axis
 
         self.stringDescriptor = self.buildStringDescriptor()
-        self.cadFile = f"{self.stringDescriptor}.cad"
+        self.stlFile = f"{self.stringDescriptor}.stl"
+        self.manufacturer=""
         self.comment=""
 
         self.validate()
-        self.buildMantidDictionaries()
+        self.buildMantidDictionaries() 
 
-    def validateChemicalFormula(self):
-        chemicalFormula= self.chemicalFormula
-        #validate the chemical formula is a string
-        assert type(chemicalFormula) is str
-        #check it is not empty
-        assert len(chemicalFormula) > 0
-        isotopes = chemicalFormula.split("-")
-        for isotope in isotopes:
-            #handle isotopes (contained in parentheses
-            match = re.search(r"\((.*?)\)", isotope)
-            if match:
-                isotope = match.group(1)
-
-            element = isotope.translate(str.maketrans('','','0123456789'))  # remove numbers
-            #check what remains is a valid element symbol
-            allTheElements = [
-                "H", "D", "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
-                "Na", "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca",
-                "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-                "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr",
-                "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-                "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-                "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-                "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
-                "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-                "Pa", "U",  "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm",
-                "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds",
-                "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"
-            ]
-            assert element.lower() in [element.lower() for element in allTheElements], \
-                f"Invalid element symbol for element {element} in chemical formula: {chemicalFormula}. " \
-
+    def to_dict(self):
+        return {
+            "type": "cylinder",
+            "material": self.material,
+            "ID": self.ID,
+            "OD": self.OD,
+            "height": self.height,
+            "axis": self.axis,
+            "center": self.center,
+            "stringDescriptor": self.stringDescriptor,
+            "cadFile": self.stlFile,
+            "comment": self.comment
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        #instantiate class from data dictionary
+        obj = cls(
+            material=data["material"],
+            ID=data["ID"],
+            OD=data["OD"],
+            height=data["height"],
+            axis=data.get("axis", [0, 1, 0]),
+            center=data.get("center", [0, 0, 0])
+        )
+        obj.cadFile = data.get("cadFile", "")
+        obj.comment = data.get("comment", "")
+        return obj
 
     def validate(self):
 
@@ -147,18 +273,12 @@ class cylinder:
         assert self.ID<=self.OD, "ID must be less than or equal to OD"
         assert type(self.OD) is float
         assert self.OD > 0, "OD must be greater than zero"
-        assert type(self.massDensity) is float
-        assert self.massDensity > 0, "massDensity must be greater than zero"
-        self.validateChemicalFormula()
 
         for vector in [self.axis, self.center]:
             assert type(vector) is list, f"{vector} must be a list"
             assert len(vector) == 3, f"{vector} must be a 3-element list"
             for element in vector:
                 assert type(element) is float, f"All elements of {vector} must be floats"
-
-        #explicit control of allowed materials
-        assert self.material in ["Al","BeCu","TiAlV","TiZr","SS304","SS316","V","VNb","NiCrAl"]
 
     def buildMantidDictionaries(self):
 
@@ -180,4 +300,4 @@ class cylinder:
 
 
     def buildStringDescriptor(self):
-        return f"cyl_{self.material}_{self.ID}mm_{self.height}mm".replace(" ","_")
+        return f"cyl_{self.material}_{self.ID.value:.1}{self.ID.units}_{self.height.value:.1}{self.ID.units}".replace(" ","_")
