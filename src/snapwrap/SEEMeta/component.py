@@ -6,6 +6,58 @@ import re
 
 import snapwrap.SEEMeta.utils as SEE
 
+# --- helper placed near top-level of module ---
+
+def _validate_chemical_formula(formula: str) -> bool:
+    """
+    Conservative validator for Mantid-style chemical formulas.
+
+    Accepted forms:
+    - Hyphen-separated species, e.g. "(Li7)2-C-H4-N-Cl6"
+    - Concatenated element tokens like "H2O" (parsed by element symbols)
+    Species may be:
+      - an isotope: (ElementSymbolMassNumber) optionally followed by a multiplicity (int or float)
+        e.g. (Li7)2
+      - an element symbol: ElementSymbol optionally followed by multiplicity (int or float)
+        e.g. Cl6 or C or H4.5
+
+    Returns True if the formula matches these conservative rules, False otherwise.
+    """
+    if not isinstance(formula, str) or not formula:
+        return False
+
+    # hyphen-separated full-match regex:
+    # species = (isotope_group | element_symbol) [count]
+    # isotope_group: \( [A-Z][a-z]? \d+ \)
+    # element_symbol: [A-Z][a-z]?
+    # count: integer or float (e.g. 2 or 2.0 or 2.5)
+    species_re = r"(?:\([A-Z][a-z]?\d+\)|[A-Z][a-z]?)(?:\d+(?:\.\d+)?)?"
+    hyphenated_re = re.compile(rf"^{species_re}(?:-{species_re})*$")
+    if hyphenated_re.match(formula):
+        return True
+
+    # if not hyphenated, try to parse concatenated tokens like H2O, C6H12O6, etc.
+    idx = 0
+    L = len(formula)
+    token_re = re.compile(r"^\(?([A-Z][a-z]?\d+)\)?(?:\d+(?:\.\d+)?)?")
+    # simpler parser: iterate consuming either isotope group or element symbol + optional count
+    while idx < L:
+        # try isotope group at current index
+        if formula[idx] == "(":
+            m = re.match(r"^\(([A-Z][a-z]?\d+)\)(\d+(?:\.\d+)?)?", formula[idx:])
+            if not m:
+                return False
+            idx += m.end()
+            continue
+        # try element symbol + optional count
+        m = re.match(r"^[A-Z][a-z]?(?:\d+(?:\.\d+)?)?", formula[idx:])
+        if not m:
+            return False
+        idx += m.end()
+
+    # if we consumed all characters it's valid
+    return idx == L
+
 # ---------- Value-with-units ----------
 @dataclass(frozen=True, slots=True)
 class numVal:
@@ -99,7 +151,7 @@ class Component:
     serialNumber: Optional[str] = None
     location: Optional[str] = None
     # Optional human-readable description
-    comment: Optiona[str] = None
+    comment: Optional[str] = None
     stlFile: Optional[str] = None
 
     # ---- Serialization ----
@@ -144,6 +196,48 @@ class Component:
                 setattr(obj, k, v)
         return obj
 
+    def setMantidMaterial(self, material_name: str, required: Optional[list] = None) -> Dict[str, Any]:
+        """
+        Fetch a subset of material properties from the SEE DB and return a dict
+        mapped to keys suitable for creating a Mantid material.
+
+        Validates material exists and required fields are present. Validates
+        ChemicalFormula syntax using _validate_chemical_formula.
+        """
+        if not SEE.materialInDatabase(material_name):
+            raise ValueError(f"Material '{material_name}' not found in database.")
+
+        details = SEE.get_material_details(material_name)
+        if not isinstance(details, dict):
+            raise ValueError(f"Unexpected material details type for '{material_name}'")
+
+        # mantid-friendly keys -> SEE DB keys
+        mapping = {
+            "ChemicalFormula": "chemical_formula",
+            "MassDensity": "mass_density_g_cm3",
+        }
+
+        out: Dict[str, Any] = {}
+        for out_key, db_key in mapping.items():
+            val = details.get(db_key)
+            if val is not None:
+                out[out_key] = val
+
+        # Validate chemical formula syntax if present
+        formula = out.get("ChemicalFormula")
+        if formula is not None and not _validate_chemical_formula(formula):
+            raise ValueError(f"Material '{material_name}' has invalid ChemicalFormula syntax: '{formula}'")
+
+        # default required fields
+        if required is None:
+            required = ["ChemicalFormula", "MassDensity"]
+        missing_required = [k for k in required if out.get(k) in (None, "", [])]
+
+        if missing_required:
+            raise ValueError(f"Material '{material_name}' missing required properties: {missing_required}")
+
+        return out
+
 @register
 @dataclass(slots=True, kw_only=True)
 class DACAnvil(Component):
@@ -167,108 +261,5 @@ class DACAnvil(Component):
     def buildStringDescriptor(self):
         d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
         return f"anvil_DAC_{self.material}_culet_{d}".replace(" ","_")
-
-    def setMantidMaterial(self, material_name: str, required: Optional[list] = None) -> Dict[str, Any]:
-        """
-        Fetch a subset of material properties from the SEE DB and return a dict
-        mapped to keys suitable for creating a Mantid material.
-        - Validates material exists.
-        - Converts isSingleCrystal to bool.
-        - Ensures required keys (default: formula and density) are present.
-
-        Returns dict with keys: 'formula', 'density', 'composition',
-        'is_single_crystal', 'grade', 'source'.
-        Raises ValueError on missing material or missing required properties.
-        """
-        try:
-            if not SEE.materialInDatabase(material_name):
-                raise ValueError(f"Material '{material_name}' not found in database.")
-
-            details = SEE.get_material_details(material_name)
-            if not isinstance(details, dict):
-                raise ValueError(f"Unexpected material details type for '{material_name}'")
-
-            # mantid-friendly keys -> SEE DB keys
-            mapping = {
-                "ChemicalFormula": "chemical_formula",
-                "MassDensity": "mass_density_g_cm3",
-            }
-
-            out: Dict[str, Any] = {}
-            for out_key, db_key in mapping.items():
-                val = details.get(db_key)
-                if val is not None:
-                    out[out_key] = val
-
-            # Validate chemical formula syntax if present
-            formula = out.get("ChemicalFormula")
-            if formula is not None and not _validate_chemical_formula(formula):
-                raise ValueError(f"Material '{material_name}' has invalid ChemicalFormula syntax: '{formula}'")
-
-            # default required fields
-            if required is None:
-                required = ["ChemicalFormula", "MassDensity"]
-            missing_required = [k for k in required if out.get(k) in (None, "", [])]
-
-            if missing_required:
-                raise ValueError(f"Material '{material_name}' missing required properties: {missing_required}")
-
-            return out
-
-        except Exception as e:
-            # keep message concise for callers; re-raise to allow caller handling
-            raise
-
-# --- helper placed near top-level of module ---
-
-def _validate_chemical_formula(formula: str) -> bool:
-    """
-    Conservative validator for Mantid-style chemical formulas.
-
-    Accepted forms:
-    - Hyphen-separated species, e.g. "(Li7)2-C-H4-N-Cl6"
-    - Concatenated element tokens like "H2O" (parsed by element symbols)
-    Species may be:
-      - an isotope: (ElementSymbolMassNumber) optionally followed by a multiplicity (int or float)
-        e.g. (Li7)2
-      - an element symbol: ElementSymbol optionally followed by multiplicity (int or float)
-        e.g. Cl6 or C or H4.5
-
-    Returns True if the formula matches these conservative rules, False otherwise.
-    """
-    if not isinstance(formula, str) or not formula:
-        return False
-
-    # hyphen-separated full-match regex:
-    # species = (isotope_group | element_symbol) [count]
-    # isotope_group: \( [A-Z][a-z]? \d+ \)
-    # element_symbol: [A-Z][a-z]?
-    # count: integer or float (e.g. 2 or 2.0 or 2.5)
-    species_re = r"(?:\([A-Z][a-z]?\d+\)|[A-Z][a-z]?)(?:\d+(?:\.\d+)?)?"
-    hyphenated_re = re.compile(rf"^{species_re}(?:-{species_re})*$")
-    if hyphenated_re.match(formula):
-        return True
-
-    # if not hyphenated, try to parse concatenated tokens like H2O, C6H12O6, etc.
-    idx = 0
-    L = len(formula)
-    token_re = re.compile(r"^\(?([A-Z][a-z]?\d+)\)?(?:\d+(?:\.\d+)?)?")
-    # simpler parser: iterate consuming either isotope group or element symbol + optional count
-    while idx < L:
-        # try isotope group at current index
-        if formula[idx] == "(":
-            m = re.match(r"^\(([A-Z][a-z]?\d+)\)(\d+(?:\.\d+)?)?", formula[idx:])
-            if not m:
-                return False
-            idx += m.end()
-            continue
-        # try element symbol + optional count
-        m = re.match(r"^[A-Z][a-z]?(?:\d+(?:\.\d+)?)?", formula[idx:])
-        if not m:
-            return False
-        idx += m.end()
-
-    # if we consumed all characters it's valid
-    return idx == L
 
 
