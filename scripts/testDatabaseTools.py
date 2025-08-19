@@ -1,7 +1,7 @@
 from snapwrap.SEEMeta import utils
 
 #check if a material exists in the database
-utils.materialInDatabase("tizr")
+utils.materialInDatabase("TiZr")
 
 #add a new column to the table
 utils.add_column_to_materials_table("isSingleCrystal", column_type="BOOLEAN", default_value=False)
