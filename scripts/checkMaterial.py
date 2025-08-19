@@ -7,7 +7,7 @@ from snapwrap.SEEMeta import utils
 #check that a material exists
 utils.materialInDatabase("TiZr")
 # get details
-for material in ["TiZr", "singleCrystalDiamond"]:
+for material in ["TiZr", "singleCrystalDiamond",'ZTA']:
     if utils.materialInDatabase(material):
         print(f"{material} exists in the database.")
     else:

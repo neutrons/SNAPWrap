@@ -1,5 +1,5 @@
 import pytest
-from snapwrap.SEEMeta.component import numVal, DACAnvil#, gasket, cylinder
+from snapwrap.SEEMeta.component import numVal, DACAnvil, toroidAnvil
 
 import pytest
 from snapwrap.SEEMeta import component as component_mod
@@ -8,7 +8,7 @@ from snapwrap.SEEMeta import component as component_mod
 class DummySEE:
     @staticmethod
     def materialInDatabase(name):
-        return name in ["testCrystal", "singleCrystalDiamond"]
+        return name in ["testCrystal", "singleCrystalDiamond","ZTA"]
 
     @staticmethod
     def get_material_details(name):
@@ -23,6 +23,12 @@ class DummySEE:
                 "chemical_formula": "C",
                 "mass_density_g_cm3": 3.51,
                 "isSingleCrystal": True,
+            }
+        if name == "ZTA":
+            return {
+                "chemical_formula": "Al0.33-O0.61-Zr0.05",
+                "mass_density_g_cm3": 4.37,
+                "isSingleCrystal": False,
             }
         return {}
 
@@ -56,10 +62,10 @@ def test_setMantidMaterial_with_valid_formula():
     assert mantid["ChemicalFormula"] == "(Li7)2-C-H4-N-Cl6"
     assert mantid["MassDensity"] == 5.0
 
-# def test_anvil_toroid():
-#     a = DACAnvil(type="toroidal", material="steel", numberOfToroids=2)
-#     assert a.type == "toroidal"
-#     assert a.innerDiameter.value == 3
+def test_anvil_toroid():
+    a = toroidAnvil(material="ZTA", numberOfToroids=1)
+    
+
 
 # def test_gasket_valid():
 #     g = gasket(model="flat", material="TiZr", initialIndentThickness=1.0, initialHoleDiameter=2.0)

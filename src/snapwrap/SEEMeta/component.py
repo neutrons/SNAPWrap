@@ -260,6 +260,37 @@ class DACAnvil(Component):
 
     def buildStringDescriptor(self):
         d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
-        return f"anvil_DAC_{self.material}_culet_{d}".replace(" ","_")
+        return f"anvil_DAC_culet_{d}".replace(" ","_")
 
+@register
+@dataclass(slots=True, kw_only=True)
+class toroidAnvil(Component):
+    """Toroidal anvil: requires material and numberOfToroids.
 
+    - material: required material name (no default)
+    - numberOfToroids: required int (no default)
+    - stringDescriptor is built in __post_init__
+    """
+    kind: ClassVar[str] = "anvil.toroidal"
+
+    material: str
+    numberOfToroids: int
+    stringDescriptor: str = field(init=False)
+
+    def __post_init__(self):
+        # validate material exists and fetch properties
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+
+        # build derived descriptors
+        self.stringDescriptor = self.buildStringDescriptor()
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+    def buildStringDescriptor(self) -> str:
+        if self.numberOfToroids == 1:
+            toroid_str = "1_toroid"
+        else:
+            toroid_str = f"{self.numberOfToroids}_toroids"
+        return (
+            f"anvil_{toroid_str}_{self.material}"
+        ).replace(" ", "_")
