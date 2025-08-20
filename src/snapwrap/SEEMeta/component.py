@@ -113,7 +113,8 @@ def _is_dataclass_type(tp: Any) -> Optional[Type]:
 
 def _coerce_init_kwargs(kls: Type, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Filter unknown keys and coerce nested dataclass fields using .from_dict if present."""
-    allowed = {f.name: f for f in fields(kls)}
+    # Only include fields that are part of the dataclass __init__ (f.init == True)
+    allowed = {f.name: f for f in fields(kls) if f.init}
     kwargs: Dict[str, Any] = {}
     # get_type_hints handles Optional/Union
     try:
@@ -261,6 +262,13 @@ class DACAnvil(Component):
     def buildStringDescriptor(self):
         d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
         return f"anvil_DAC_culet_{d}".replace(" ","_")
+    
+    def setGasket(self,material:str,initialIndentThickness:numVal,initialHoleDiameter:numVal)->Dict[str,Any]:
+        return {
+            "material": material,
+            "initialIndentThickness": initialIndentThickness.to_dict(),
+            "initialHoleDiameter": initialHoleDiameter.to_dict()
+        }
 
 @register
 @dataclass(slots=True, kw_only=True)
@@ -272,7 +280,6 @@ class toroidAnvil(Component):
     - stringDescriptor is built in __post_init__
     """
     kind: ClassVar[str] = "anvil.toroidal"
-
     material: str
     numberOfToroids: int
     stringDescriptor: str = field(init=False)
@@ -294,3 +301,164 @@ class toroidAnvil(Component):
         return (
             f"anvil_{toroid_str}_{self.material}"
         ).replace(" ", "_")
+    
+@register
+@dataclass(slots=True, kw_only=True)
+class cylinder(Component):
+    """cylinder: requires material, innerDiameter, outerDiameter and height.
+
+    - material: required material name (no default)
+    - numberOfToroids: height: required float (no default)
+    - innerDiameter: required numVal (no default)
+    - outerDiameter: required numVal (no default)
+    - stringDescriptor is built in __post_init__
+    """
+    kind: ClassVar[str] = "cylinder"
+    innerDiameter: numVal
+    outerDiameter: numVal
+    height: numVal
+    material: str
+    stringDescriptor: str = field(init=False)
+
+    def __post_init__(self):
+        # validate material exists and fetch properties
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+
+        if self.outerDiameter.value <= self.innerDiameter.value:
+            raise ValueError("Cylinder: outerDiameter must be greater than innerDiameter")
+        
+        if self.innerDiameter.units != self.outerDiameter.units or \
+           self.innerDiameter.units != self.height.units:
+            raise ValueError("Cylinder: all numVal fields must have the same units")
+
+        # build derived descriptors
+        self.stringDescriptor = self.buildStringDescriptor()
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+    def buildStringDescriptor(self) -> str:
+        return (
+            f"cylinder_ID_{self.innerDiameter.value:.3f}_{self.material}"
+        ).replace(" ", "_")
+
+@register
+@dataclass(slots=True, kw_only=True)
+class Gasket(Component):
+    """Abstract base for gasket variants."""
+    kind: ClassVar[str] = "gasket"
+    material: str
+    stringDescriptor: str = field(init=False)
+
+    def __post_init__(self):
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+        # derived descriptor default (subclasses may override)
+        self.stringDescriptor = f"gasket_{self.material}"
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+@register
+@dataclass(slots=True, kw_only=True)
+class DACGasket(Gasket):
+    """Gasket used with DAC anvils. indentThickness and holeDiameter required."""
+    kind: ClassVar[str] = "gasket.dac"
+    indentThickness: numVal
+    holeDiameter: numVal
+
+    def __post_init__(self):
+        # call base implementation directly to avoid zero-arg super() issues
+        Gasket.__post_init__(self)
+        # basic sanity checks
+        if self.holeDiameter.units != self.indentThickness.units:
+            raise ValueError("DACGasket: indentThickness and holeDiameter must share units")
+        
+        # descriptive string
+        d = f"{self.indentThickness.value:.3f}{self.indentThickness.units}"
+        h = f"{self.holeDiameter.value:.3f}{self.holeDiameter.units}"
+        self.stringDescriptor = f"gasket_DAC_{self.material}_indent_{d}_hole_{h}".replace(" ", "_")
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+@register
+@dataclass(slots=True, kw_only=True)
+class ToroidGasket(Gasket):
+    """Gasket for toroidal anvils. material default may be provided by factory."""
+    kind: ClassVar[str] = "gasket.toroidal"
+    numberOfToroids: int = 1
+    encapsulating: bool = False  # 
+
+    def __post_init__(self):
+        # call base implementation directly to avoid zero-arg super() issues
+        Gasket.__post_init__(self)
+        if self.numberOfToroids == 1:
+            self.encapsulating = True #most common case
+        elif self.numberOfToroids >= 2:
+            self.encapsulating = False #most common case    
+        elif self.numberOfToroids < 1:
+            raise ValueError("ToroidGasket: numberOfToroids must be at least 1")
+                
+        self.stringDescriptor = f"gasket_toroid_{self.material}".replace(" ", "_")
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+def makeDACGasket(anvil: "DACAnvil", *, indentThickness: numVal, holeDiameter: numVal, material: str = "W") -> DACGasket:
+    """
+    Build a DACGasket appropriate for the provided DACAnvil.
+    indentThickness and holeDiameter must be provided as numVal.
+    Validates holeDiameter < anvil.culetDiameter (units must match).
+    """
+    if not isinstance(anvil, DACAnvil):
+        raise TypeError("anvil must be a DACAnvil for DAC gasket creation")
+    if not isinstance(indentThickness, numVal) or not isinstance(holeDiameter, numVal):
+        raise TypeError("indentThickness and holeDiameter must be numVal instances")
+
+    # anvil must have a culetDiameter to compare against
+    if getattr(anvil, "culetDiameter", None) is None:
+        raise ValueError("DACAnvil has no culetDiameter to validate against")
+
+    # units must match for a simple comparison
+    if anvil.culetDiameter.units != holeDiameter.units:
+        raise ValueError(
+            "Unit mismatch between anvil culetDiameter (%s) and gasket holeDiameter (%s)"
+            % (anvil.culetDiameter.units, holeDiameter.units)
+        )
+
+    # numeric comparison
+    if not (holeDiameter.value < anvil.culetDiameter.value):
+        raise ValueError(
+            "DACGasket holeDiameter must be smaller than anvil culetDiameter "
+            f"({holeDiameter.value}{holeDiameter.units} >= {anvil.culetDiameter.value}{anvil.culetDiameter.units})"
+        )
+
+    g = DACGasket(material=material, indentThickness=indentThickness, holeDiameter=holeDiameter)
+    # tie to anvil for descriptor context
+    g.stringDescriptor = f"{g.stringDescriptor}_for_{anvil.stringDescriptor}"
+    g.stlFile = f"{g.stringDescriptor}.stl"
+    return g
+
+def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> ToroidGasket:
+    """
+    Build a ToroidGasket appropriate for the provided toroidAnvil.
+    material defaults to 'TiZr' if not provided.
+    """
+    if not isinstance(anvil, toroidAnvil):
+        raise TypeError("anvil must be a toroidAnvil for toroidal gasket creation")
+    g = ToroidGasket(material=material, 
+                     numberOfToroids=anvil.numberOfToroids
+            )
+    return g
+
+def make_gasket_for_anvil(anvil: Component, **kwargs) -> Gasket:
+    """
+    Factory: given an anvil instance, create an appropriate gasket.
+    - For DACAnvil: requires kwargs indentThickness and holeDiameter (numVal); optional material
+    - For toroidAnvil: optional material (defaults to 'TiZr')
+    """
+    # import local names to satisfy type checks at runtime
+    if isinstance(anvil, DACAnvil):
+        try:
+            indent = kwargs["indentThickness"]
+            hole = kwargs["holeDiameter"]
+        except KeyError as e:
+            raise ValueError(f"Missing required argument for DAC gasket: {e.args[0]}")
+        return gasket_from_dac_anvil(anvil, indentThickness=indent, holeDiameter=hole, material=kwargs.get("material", "W"))
+    if isinstance(anvil, toroidAnvil):
+        return gasket_from_toroid_anvil(anvil, material=kwargs.get("material", "TiZr"))
+    raise ValueError("Unsupported anvil type for gasket creation")
