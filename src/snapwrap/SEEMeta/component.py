@@ -1,8 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict, fields, field, is_dataclass
-from typing import Any, ClassVar, Dict, Mapping, Optional, Tuple, Type, get_args, get_origin
+from typing import Any, ClassVar, Dict, Mapping, Optional, Tuple, Type, get_args, get_origin, List
 import json
-import re
+import re 
 
 import snapwrap.SEEMeta.utils as SEE
 
@@ -245,7 +245,7 @@ class DACAnvil(Component):
     kind: ClassVar[str] = "anvil.dac"
     culetDiameter: numVal  # required, now keyword-only
     material: str = "singleCrystalDiamond"
-    stringDescriptor: str = field(init=False)
+    stringDescriptor: Optional[str] = field(init=False, default=None)
     UB: Optional[list] = field(default=None)
     Notches: Optional[list] = field(default=None)
 
@@ -282,7 +282,7 @@ class toroidAnvil(Component):
     kind: ClassVar[str] = "anvil.toroidal"
     material: str
     numberOfToroids: int
-    stringDescriptor: str = field(init=False)
+    stringDescriptor: Optional[str] = field(init=False, default=None)
 
     def __post_init__(self):
         # validate material exists and fetch properties
@@ -318,7 +318,7 @@ class cylinder(Component):
     outerDiameter: numVal
     height: numVal
     material: str
-    stringDescriptor: str = field(init=False)
+    stringDescriptor: Optional[str] = field(init=False, default=None)
 
     def __post_init__(self):
         # validate material exists and fetch properties
@@ -347,7 +347,7 @@ class Gasket(Component):
     """Abstract base for gasket variants."""
     kind: ClassVar[str] = "gasket"
     material: str
-    stringDescriptor: str = field(init=False)
+    stringDescriptor: Optional[str] = field(init=False, default=None)
 
     def __post_init__(self):
         if not SEE.materialInDatabase(self.material):
@@ -379,7 +379,7 @@ class DACGasket(Gasket):
 
 @register
 @dataclass(slots=True, kw_only=True)
-class ToroidGasket(Gasket):
+class toroidGasket(Gasket):
     """Gasket for toroidal anvils. material default may be provided by factory."""
     kind: ClassVar[str] = "gasket.toroidal"
     numberOfToroids: int = 1
@@ -440,25 +440,62 @@ def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> ToroidG
     """
     if not isinstance(anvil, toroidAnvil):
         raise TypeError("anvil must be a toroidAnvil for toroidal gasket creation")
-    g = ToroidGasket(material=material, 
+    g = toroidGasket(material=material, 
                      numberOfToroids=anvil.numberOfToroids
             )
     return g
 
-def make_gasket_for_anvil(anvil: Component, **kwargs) -> Gasket:
-    """
-    Factory: given an anvil instance, create an appropriate gasket.
-    - For DACAnvil: requires kwargs indentThickness and holeDiameter (numVal); optional material
-    - For toroidAnvil: optional material (defaults to 'TiZr')
-    """
-    # import local names to satisfy type checks at runtime
-    if isinstance(anvil, DACAnvil):
-        try:
-            indent = kwargs["indentThickness"]
-            hole = kwargs["holeDiameter"]
-        except KeyError as e:
-            raise ValueError(f"Missing required argument for DAC gasket: {e.args[0]}")
-        return gasket_from_dac_anvil(anvil, indentThickness=indent, holeDiameter=hole, material=kwargs.get("material", "W"))
-    if isinstance(anvil, toroidAnvil):
-        return gasket_from_toroid_anvil(anvil, material=kwargs.get("material", "TiZr"))
-    raise ValueError("Unsupported anvil type for gasket creation")
+
+# ---------- Auxiliary equipment components ----------
+
+@register
+@dataclass(slots=True, kw_only=True)
+class auxiliaryEquipment(Component):
+    """Base class for auxiliary equipment that may carry PV/log entries."""
+    kind: ClassVar[str] = "auxiliary.equipment"
+    # pvLogs will hold PV/log objects (defined elsewhere) — default to empty list
+    pvLogs: List[Any] = field(default_factory=list)
+    stringDescriptor: str = field(init=False)
+
+    def __post_init__(self):
+        # ensure pvLogs is a list (caller may pass other iterable)
+        if self.pvLogs is None:
+            self.pvLogs = []
+        else:
+            # coerce to list if necessary
+            if not isinstance(self.pvLogs, list):
+                try:
+                    self.pvLogs = list(self.pvLogs)
+                except Exception:
+                    # keep original - validation of elements left to PV/log type later
+                    pass
+        # derived descriptor (include model/serial if available)
+        model = getattr(self, "model", None) or "unknown"
+        sn = getattr(self, "serialNumber", None)
+        self.stringDescriptor = f"aux_{model}" + (f"_{sn}" if sn else "")
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+@register
+@dataclass(slots=True, kw_only=True)
+class pressureController(auxiliaryEquipment):
+    """Concrete auxiliary: pressure controller (pvLogs may record pressure/time)."""
+    kind: ClassVar[str] = "aux.equipment.pressure"
+    # If needed, optional current setpoint and units for convenience
+    # setpoint: Optional[float] = None
+    # units: Optional[str] = None
+
+    def __post_init__(self):
+        # call base __post_init__ directly to avoid super() binding error in this dataclass setup
+        auxiliaryEquipment.__post_init__(self)
+        # basic normalization/validation can be added later
+
+@register
+@dataclass(slots=True, kw_only=True)
+class temperatureController(auxiliaryEquipment):
+    """Concrete auxiliary: temperature controller (pvLogs may record temp/time)."""
+    kind: ClassVar[str] = "aux.equipment.temperature"
+
+    def __post_init__(self):
+        # call base __post_init__ directly to avoid super() binding error in this dataclass setup
+        auxiliaryEquipment.__post_init__(self)
+        # basic normalization/validation can be added later
