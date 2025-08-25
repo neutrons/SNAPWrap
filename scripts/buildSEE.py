@@ -121,9 +121,58 @@ for cell in [PE_ST_VX5, PE_ST_VX3, PE_DT_VX5, PE_DT_VX3]:
     utils.SEEMetaSaver(payload,json)
 
 ###################################################################
-# To do cylinder templates:
+# cylinder templates:
 ###################################################################
 
+#BeCu H2 gas cell
+cyl = cylinder(material="BeCu",innerDiameter=numVal(7.0, "mm"), 
+                  outerDiameter=numVal(23.0, "mm"), 
+                  height=numVal(30, "mm")
+                  )
+
+cell1 = assembly.CylinderCell(components=[cyl],
+                             comment="CuBe H2 gas cell",
+                             )
+
+#Auto frettaged Al cell
+cyl = cylinder(material="Al",innerDiameter=numVal(6.0, "mm"), 
+                  outerDiameter=numVal(18.0, "mm"), 
+                  height=numVal(30, "mm"))
+
+cell2 = assembly.CylinderCell(components=[cyl],
+                             comment="Small auto frettaged Al cell",
+                             )
+# 2.5mm BeCu clamp
+cyl = cylinder(material="BeCu",innerDiameter=numVal(2.5, "mm"), 
+                  outerDiameter=numVal(8.8, "mm"), 
+                  height=numVal(30, "mm"))
+
+cell3 = assembly.CylinderCell(components=[cyl],
+                             comment="2.5mm BeCu clamp",
+                             )
+
+#pre-stressed clamp
+cly1 = cylinder(material="BeCu",innerDiameter=numVal(4.7, "mm"), 
+                  outerDiameter=numVal(15.3, "mm"), 
+                  height=numVal(30, "mm"))
+cly2 = cylinder(material="Al",innerDiameter=numVal(15.3, "mm"), 
+                  outerDiameter=numVal(32.1, "mm"), 
+                  height=numVal(30, "mm"))                               
+
+cell4 = assembly.CylinderCell(components=[cly1,cly2],
+                             comment="Pre-stressed clamp",
+                             )
+
+fnames = ["gasCell_CuBe_H2.json","gasCell_Small_autoFrettaged_Al.json",
+          "clamp_CuBe_2.5mm.json","clamp_pre-stressed.json"] 
+
+for i,cell in enumerate([cell1,cell2,cell3,cell4]):
+
+    payload = cell.to_dict()
+    #save json
+    json = f"{jsonDir}/{fnames[i]}"
+
+    utils.SEEMetaSaver(payload,json)    
 ###################################################################
 # van can:
 ###################################################################
@@ -147,7 +196,7 @@ utils.SEEMetaSaver(payload,json)
 # empty assembly:
 ###################################################################
 
-empty = assembly.empty()
+empty = assembly.Empty()
 empty.comment = "Empty assembly"
 
 # serialize and round-trip
