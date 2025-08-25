@@ -4,10 +4,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from snapwrap.SEEMeta import utils
 
-#check that a material exists
-utils.materialInDatabase("TiZr")
+
 # get details
-for material in ["TiZr", "singleCrystalDiamond",'ZTA']:
+for material in ["Al", "BeCu"]:
     if utils.materialInDatabase(material):
         print(f"{material} exists in the database.")
     else:
