@@ -60,10 +60,11 @@ class Assembly:
     version: ClassVar[int] = 1
 
     components: List[Component] = field(default_factory=list)
-    comment: Optional[str] = None
-    model: Optional[str] = None
-    serialNumber: Optional[str] = None
+    comment: Optional[str] = "None"
+    model: Optional[str] = "None"
+    serialNumber: Optional[str] = "None"
     orientation: List[float] = field(default_factory=lambda: [0.0, 1.0, 0.0])
+    origin: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     stringDescriptor: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -227,3 +228,8 @@ class CylinderCell(Assembly):
                     f"{i}: innerDiameter ({cur.innerDiameter.value}{cur.innerDiameter.units}) "
                     f"!= previous outerDiameter ({prev.outerDiameter.value}{prev.outerDiameter.units})"
                 )
+            
+@register_assembly
+@dataclass(slots=True, kw_only=True)
+class empty(Assembly):
+    kind: ClassVar[str] = "assembly.empty"
