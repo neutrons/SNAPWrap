@@ -880,7 +880,7 @@ def reduce(runNumber,
                verbose=False,
                reduceData=True,
                keepUnfocussed=False,
-               lambdaCrop=False, #no longer needed TODO: delete
+               noNorm=False,
                emptyTrash=True, #remove temporary mantid workspaces at the end of reduction
             #    export=['gsas','xye','ascii'], #file formats to export to. If empty, no export 
                cisMode=False,
@@ -924,30 +924,27 @@ def reduce(runNumber,
 
     #process continue flags
     continueFlags = ContinueWarning.Type.UNSET #by default do not continue
-    artificialNormalizationIngredients = None
+
+    if continueNoVan and not noNorm:
+        artificialNormalizationIngredients = ArtificialNormalizationIngredients(
+        peakWindowClippingSize = Config["constants.ArtificialNormalization.peakWindowClippingSize"],
+        smoothingParameter=snapwrapGlob.AN_smoothingParameter,
+        decreaseParameter=snapwrapGlob.AN_decreaseParameter,
+        lss=snapwrapGlob.AN_lss
+        )
+    else:
+        artificialNormalizationIngredients = None
+
 
     if continueNoDifcal and not continueNoVan:
         continueFlags = ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
 
-    elif continueNoVan and not continueNoVan:
-        artificialNormalizationIngredients = ArtificialNormalizationIngredients(
-        peakWindowClippingSize = Config["constants.ArtificialNormalization.peakWindowClippingSize"],
-        smoothingParameter=snapwrapGlob.AN_smoothingParameter,
-        decreaseParameter=snapwrapGlob.AN_decreaseParameter,
-        lss=snapwrapGlob.AN_lss
-        )
+    elif (continueNoVan or noNorm) and not continueNoDifcal:
         continueFlags = ContinueWarning.Type.MISSING_NORMALIZATION
     
-    elif continueNoVan and continueNoDifcal:
-        artificialNormalizationIngredients = ArtificialNormalizationIngredients(
-        peakWindowClippingSize = Config["constants.ArtificialNormalization.peakWindowClippingSize"],
-        smoothingParameter=snapwrapGlob.AN_smoothingParameter,
-        decreaseParameter=snapwrapGlob.AN_decreaseParameter,
-        lss=snapwrapGlob.AN_lss
-        )
+    elif (continueNoVan or noNorm) and continueNoDifcal:
         continueFlags = ContinueWarning.Type.MISSING_NORMALIZATION
         continueFlags |= ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
-    
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # process input arguments
