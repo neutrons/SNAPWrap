@@ -147,13 +147,13 @@ class Component:
     # Schema version for this specific kind
     version: ClassVar[int] = 1
 
-    manufacturer: Optional[str] = None
-    model: Optional[str] = None
-    serialNumber: Optional[str] = None
-    location: Optional[str] = None
+    manufacturer: Optional[str] = "None"
+    model: Optional[str] = "None"
+    serialNumber: Optional[str] = "None"
+    location: Optional[str] = "None"
     # Optional human-readable description
-    comment: Optional[str] = None
-    stlFile: Optional[str] = None
+    comment: Optional[str] = "None"
+    stlFile: Optional[str] = "None"
 
     # ---- Serialization ----
     def to_dict(self) -> Dict[str, Any]:
@@ -472,7 +472,7 @@ class auxiliaryEquipment(Component):
         # derived descriptor (include model/serial if available)
         model = getattr(self, "model", None) or "unknown"
         sn = getattr(self, "serialNumber", None)
-        self.stringDescriptor = f"aux_{model}" + (f"_{sn}" if sn else "")
+        self.stringDescriptor = f"aux_{self.manufacturer}" + (f"_{sn}" if sn else "")
         self.stlFile = f"{self.stringDescriptor}.stl"
 
 @register
