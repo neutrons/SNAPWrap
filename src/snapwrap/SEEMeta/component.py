@@ -1,183 +1,501 @@
-# import json
-# import os
+from __future__ import annotations
+from dataclasses import dataclass, asdict, fields, field, is_dataclass
+from typing import Any, ClassVar, Dict, Mapping, Optional, Tuple, Type, get_args, get_origin, List
+import json
+import re 
 
-import re
+import snapwrap.SEEMeta.utils as SEE
 
-class anvil:
-    #class to define a generic anvil
+# --- helper placed near top-level of module ---
 
-    def __init__(self,type,material,culetGeometry,culetDiameter,model):
+def _validate_chemical_formula(formula: str) -> bool:
+    """
+    Conservative validator for Mantid-style chemical formulas.
 
-        self.units="mm"
-        self.type = type
-        self.material = material
-        self.culetGeometry = culetGeometry
-        self.culetDiameter = culetDiameter
-        self.validate()
+    Accepted forms:
+    - Hyphen-separated species, e.g. "(Li7)2-C-H4-N-Cl6"
+    - Concatenated element tokens like "H2O" (parsed by element symbols)
+    Species may be:
+      - an isotope: (ElementSymbolMassNumber) optionally followed by a multiplicity (int or float)
+        e.g. (Li7)2
+      - an element symbol: ElementSymbol optionally followed by multiplicity (int or float)
+        e.g. Cl6 or C or H4.5
 
-        #optional extra info
-        self.model = model
-        
-        self.manufacturer = ""
-        self.comment = ""
-        self.UB = [] #aspirational, but could be included...
+    Returns True if the formula matches these conservative rules, False otherwise.
+    """
+    if not isinstance(formula, str) or not formula:
+        return False
 
-        self.stringDescriptor = self.buildStringDescriptor()
-        self.cadFile = f"{self.stringDescriptor}.cad"
+    # hyphen-separated full-match regex:
+    # species = (isotope_group | element_symbol) [count]
+    # isotope_group: \( [A-Z][a-z]? \d+ \)
+    # element_symbol: [A-Z][a-z]?
+    # count: integer or float (e.g. 2 or 2.0 or 2.5)
+    species_re = r"(?:\([A-Z][a-z]?\d+\)|[A-Z][a-z]?)(?:\d+(?:\.\d+)?)?"
+    hyphenated_re = re.compile(rf"^{species_re}(?:-{species_re})*$")
+    if hyphenated_re.match(formula):
+        return True
 
-    def validate(self):
+    # if not hyphenated, try to parse concatenated tokens like H2O, C6H12O6, etc.
+    idx = 0
+    L = len(formula)
+    token_re = re.compile(r"^\(?([A-Z][a-z]?\d+)\)?(?:\d+(?:\.\d+)?)?")
+    # simpler parser: iterate consuming either isotope group or element symbol + optional count
+    while idx < L:
+        # try isotope group at current index
+        if formula[idx] == "(":
+            m = re.match(r"^\(([A-Z][a-z]?\d+)\)(\d+(?:\.\d+)?)?", formula[idx:])
+            if not m:
+                return False
+            idx += m.end()
+            continue
+        # try element symbol + optional count
+        m = re.match(r"^[A-Z][a-z]?(?:\d+(?:\.\d+)?)?", formula[idx:])
+        if not m:
+            return False
+        idx += m.end()
 
-        assert self.type in ["polycrystalline", "single-crystal"]
-        assert self.culetGeometry in ["single toroid", "double toroid", "flat"]
-        assert type(self.culetDiameter) is float
+    # if we consumed all characters it's valid
+    return idx == L
 
+# ---------- Value-with-units ----------
+@dataclass(frozen=True, slots=True)
+class numVal:
+    value: float
+    units: str
+    source: Optional[str] = None
 
-    def to_dict(self):
-        return {
-            "type": self.type,
-            "material": self.material,
-            "culetGeometry": self.culetGeometry,
-            "culetDiameter": self.culetDiameter,
-            "model": self.model,
-            "cadFile": self.cadFile,
-            "manufacturer": self.manufacturer,
-            "stringDescriptor": self.stringDescriptor,
-            "comment": self.comment,
-            "UB": self.UB
-        }
-    
-    def buildStringDescriptor(self):
+    _ALLOWED: ClassVar[set[str]] = {"ang", "nm", "um", "mm", "cm", "m", "deg", "rad"}
 
-        # create a short string to represent instance
+    def __post_init__(self):
+        u = self.units.lower()
+        if u not in self._ALLOWED:
+            raise ValueError(f"Invalid units: {self.units}. Allowed: {sorted(self._ALLOWED)}")
+        object.__setattr__(self, "units", u)
 
-        if self.type == "single-crystal":
-            stringDescriptor = f"anvil_SXL_{self.material}_culet_{self.culetDiameter}"
-        elif self.type == "polycrystalline":
-            stringDescriptor = f"anvil_{self.culetGeometry}_{self.model}_{self.material}"
-
-        return stringDescriptor.replace(" ","_")
+    def to_dict(self) -> Dict[str, Any]:
+        return {"value": self.value, "units": self.units, "source": self.source}
 
     @classmethod
-    def from_dict(cls, data):
-        #instantiate class from data dictionary
+    def from_dict(cls, d: Mapping[str, Any]) -> "numVal":
+        return cls(value=d["value"], units=d["units"], source=d.get("source"))
+    
+    def __str__(self):
+        return f"{self.value} {self.units}"
 
-        obj = cls(
-            type=data["type"],
-            material=data["material"],
-            culetGeometry=data["culetGeometry"],
-            culetDiameter=data["culetDiameter"],
-            model=data["model"]
-        )
-        obj.cadFile = data.get("cadFile", "") 
-        obj.manufacturer = data.get("manufacturer", "")
-        obj.comment = data.get("comment", "")
-        obj.UB = data.get("UB", [])
+# ---------- Component base + registry ----------
+
+_REGISTRY: Dict[str, Type["Component"]] = {}
+
+def register(cls: Type["Component"]) -> Type["Component"]:
+    """Decorator to register a component class by its .kind tag."""
+    key = getattr(cls, "kind", None)
+    if not key:
+        raise ValueError(f"{cls.__name__} must define a ClassVar[str] 'kind'.")
+    if key in _REGISTRY and _REGISTRY[key] is not cls:
+        raise ValueError(f"Duplicate component kind: {key}")
+    _REGISTRY[key] = cls
+    return cls
+
+def _is_dataclass_type(tp: Any) -> Optional[Type]:
+    """Return the dataclass type if tp is a dataclass or Optional[dataclass], else None."""
+    if isinstance(tp, type) and is_dataclass(tp):
+        return tp
+    origin = get_origin(tp)
+    Union = getattr(__import__("typing"), "Union", None)
+    if origin is Optional or origin is Union:
+        for arg in get_args(tp):
+            if arg is type(None):
+                continue
+            if isinstance(arg, type) and is_dataclass(arg):
+                return arg
+    return None
+
+def _coerce_init_kwargs(kls: Type, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Filter unknown keys and coerce nested dataclass fields using .from_dict if present."""
+    # Only include fields that are part of the dataclass __init__ (f.init == True)
+    allowed = {f.name: f for f in fields(kls) if f.init}
+    kwargs: Dict[str, Any] = {}
+    # get_type_hints handles Optional/Union
+    try:
+        from typing import get_type_hints
+        hints = get_type_hints(kls)
+    except Exception:
+        hints = {f.name: f.type for f in fields(kls)}
+
+    for name, f in allowed.items():
+        if name not in payload:
+            continue
+        val = payload[name]
+        hinted = hints.get(name, f.type)
+        dcls = _is_dataclass_type(hinted)
+        if dcls and isinstance(val, Mapping):
+            # Prefer custom from_dict if available
+            if hasattr(dcls, "from_dict"):
+                kwargs[name] = dcls.from_dict(val)  # type: ignore
+            else:
+                kwargs[name] = dcls(**val)  # naive
+        else:
+            kwargs[name] = val
+    return kwargs
+
+@dataclass(slots=True)
+class Component:
+    """Base class with shared (de)serialization and schema migration."""
+    # Stable wire identifier for this concrete class, e.g. "anvil.dac"
+    kind: ClassVar[str] = "component"
+    # Schema version for this specific kind
+    version: ClassVar[int] = 1
+
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serialNumber: Optional[str] = None
+    location: Optional[str] = None
+    # Optional human-readable description
+    comment: Optional[str] = None
+    stlFile: Optional[str] = None
+
+    # ---- Serialization ----
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["type"] = self.kind
+        d["version"] = self.version
+        return d
+
+    @classmethod
+    def upgrade(cls, payload: Dict[str, Any], from_version: int) -> Dict[str, Any]:
+        """Override in subclasses to migrate payloads forward. Default: no-op."""
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Component":
+        """Dispatch via 'type' tag, apply migrations, and hydrate nested dataclasses."""
+        t = payload.get("type")
+        if not t:
+            raise ValueError("Missing 'type' in payload")
+        kls = _REGISTRY.get(t)
+        if not kls:
+            raise ValueError(f"Unknown component type: {t}")
+
+        # Work on a copy; strip meta
+        data = dict(payload)
+        data.pop("type", None)
+        from_version = int(data.pop("version", 1))
+
+        # Migrate to current class version
+        while from_version < kls.version:
+            data = kls.upgrade(data, from_version)
+            from_version += 1
+
+        # Filter/convert init kwargs
+        init_kwargs = _coerce_init_kwargs(kls, data)
+        obj = kls(**init_kwargs)  # type: ignore[misc]
+
+        # Apply any extra non-init fields from payload that survived (forward-compat)
+        for k, v in data.items():
+            if hasattr(obj, k) and k not in init_kwargs:
+                setattr(obj, k, v)
         return obj
 
-class cylinder:
-    #class to define a generic cylinder component
+    def setMantidMaterial(self, material_name: str, required: Optional[list] = None) -> Dict[str, Any]:
+        """
+        Fetch a subset of material properties from the SEE DB and return a dict
+        mapped to keys suitable for creating a Mantid material.
 
-    def __init__(self,
-                 material,
-                 chemicalFormula,
-                 massDensity,
-                 ID,
-                 OD,
-                 height,
-                 axis=[0,1,0],
-                 center=[0,0,0]):
+        Validates material exists and required fields are present. Validates
+        ChemicalFormula syntax using _validate_chemical_formula.
+        """
+        if not SEE.materialInDatabase(material_name):
+            raise ValueError(f"Material '{material_name}' not found in database.")
 
-        self.units = "mm"
-        self.material = material # a material name that may be different from chemical formula
-        self.chemicalFormula = chemicalFormula
-        self.ID = ID
-        self.OD = OD
-        self.massDensity = massDensity
-        self.height = height
-        self.center = center
-        self.axis=axis
+        details = SEE.get_material_details(material_name)
+        if not isinstance(details, dict):
+            raise ValueError(f"Unexpected material details type for '{material_name}'")
+
+        # mantid-friendly keys -> SEE DB keys
+        mapping = {
+            "ChemicalFormula": "chemical_formula",
+            "MassDensity": "mass_density_g_cm3",
+        }
+
+        out: Dict[str, Any] = {}
+        for out_key, db_key in mapping.items():
+            val = details.get(db_key)
+            if val is not None:
+                out[out_key] = val
+
+        # Validate chemical formula syntax if present
+        formula = out.get("ChemicalFormula")
+        if formula is not None and not _validate_chemical_formula(formula):
+            raise ValueError(f"Material '{material_name}' has invalid ChemicalFormula syntax: '{formula}'")
+
+        # default required fields
+        if required is None:
+            required = ["ChemicalFormula", "MassDensity"]
+        missing_required = [k for k in required if out.get(k) in (None, "", [])]
+
+        if missing_required:
+            raise ValueError(f"Material '{material_name}' missing required properties: {missing_required}")
+
+        return out
+
+@register
+@dataclass(slots=True, kw_only=True)
+class DACAnvil(Component):
+    kind: ClassVar[str] = "anvil.dac"
+    culetDiameter: numVal  # required, now keyword-only
+    material: str = "singleCrystalDiamond"
+    stringDescriptor: Optional[str] = field(init=False, default=None)
+    UB: Optional[list] = field(default=None)
+    Notches: Optional[list] = field(default=None)
+
+    def __post_init__(self):
+        # Validate material
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+        matprop = SEE.get_material_details(self.material)
+        self.UB = [] if matprop.get("isSingleCrystal") else None
 
         self.stringDescriptor = self.buildStringDescriptor()
-        self.cadFile = f"{self.stringDescriptor}.cad"
-        self.comment=""
-
-        self.validate()
-        self.buildMantidDictionaries()
-
-    def validateChemicalFormula(self):
-        chemicalFormula= self.chemicalFormula
-        #validate the chemical formula is a string
-        assert type(chemicalFormula) is str
-        #check it is not empty
-        assert len(chemicalFormula) > 0
-        isotopes = chemicalFormula.split("-")
-        for isotope in isotopes:
-            #handle isotopes (contained in parentheses
-            match = re.search(r"\((.*?)\)", isotope)
-            if match:
-                isotope = match.group(1)
-
-            element = isotope.translate(str.maketrans('','','0123456789'))  # remove numbers
-            #check what remains is a valid element symbol
-            allTheElements = [
-                "H", "D", "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne",
-                "Na", "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca",
-                "Sc", "Ti", "V",  "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
-                "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y",  "Zr",
-                "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
-                "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-                "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
-                "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
-                "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
-                "Pa", "U",  "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm",
-                "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds",
-                "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"
-            ]
-            assert element.lower() in [element.lower() for element in allTheElements], \
-                f"Invalid element symbol for element {element} in chemical formula: {chemicalFormula}. " \
-
-
-    def validate(self):
-
-        #boiler plate validation for the cylinder class
-        assert type(self.material) is str, "material must be a string"
-        assert len(self.material) > 0, "material must not be an empty string"
-        assert type(self.ID) is float
-        assert type(self.height) is float
-        assert self.ID<=self.OD, "ID must be less than or equal to OD"
-        assert type(self.OD) is float
-        assert self.OD > 0, "OD must be greater than zero"
-        assert type(self.massDensity) is float
-        assert self.massDensity > 0, "massDensity must be greater than zero"
-        self.validateChemicalFormula()
-
-        for vector in [self.axis, self.center]:
-            assert type(vector) is list, f"{vector} must be a list"
-            assert len(vector) == 3, f"{vector} must be a 3-element list"
-            for element in vector:
-                assert type(element) is float, f"All elements of {vector} must be floats"
-
-        #explicit control of allowed materials
-        assert self.material in ["Al","BeCu","TiAlV","TiZr","SS304","SS316","V","VNb","NiCrAl"]
-
-    def buildMantidDictionaries(self):
-
-        #create the mantid dictionaries that are needed for absorption corrections
-        self.mantidContainerGeometry = {
-            "shape":"HollowCylinder",
-            "height":self.height,
-            "InnerRadius":self.ID/2,
-            "OuterRadius":self.OD/2,
-            "Center":self.center,
-            "Axis":self.axis
-        }
-
-        self.mantidContainerMaterial={
-            "ChemicalFormula":self.chemicalFormula,
-            "NumberDensity":1.0,
-            "MassDensity":self.massDensity       
-        }
-
+        self.stlFile = f"{self.stringDescriptor}.stl"
 
     def buildStringDescriptor(self):
-        return f"cyl_{self.material}_{self.ID}mm_{self.height}mm".replace(" ","_")
+        d = f"{self.culetDiameter.value:.1f}{self.culetDiameter.units}" if self.culetDiameter else "NA"
+        return f"anvil_DAC_culet_{d}".replace(" ","_")
+    
+    def setGasket(self,material:str,initialIndentThickness:numVal,initialHoleDiameter:numVal)->Dict[str,Any]:
+        return {
+            "material": material,
+            "initialIndentThickness": initialIndentThickness.to_dict(),
+            "initialHoleDiameter": initialHoleDiameter.to_dict()
+        }
+
+@register
+@dataclass(slots=True, kw_only=True)
+class toroidAnvil(Component):
+    """Toroidal anvil: requires material and numberOfToroids.
+
+    - material: required material name (no default)
+    - numberOfToroids: required int (no default)
+    - stringDescriptor is built in __post_init__
+    """
+    kind: ClassVar[str] = "anvil.toroidal"
+    material: str
+    numberOfToroids: int
+    stringDescriptor: Optional[str] = field(init=False, default=None)
+
+    def __post_init__(self):
+        # validate material exists and fetch properties
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+
+        # build derived descriptors
+        self.stringDescriptor = self.buildStringDescriptor()
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+    def buildStringDescriptor(self) -> str:
+        if self.numberOfToroids == 1:
+            toroid_str = "1_toroid"
+        else:
+            toroid_str = f"{self.numberOfToroids}_toroids"
+        return (
+            f"anvil_{toroid_str}_{self.material}"
+        ).replace(" ", "_")
+    
+@register
+@dataclass(slots=True, kw_only=True)
+class cylinder(Component):
+    """cylinder: requires material, innerDiameter, outerDiameter and height.
+
+    - material: required material name (no default)
+    - numberOfToroids: height: required float (no default)
+    - innerDiameter: required numVal (no default)
+    - outerDiameter: required numVal (no default)
+    - stringDescriptor is built in __post_init__
+    """
+    kind: ClassVar[str] = "cylinder"
+    innerDiameter: numVal
+    outerDiameter: numVal
+    height: numVal
+    material: str
+    stringDescriptor: Optional[str] = field(init=False, default=None)
+
+    def __post_init__(self):
+        # validate material exists and fetch properties
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+
+        if self.outerDiameter.value <= self.innerDiameter.value:
+            raise ValueError("Cylinder: outerDiameter must be greater than innerDiameter")
+        
+        if self.innerDiameter.units != self.outerDiameter.units or \
+           self.innerDiameter.units != self.height.units:
+            raise ValueError("Cylinder: all numVal fields must have the same units")
+
+        # build derived descriptors
+        self.stringDescriptor = self.buildStringDescriptor()
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+    def buildStringDescriptor(self) -> str:
+        return (
+            f"cylinder_ID_{self.innerDiameter.value:.3f}_{self.material}"
+        ).replace(" ", "_")
+
+@register
+@dataclass(slots=True, kw_only=True)
+class Gasket(Component):
+    """Abstract base for gasket variants."""
+    kind: ClassVar[str] = "gasket"
+    material: str
+    stringDescriptor: Optional[str] = field(init=False, default=None)
+
+    def __post_init__(self):
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+        # derived descriptor default (subclasses may override)
+        self.stringDescriptor = f"gasket_{self.material}"
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+@register
+@dataclass(slots=True, kw_only=True)
+class DACGasket(Gasket):
+    """Gasket used with DAC anvils. indentThickness and holeDiameter required."""
+    kind: ClassVar[str] = "gasket.dac"
+    indentThickness: numVal
+    holeDiameter: numVal
+
+    def __post_init__(self):
+        # call base implementation directly to avoid zero-arg super() issues
+        Gasket.__post_init__(self)
+        # basic sanity checks
+        if self.holeDiameter.units != self.indentThickness.units:
+            raise ValueError("DACGasket: indentThickness and holeDiameter must share units")
+        
+        # descriptive string
+        d = f"{self.indentThickness.value:.3f}{self.indentThickness.units}"
+        h = f"{self.holeDiameter.value:.3f}{self.holeDiameter.units}"
+        self.stringDescriptor = f"gasket_DAC_{self.material}_indent_{d}_hole_{h}".replace(" ", "_")
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+@register
+@dataclass(slots=True, kw_only=True)
+class toroidGasket(Gasket):
+    """Gasket for toroidal anvils. material default may be provided by factory."""
+    kind: ClassVar[str] = "gasket.toroidal"
+    numberOfToroids: int = 1
+    encapsulating: bool = False  # 
+
+    def __post_init__(self):
+        # call base implementation directly to avoid zero-arg super() issues
+        Gasket.__post_init__(self)
+        if self.numberOfToroids == 1:
+            self.encapsulating = True #most common case
+        elif self.numberOfToroids >= 2:
+            self.encapsulating = False #most common case    
+        elif self.numberOfToroids < 1:
+            raise ValueError("ToroidGasket: numberOfToroids must be at least 1")
+                
+        self.stringDescriptor = f"gasket_toroid_{self.material}".replace(" ", "_")
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+def makeDACGasket(anvil: "DACAnvil", *, indentThickness: numVal, holeDiameter: numVal, material: str = "W") -> DACGasket:
+    """
+    Build a DACGasket appropriate for the provided DACAnvil.
+    indentThickness and holeDiameter must be provided as numVal.
+    Validates holeDiameter < anvil.culetDiameter (units must match).
+    """
+    if not isinstance(anvil, DACAnvil):
+        raise TypeError("anvil must be a DACAnvil for DAC gasket creation")
+    if not isinstance(indentThickness, numVal) or not isinstance(holeDiameter, numVal):
+        raise TypeError("indentThickness and holeDiameter must be numVal instances")
+
+    # anvil must have a culetDiameter to compare against
+    if getattr(anvil, "culetDiameter", None) is None:
+        raise ValueError("DACAnvil has no culetDiameter to validate against")
+
+    # units must match for a simple comparison
+    if anvil.culetDiameter.units != holeDiameter.units:
+        raise ValueError(
+            "Unit mismatch between anvil culetDiameter (%s) and gasket holeDiameter (%s)"
+            % (anvil.culetDiameter.units, holeDiameter.units)
+        )
+
+    # numeric comparison
+    if not (holeDiameter.value < anvil.culetDiameter.value):
+        raise ValueError(
+            "DACGasket holeDiameter must be smaller than anvil culetDiameter "
+            f"({holeDiameter.value}{holeDiameter.units} >= {anvil.culetDiameter.value}{anvil.culetDiameter.units})"
+        )
+
+    g = DACGasket(material=material, indentThickness=indentThickness, holeDiameter=holeDiameter)
+    # tie to anvil for descriptor context
+    g.stringDescriptor = f"{g.stringDescriptor}_for_{anvil.stringDescriptor}"
+    g.stlFile = f"{g.stringDescriptor}.stl"
+    return g
+
+def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> ToroidGasket:
+    """
+    Build a ToroidGasket appropriate for the provided toroidAnvil.
+    material defaults to 'TiZr' if not provided.
+    """
+    if not isinstance(anvil, toroidAnvil):
+        raise TypeError("anvil must be a toroidAnvil for toroidal gasket creation")
+    g = toroidGasket(material=material, 
+                     numberOfToroids=anvil.numberOfToroids
+            )
+    return g
+
+
+# ---------- Auxiliary equipment components ----------
+
+@register
+@dataclass(slots=True, kw_only=True)
+class auxiliaryEquipment(Component):
+    """Base class for auxiliary equipment that may carry PV/log entries."""
+    kind: ClassVar[str] = "auxiliary.equipment"
+    # pvLogs will hold PV/log objects (defined elsewhere) — default to empty list
+    pvLogs: List[Any] = field(default_factory=list)
+    stringDescriptor: str = field(init=False)
+
+    def __post_init__(self):
+        # ensure pvLogs is a list (caller may pass other iterable)
+        if self.pvLogs is None:
+            self.pvLogs = []
+        else:
+            # coerce to list if necessary
+            if not isinstance(self.pvLogs, list):
+                try:
+                    self.pvLogs = list(self.pvLogs)
+                except Exception:
+                    # keep original - validation of elements left to PV/log type later
+                    pass
+        # derived descriptor (include model/serial if available)
+        model = getattr(self, "model", None) or "unknown"
+        sn = getattr(self, "serialNumber", None)
+        self.stringDescriptor = f"aux_{model}" + (f"_{sn}" if sn else "")
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+@register
+@dataclass(slots=True, kw_only=True)
+class pressureController(auxiliaryEquipment):
+    """Concrete auxiliary: pressure controller (pvLogs may record pressure/time)."""
+    kind: ClassVar[str] = "aux.equipment.pressure"
+    # If needed, optional current setpoint and units for convenience
+    # setpoint: Optional[float] = None
+    # units: Optional[str] = None
+
+    def __post_init__(self):
+        # call base __post_init__ directly to avoid super() binding error in this dataclass setup
+        auxiliaryEquipment.__post_init__(self)
+        # basic normalization/validation can be added later
+
+@register
+@dataclass(slots=True, kw_only=True)
+class temperatureController(auxiliaryEquipment):
+    """Concrete auxiliary: temperature controller (pvLogs may record temp/time)."""
+    kind: ClassVar[str] = "aux.equipment.temperature"
+
+    def __post_init__(self):
+        # call base __post_init__ directly to avoid super() binding error in this dataclass setup
+        auxiliaryEquipment.__post_init__(self)
+        # basic normalization/validation can be added later

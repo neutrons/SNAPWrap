@@ -66,7 +66,7 @@ anvil_material = pn.widgets.Select(name="Material")
 anvil_culetGeometry = pn.widgets.Select(name="Culet Geometry")
 anvil_model = pn.widgets.Select(name="Model")
 anvil_culetDiameter = pn.widgets.FloatInput(name="Culet Diameter (mm)")
-anvil_cadFile = pn.widgets.TextInput(name="CAD File (path)", placeholder="optional")
+anvil_cadFile = pn.widgets.TextInput(name="STL File (path)", placeholder="optional")
 anvil_manufacturer = pn.widgets.TextInput(name="Manufacturer", placeholder="optional")
 anvil_comment = pn.widgets.TextAreaInput(name="Comment", placeholder="optional")
 anvil_file_selector = pn.widgets.Select(name="Load Existing Anvil")
@@ -207,7 +207,7 @@ anvil_tab = pn.Column(
 oac_type = pn.widgets.Select(name="Type", options=["paris-edinburgh", "DAC"], value="paris-edinburgh")
 save_directory = pn.widgets.TextInput(name="Save Directory", 
                                       value=jsonOACDir)
-# assign materials
+# assign allowed gasket materials
 tizr = material(name="tizr")
 zr = material(name="zr")
 pyrophyllite = material(name="pyrophillite")
@@ -227,7 +227,7 @@ gasket_map = {
     "DAC": [re.name, ss301.name, w.name]
 }
 gtype_map = {
-    "paris-edinburgh": ["encapsulating", "non-encapsulating", "other"],
+    "paris-edinburgh": ["encapsulating", "non-encapsulating", "half-flat","other"],
     "DAC": ["flat"]
 }
 loadaxis_map = {
@@ -263,6 +263,8 @@ anvil_map = {
 model_oac = pn.widgets.Select(name="Model")
 gasket_oac = pn.widgets.Select(name="Gasket Material")
 gtype_oac = pn.widgets.Select(name="Gasket Type")
+gasketThickness_oac = pn.widgets.FloatInput(name="Gasket Thickness (mm)", value = 1.0, step= 0.1)
+gasketID_oac = pn.widgets.FloatInput(name="Gasket ID (mm)", value=1.0, step=0.1)    
 loadaxis_oac = pn.widgets.Select(name="Load Axis (Mantid Convention)")
 temp_oac = pn.widgets.Select(name="Temperature Control")
 oac_comment = pn.widgets.TextAreaInput(name="Comment", placeholder="optional")
@@ -282,24 +284,18 @@ def update_oac_fields(tval):
     gasket_oac.value = gasket_oac.options[0]
     gtype_oac.options = gtype_map[tval]
     gtype_oac.value = gtype_oac.options[0]
+    if gtype_oac.value == "flat":
+        gasketThickness_oac.value = 0.15 # default thickness for flat gasket
+        gasketID_oac.value = 0.5
+    elif gtype_oac.value == "encapsulating" or gtype_oac.value == "non-encapsulating":
+        gasketThickness_oac.value = 1.6
+        gasketID_oac.value = 6.0
     loadaxis_oac.options = loadaxis_map[tval]
     loadaxis_oac.value = loadaxis_oac.options[0]
     temp_oac.options = temp_map[tval]
     temp_oac.value = "None"
     anvil_file_oac.options = anvil_map[tval]
     anvil_file_oac.value = anvil_file_oac.options[-1]
-
-    
-    # anvil_dir = jsonAnvilDir
-    # if os.path.isdir(anvil_dir):
-    #     files = [f for f in os.listdir(anvil_dir) if f.startswith("anvil") and f.endswith(".json")]
-    #     anvil_file_oac.options = files
-    #     default_file = def_anvil_map.get(tval)
-    #     anvil_file_oac.value = default_file if default_file in files else (files[0] if files else None)
-    # else:
-    #     anvil_file_oac.options = []
-    #     anvil_file_oac.value = None
-
     oac_files = [f for f in jsonOACDir if f.endswith(".json")]
     oac_file_selector.options = ["Select a file..."] + oac_files
     oac_file_selector.value = "Select a file..."
@@ -341,6 +337,8 @@ def update_oac_output(*_):
             gasketType=gtype_oac.value,
             loadAxis=loadaxis_oac.value
         )
+        oac.gasketThickness = gasketThickness_oac.value
+        oac.gasketID = gasketID_oac.value
         oac.temperatureControl = temp_oac.value
         oac.comment = oac_comment.value
         oac.manufacturer = oac_manufacturer.value
@@ -361,7 +359,6 @@ oac_preview = pn.pane.JSON(name="OAC JSON Preview", depth=2, theme="light")
 update_oac_fields(oac_type.value)
 update_oac_output()
 
-
 #load json
 def populate_oac_fields_from_obj(oac_obj):
     # Set widget values from an opposedAnvilCell instance
@@ -369,6 +366,8 @@ def populate_oac_fields_from_obj(oac_obj):
     model_oac.value = oac_obj.model
     gasket_oac.value = oac_obj.gasketMaterial
     gtype_oac.value = oac_obj.gasketType
+    gasketThickness_oac.value = oac_obj.gasketThickness
+    gasketID_oac.value = oac_obj.gasketID
     loadaxis_oac.value = oac_obj.loadAxis
     temp_oac.value = oac_obj.temperatureControl if oac_obj.temperatureControl else "None"
     oac_comment.value = oac_obj.comment
@@ -439,6 +438,8 @@ oac_tab = pn.Column(
     model_oac,
     gasket_oac,
     gtype_oac,
+    gasketThickness_oac,
+    gasketID_oac,
     loadaxis_oac,
     temp_oac,
     oac_comment,
@@ -451,4 +452,82 @@ oac_tab = pn.Column(
     oac_preview
 )
 
-pn.Tabs(("Opposed Anvil Cell", oac_tab), ("Anvil", anvil_tab)).servable()
+
+
+
+# ===================== Cylinder BUILDER ==========================
+
+# assign materials this hardwires that materials must be present
+# in database.
+
+save_directory = pn.widgets.TextInput(name="Save Directory", 
+                                      value=jsonCylinderDir)
+cyl_material = pn.widgets.Select(name="Material", options=[m.name for m in materials], value="tizr")
+cyl_ID = pn.widgets.FloatInput(name="ID (mm)", value=1.0, step=0.1)
+cyl_OD = pn.widgets.FloatInput(name="OD (mm)", value=2.0, step=0.1)
+cyl_height = pn.widgets.FloatInput(name="Height (mm)", value=10.0, step=0.1)
+cyl_axis = pn.widgets.Select(name="Axis", options=[[0, 1, 0], [0, 0, 1]], value=[0, 1, 0])
+cyl_cadFile = pn.widgets.TextInput(name="STL File (path)", placeholder="optional")
+cyl_comment = pn.widgets.TextAreaInput(name="Comment", placeholder="optional")
+cyl_manufacturer = pn.widgets.TextAreaInput(name="Manufacturer", placeholder="optional")
+
+output = pn.pane.JSON(name="Cylinder JSON", depth=2, theme="light")
+save_status = pn.pane.Markdown("")
+
+#preview of json
+cyl_preview = pn.pane.JSON(name="Cylinder JSON Preview", depth=2, theme="light")
+
+@pn.depends(
+    cyl_material.param.value,
+    cyl_ID.param.value,
+    cyl_OD.param.value,
+    cyl_height.param.value,
+    cyl_axis.param.value,
+    cyl_manufacturer.param.value,
+    cyl_comment.param.value,
+    cyl_cadFile.param.value,
+    watch=True
+)
+def update_cylinder_output(*_):
+    try:
+        cyl = cylinder(
+            material=cyl_material.value,
+            ID=cyl_ID.value,
+            OD=cyl_OD.value,
+            height=cyl_height.value,
+            axis=cyl_axis.value,
+            center=[0, 0, 0]  # Default center  
+        )
+        if cyl_cadFile.value.strip():
+            cyl.cadFile = cyl_cadFile.value
+        cyl.manufacturer = anvil_manufacturer.value
+        cyl.comment = cyl_comment.value
+        output.object = cyl.to_dict()
+
+        print("TO_DICT:", cyl.to_dict())
+
+    except Exception as e:
+        output.object = {
+        "error": str(e),
+        "traceback": traceback.format_exc()
+    }
+
+cyl_tab = pn.Column(
+    pn.pane.Markdown("## Create a Cylinder"),
+    cyl_material,
+    cyl_ID,
+    cyl_OD,
+    cyl_height,
+    cyl_axis,
+    cyl_manufacturer,
+    cyl_cadFile,
+    save_directory,
+    cyl_preview
+)
+
+# ===================== TAB BUILDER ==========================
+
+# add tabs to app
+
+pn.Tabs(("Opposed Anvil Cell", oac_tab), ("Anvil", anvil_tab), ("Cylinders", cyl_tab)).servable()
+
