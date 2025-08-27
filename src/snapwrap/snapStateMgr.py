@@ -565,10 +565,23 @@ def loadCalibrationRecord(runNum,isLite,version):
     #read existing calibration record from disk
 
     if type(runNum) != str:
-        runNum=str(runNum)    
+        runNum=str(runNum)
+
+    stateID,stateDict = stateDef(runNum)    
     
     localDataService=LocalDataService()
-    cr = localDataService.readCalibrationRecord(runNum,isLite,version)
+    # print("debug:")
+    # print("runNum: ",runNum," type; ", type(runNum))
+    # print("isLite: ",isLite," type; ", type(isLite))
+    # print("version: ",version," type; ", type(version))
+    # print("stateID: ",stateID," type; ", type(stateID))
+
+    cr = localDataService.readCalibrationRecord(runId=runNum,
+                                                useLiteMode=isLite,
+                                                state=stateID,
+                                                version=version)
+
+    print("loaded calibration record for run:",cr.runNumber," version:",cr.version)
 
     return cr
 
@@ -592,6 +605,8 @@ def frankenRecord(donorRun,
     #
     #a copy is made of the donor CR is made, then its attributes updated.
     # The frankenCR is returned
+
+
 
     donorCR = loadCalibrationRecord(donorRun,isLite,donorVersion)
 
