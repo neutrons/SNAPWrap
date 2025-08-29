@@ -4,6 +4,7 @@ import h5py
 import sys
 import json
 from datetime import datetime
+from dateutil import parser
 import os
 import sys
 import copy
@@ -237,8 +238,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
     calStatus["calFolder"] = calFolder
     calStatus["indexPath"] = indexPath
 
-    #first check if state exists
-
+    ## case: State does not exist
     if not checkStateExists(calStatus["stateID"]):
         calStatus["stateIsCalibrated"] = False
         calStatus["runIsCalibrated"] = False
@@ -252,7 +252,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         return calStatus
 
 
-    #if state exists, but no normcal index exists (impossible to have no difcal index in an existing state)
+    ##Case: normcal requested, state exists, but no normcal index exists
     if not os.path.isfile(indexPath) and calType=="normcal":
         calStatus["stateIsCalibrated"] = False
         calStatus["runIsCalibrated"] = False
@@ -271,8 +271,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
     f.close()
 
 
-    #check for the case that there is an existing state with no difcal
-
+    ## case: difcal requested, state exists, but no difcal exists (only default)
     if len(calIndexList) == 1 and calType == "difcal":
 
         # a single calibration indicates that only the default geometric calibration exists
@@ -294,7 +293,26 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
     # the provided run number
 
     #useful to sort calIndexList in order of calibration timestamps, most recent first.
-    calIndexList.sort(key=lambda d: d["timestamp"], reverse=True)
+    #in snapred >v1.0.0 this was a float, in snapred >v2.0.0 it's a string. Check which and handle accordingly)
+
+    #first gather all timestamps
+
+    tsTypes = {type(d["timestamp"]) for d in calIndexList}
+
+    if len(tsTypes) != 1:
+        raise TypeError(f"Inconsistent timestamp types found in calibration index: {types}")
+
+    t = tsTypes.pop()
+    if t in (int, float):
+        raise TypeError("Numeric timestamps are no longer supported (change since SNAPRed v2.0.0)")
+
+    if t is not str:
+        raise TypeError(f"Unexpected timestamp type: {t}. Since SNAPRed v2.0.0 calibration index timestamps must be strings")
+
+
+    calIndexList.sort(key = lambda d: parser.parse(d["timestamp"]),
+                      reverse=True
+                      )
 
     calStatus["calibIndexList"] = calIndexList
 
@@ -305,7 +323,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["stateIsCalibrated"] = True
         calStatus["runIsCalibrated"] = False
         calStatus["numberCalibrations"] = len(calStatus["calibIndexList"])-firstIndex[calType]
-        calStatus["latestCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][0]["timestamp"] )
+        calStatus["latestCalibrationDate"] = calStatus["calibIndexList"][0]["timestamp"].split(".")[0]
         calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
@@ -325,7 +343,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["stateIsCalibrated"] = True
         calStatus["runIsCalibrated"] = False
         calStatus["numberCalibrations"] = len(calStatus["calibIndexList"])-firstIndex[calType]
-        calStatus["latestCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][0]["timestamp"] )
+        calStatus["latestCalibrationDate"] = calStatus["calibIndexList"][0]["timestamp"].split(".")[0]
         calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
@@ -341,9 +359,9 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["runIsCalibrated"] = True
         calStatus["numberCalibrations"] = len(calStatus["calibIndexList"])-firstIndex[calType]
     
-        calStatus["latestCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][0]["timestamp"] )
+        calStatus["latestCalibrationDate"] = calStatus["calibIndexList"][0]["timestamp"].split(".")[0]
         calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
-        calStatus["latestValidCalibrationDate"] = dateFromLinux( calStatus["calibIndexList"][validIndex]["timestamp"] )
+        calStatus["latestValidCalibrationDate"] = calStatus["calibIndexList"][validIndex]["timestamp"].split(".")[0]
         calStatus["latestValidCalibrationDict"] = calStatus["calibIndexList"][validIndex]
         if calType == "normcal":
             calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
@@ -421,32 +439,20 @@ def pullStateDict(stateIDString):
     # This returns dictionary with different keys from defState. Convert the keys to 
     # match. Also, need to apply rounding that is used when generating state info.
 
-    initDict = stateParamsJson["instrumentState"]["detectorState"]
+    dictString = stateParamsJson["instrumentState"]["detectorState"]["stateId"]["decodedKey"]
 
-    arc1 = float(round(initDict["arc"][0]*2)/2)
-    arc2 = float(round(initDict["arc"][1]*2)/2)
-    wav = float(round(initDict["wav"],1))
-    freq = int(round(initDict["freq"] ))
-    pos = int(initDict["guideStat"])
+    dict = json.loads(dictString)
 
-    finalDict = {"vdet_arc1" : arc1,
-                 "vdet_arc2" : arc2,
-                 "WavelengthUserReq" : wav,
-                 "Frequency" : freq,
-                 "Pos" : pos 
-                 }
-
-    return finalDict
+    return dict
 
 def autoStateName(stateDict):
 
+    #to do generalise for arbitrary length of stateDict
 
-    arcStr1 = f"{stateDict['vdet_arc1']:.1f}".rjust(6)
-    arcStr2 = f"{stateDict['vdet_arc2']:.1f}".rjust(6)
-    lamStr = f"{stateDict['WavelengthUserReq']:.1f}".rjust(4)
-    freqStr = f"{stateDict['Frequency']:.0f}".rjust(3)
-    guideStr = str(stateDict['Pos']).rjust(2)
-    name = f"{arcStr1}:{arcStr2}:{lamStr}:{freqStr}:{guideStr}"
+    name = ""
+    for key in stateDict.keys():
+        name += f"{key}:{stateDict[key]}"
+
     return name
 
 def createState(runNumber,hrn='none'):
@@ -503,7 +509,7 @@ def copyDifcal(donor,recipient,propagate=False): # donor and recipient are Calib
 
     if propagate:
 
-        print(f"propagation requested, new calibration will be version {newIE.version}")
+        print(f"propagation requested, this will create version {newIE.version} at: {os.path.dirname(recipient['indexPath'])}")
 
         #first check if folder exists
         if os.path.isdir(recipientDir):
@@ -514,8 +520,13 @@ def copyDifcal(donor,recipient,propagate=False): # donor and recipient are Calib
         else: #safe to make a copy
             print("copying...")
             shutil.copytree(donorDir,recipientDir)
+            # print("debug: at this point, donor folder has been copied ")
+            # a = input("enter anything to continue:")
             os.remove(f"{recipientDir}/CalibrationRecord.json") # it will be replaced with franken CR
             os.remove(f"{recipientDir}/CalibrationParameters.json")
+            # print("debug: at this point, CalibrationRecord and CalibrationParameters have been deleted")
+            # a = input("enter anything to continue:")
+            # assert False
             print("reversioning...")
             #need to manually change version in file names
             reVersionDifcal(donorDir,recipientDir,donorRun,recipientRun)
@@ -566,16 +577,18 @@ def loadCalibrationRecord(runNum,isLite,version):
 
     if type(runNum) != str:
         runNum=str(runNum)    
+
+    id,dict = stateDef(runNumber=runNum)    
     
     localDataService=LocalDataService()
-    cr = localDataService.readCalibrationRecord(runNum,isLite,version)
+    cr = localDataService.readCalibrationRecord(runNum,isLite,id,version)
 
     return cr
 
 def saveCalibrationRecord(calibrationRecord,indexEntry):
 
     localDataService=LocalDataService()
-    localDataService.writeCalibrationRecord(calibrationRecord,indexEntry)
+    localDataService.writeCalibrationRecord(calibrationRecord)#,indexEntry)
 
     return
 
