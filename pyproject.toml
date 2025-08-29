@@ -7,7 +7,9 @@ license = { text = "MIT" }
 keywords = ["neutrons", "example", "python"]
 readme = "README.md"
 dependencies = [
-  "scikit-image"
+  "scikit-image",
+  "panel >=1.7.0",
+  "sqlalchemy >=2.0.0"
 ]
     # PyPI dependencies
 
