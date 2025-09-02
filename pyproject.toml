@@ -216,6 +216,8 @@ ipympl = "*"
 ipywidgets = "*"
 
 [tool.pixi.tasks]
+snapwrap = { cmd = "pixi run python -m workbench", description = "Run the workbench in the snapwrap env" }
+
 # Documentation tasks
 build-docs = { cmd = "sphinx-build -b html docs docs/_build", description = "Build the documentation" }
 
