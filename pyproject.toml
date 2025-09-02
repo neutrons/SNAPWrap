@@ -151,6 +151,8 @@ pytest-playwright = "*"
 [tool.pixi.package.host-dependencies]
 hatchling = "*"
 versioningit = "*"
+panel = ">=1.7.4,<2"
+sqlalchemy = ">=2.0.41,<3"
 
 [tool.pixi.package.run-dependencies]
 python = ">=3.10"
@@ -261,7 +263,7 @@ reset-toml = { cmd = "cp pyproject.toml.bak pyproject.toml; rm pyproject.toml.ba
 ##############
 
 [tool.pytest.ini_options]
-addopts = "-v --cov=packagenamepy --cov-report=term-missing"
+addopts = "-v --cov=snapwrap --cov-report=term-missing"
 pythonpath = [
   ".", "src", "scripts"
 ]
