@@ -10236,10 +10236,11 @@ packages:
   timestamp: 1756403412820
 - pypi: ./
   name: snapwrap
-  version: 0.1.0.dev60
-  sha256: 7d1e8f7baf3aca65b6c1d6864f8445afabba5aa6c18bb2ddd241cc210a9a5772
+  version: 0.1.0.dev61
+  sha256: d8d616b50dea26bf5f698c0d9745129ae64c78a00da05fbc1f15510610c3bb2c
   requires_dist:
   - panel>=1.7.0
+  - ruamel-yaml
   - scikit-image
   - sqlalchemy>=2.0.0
   requires_python: '>=3.10'

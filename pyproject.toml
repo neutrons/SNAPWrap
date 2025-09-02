@@ -9,7 +9,8 @@ readme = "README.md"
 dependencies = [
   "scikit-image",
   "panel >=1.7.0",
-  "sqlalchemy >=2.0.0"
+  "sqlalchemy >=2.0.0",
+  "ruamel.yaml"
 ]
     # PyPI dependencies
 
