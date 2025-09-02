@@ -30,6 +30,8 @@ requirements:
     - versioningit
     - setuptools>=42
     - wheel
+    - panel>=1.7.0
+    - sqlalchemy>=2.0.0
 
   build:
     - setuptools>=42
