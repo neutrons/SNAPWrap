@@ -40,8 +40,8 @@ requirements:
     - mantidworkbench
     - snapred
     - scikit-image
-    - panel = ">=1.7.0"
-    - sqlalchemy = ">=2.0.0"
+    - {{ pin_compatible("panel", min_pin="1.7.0") }}
+    - {{ pin_compatible("sqlalchemy", min_pin="2.0.0") }}
 
 about:
   home: {{ url }}
