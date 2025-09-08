@@ -29,15 +29,6 @@ class SNAPHome():
       self.calib = Config['instrument.calibration.home']
       self.powder = self.calib + "/Powder/"
 
-def loadSNAPInstPrm():
-
-  home = SNAPHome()
-  instPrmJson = home + 'SNAPInstPrm.json' #to do update to take this parm from application.yml
-
-  with open(instPrmJson, "r") as json_file:
-    instPrm = json.load(json_file)
-  return instPrm 
-
 def stateDef(runNumber):
     #returns a list, first entry is stateID, second is dictionary of state parameters
     
@@ -47,15 +38,21 @@ def stateDef(runNumber):
 
     stateID,detectorState = dataFactoryService.constructStateId(runNumber)
 
+    schema = dataFactoryService.getInstrumentConfig(runNumber).stateIdSchema
+
+    keys = [key for key in schema["properties"].keys() if not schema["properties"][key].get('ignore', False)]
+    logs = dataFactoryService.getRunMetadata(runNumber)
+
+    #only report used pvs (not all are used)
     stateDict = {
-        "vdet_arc1" : float(round(detectorState.arc[0]*2))/2,
-        "vdet_arc2" : float(round(detectorState.arc[1]*2))/2,
-        "WavelengthUserReq" : float(round(detectorState.wav,1)),
-        "Frequency" : int(round(detectorState.freq)),
-        "Pos" : int(detectorState.guideStat)
+        key: logs[key] for key in keys
     }
 
-    return [stateID,stateDict]
+    #convert arrays to values
+    cleaned = {k: v.item() for k, v in stateDict.items()}
+
+
+    return [stateID,cleaned]
 
 def retrieveReductionRecord(redRecord):
     #returns a dictionary taken from the reduction record at path redPath
@@ -383,13 +380,13 @@ def detectorConfig(stateDict,includeGuideStatus):
 
     if includeGuideStatus:
         detectorDict = {
-                "vdet_arc1" : stateDict["vdet_arc1"],
-                "vdet_arc2" : stateDict["vdet_arc2"],
-                "Pos" : stateDict["Pos"]}
+                "det_arc1" : stateDict["det_arc1"],
+                "det_arc2" : stateDict["det_arc2"],
+                "BL3:Mot:OpticsPos:Pos" : stateDict["BL3:Mot:OpticsPos:Pos"]}
     else:
         detectorDict = {
-                "vdet_arc1" : stateDict["vdet_arc1"],
-                "vdet_arc2" : stateDict["vdet_arc2"]}
+                "det_arc1" : stateDict["det_arc1"],
+                "det_arc2" : stateDict["det_arc2"]}
 
 
     hasher = hashlib.shake_256()
@@ -428,6 +425,13 @@ def availableStates():
 def pullStateDict(stateIDString):
 
     #given a stateID as a string, will return a dictionary of state parameters
+    #this works by reading the default CalibrationParameters written when a state is created. 
+    #
+    # In SNAPRed v2.0.0 state ID calculation was overhauled to generalise, allowing additional
+    # pv's to be designated as state pvs. This was required to implement 'BL3:Mot:OpticsPos:ExitSlit' 
+    # as a new state pv.
+    # As part of the overhaul, keys for the CalibrationParameters dictionary that holds state have changed
+    # the plan is to create a script to  
 
     stateSeedDir = f"{Config['instrument.calibration.home']}/Powder/{stateIDString}/lite/diffraction/v_0000/"
     stateParamsJson = stateSeedDir + "/CalibrationParameters.json"
@@ -436,22 +440,73 @@ def pullStateDict(stateIDString):
     stateParamsJson = json.load(f)
     f.close()
 
-    # This returns dictionary with different keys from defState. Convert the keys to 
-    # match. Also, need to apply rounding that is used when generating state info.
+    detectorState = stateParamsJson["instrumentState"]["detectorState"]
+    if "PVs" in detectorState.keys():
+        dict = detectorState["PVs"]
 
-    dictString = stateParamsJson["instrumentState"]["detectorState"]["stateId"]["decodedKey"]
+        # have to manually remove keys that are not used
+        if "det_lin1" in dict.keys():
+            del dict["det_lin1"]
+        if "det_lin2" in dict.keys():
+            del dict["det_lin2"]
 
-    dict = json.loads(dictString)
+        # and manually convert int to float
+        if dict["BL3:Det:TH:BL:Frequency"]:
+            dict["BL3:Det:TH:BL:Frequency"] = float(dict["BL3:Det:TH:BL:Frequency"])
 
-    return dict
+        return dict
+    else:
+        print("snapred v1.3.0 format CalibrationParameters found, converted to snapred v2.0.0 format")
+        arc1 = float(round(detectorState["arc"][0]*2)/2)
+        arc2 = float(round(detectorState["arc"][1]*2)/2)
+        wav = float(round(detectorState["wav"],1))
+        freq = float(round(detectorState["freq"] )) #note this was int, here change to float to be compatible. but I'm worried about 
+                                                    #unexpected consequences if/when state hash is calculated using this
+        pos = int(detectorState["guideStat"])
+
+        dict = {"det_arc1" : arc1,
+                    "det_arc2" : arc2,
+                    "BL3:Chop:Skf1:WavelengthUserReq" : wav,
+                    "BL3:Det:TH:BL:Frequency" : freq,
+                    "BL3:Mot:OpticsPos:Pos" : pos 
+                    }
+        
+        return dict
+
 
 def autoStateName(stateDict):
 
     #to do generalise for arbitrary length of stateDict
 
+    #use a map for abbreviated pv names
+    map = {
+        "det_arc1": "arc1", 
+        "det_arc2": "arc2", 
+        "BL3:Chop:Skf1:WavelengthUserReq": "wav", 
+        "BL3:Det:TH:BL:Frequency": "freq", 
+        "BL3:Mot:OpticsPos:Pos": "pos",
+        "BL3:Mot:OpticsPos:ExitSlit": "slit", 
+        #and some legacy names (which should go away after migration)
+        "vdet_arc1": "arc1",
+        "vdet_arc2": "arc2",
+        "WavelengthUserReq": "wav",
+        "Frequency" : "freq",
+        "Pos" : "pos",
+        "slit" : "slit"
+    }
+
     name = ""
     for key in stateDict.keys():
-        name += f"{key}:{stateDict[key]}"
+        if map[key][0:-1] == "arc":
+            name += f"{map[key]}:{stateDict[key]:6.1f}::"
+        else:
+            name += f"{map[key]}:{stateDict[key]}::"
+    print(len(name))
+    #strip final two colons
+    name = name[:-2]
+
+    #fix length
+    name = f"{name:<59}"
 
     return name
 
