@@ -31,7 +31,7 @@ from snapred.meta.Config import Config
 from snapred.backend.api.InterfaceController import InterfaceController
 from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredients
 from snapred.backend.service.SousChef import SousChef
-# from snapred.backend.dao.Hook import Hook
+from snapred.backend.dao.Hook import Hook
 
 from snapred import __version__ as redVersion
 from snapwrap import __version__ as snapwrapVersion
@@ -179,7 +179,7 @@ def indexStates(isLite=True):
         outputStrings.append(outputString)
 
     #output in order of calibration status...
-    print("\n StateID        | Desc.                   | Status  |No. difcals| latest |No. nrmcals| latest | (back) |")
+    print("\nStateID         |Desc.                                                      | Status  |No. difcals| latest |No. nrmcals| latest | (bgnd) |")
     for i,string in enumerate(outputStrings):
         if statuses[i] == "UNCALIB":
             print(string) 
@@ -224,9 +224,13 @@ def makeResolutionWorkspace(prefix,
     print(f"Found {len(pgsList)} pixel groups: {pgsList}")
 
     #get instrument state to extract resolution parameters 
+    # First determine the state ID for this run number
+    stateID, _ = ssm.stateDef(runNumber)
+    
     farmFresh = FarmFreshIngredients(
         runNumber=str(runNumber),
         useLiteMode=isLite,
+        state=stateID,
         focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
         )
     instrumentState = SousChef().prepInstrumentState(farmFresh)
@@ -862,16 +866,42 @@ def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWS
     self.mantidSnapper.executeQueue()
 
 
-def cheeseMask(binMaskList):
+def cheeseMask(self,binMaskList):
+        
+    # this hook will take a list of bin mask table workspaces and run a maskBinsFromTable on each of these. 
 
-    #TODO
-    print("test")
+    for mask in binMaskList:
+        # extract units from ws name (table workspaces don't have logs)
+        maskUnits = mask.split("_")[-1]
+        # ensure units of workspace match
+        self.mantidSnapper.ConvertUnits(
+            f"Converting units to match Bin Mask with units of {maskUnits}",
+            InputWorkspace=self.outputWs,
+            Target=maskUnits,
+            OutputWorkspace=self.outputWs,
+        )
+        # mask bins
+        self.mantidSnapper.MaskBinsFromTable(
+            "Masking bins...",
+            InputWorkspace=self.outputWs,
+            MaskingInformation=mask,
+            OutputWorkspace=self.outputWs,
+        )
 
+    # convert back to dSpacing if needed
+    self.mantidSnapper.ConvertUnits(
+        "Converting to dSpacing...",
+        InputWorkspace=self.outputWs,
+        Target="dSpacing",
+        OutputWorkspace=self.outputWs,
+    )
+
+    self.mantidSnapper.executeQueue()
 
 def reduce(runNumber,
                sampleEnv='none',
                pixelMaskIndex='none',
-            #    binMaskList=[],
+               binMaskList=[],
                YMLOverride='none',
                backgroundWSName = None,
                attenuationWSName = None,
@@ -882,7 +912,6 @@ def reduce(runNumber,
                keepUnfocussed=False,
                noNorm=False,
                emptyTrash=True, #remove temporary mantid workspaces at the end of reduction
-            #    export=['gsas','xye','ascii'], #file formats to export to. If empty, no export 
                cisMode=False,
                singlePixelGroup=None,
                qsp=False,
@@ -935,7 +964,6 @@ def reduce(runNumber,
     else:
         artificialNormalizationIngredients = None
 
-
     if continueNoDifcal and not continueNoVan:
         continueFlags = ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
 
@@ -978,55 +1006,49 @@ def reduce(runNumber,
                 assert False
             pixelMasks.append(maskName)
 
-    # if binMaskList:
-    #     # users can specify a list of table bin workspace names. If these are not found
-    #     # look in a standardised folder (ipts-12345/shared/masks) and attempt to load them. If they do not 
-    #     # exist, give a helpful error.
-        
-    #     for bMask in binMaskList:
-
-    #         if bMask not in mtd.getObjectNames():
-
-    #             #attempt to load from standard location
-    #             ipts = GetIPTS(Instrument="SNAP",
-    #                         RunNumber=runNumber)
-    #             maskFolder = f"{ipts}masks/"
-    #             maskPath = f"{maskFolder}bMask.json"
-    #             cheese=mut.swissCheese()
-    #             try: 
-    #                 cheese.load(maskPath)
-    #             except: 
-    #                 raise Exception(f"Requested bin mask workspace doesn\'t exist and attempt to load: {maskPath} failed!")
-
-
-    #     print("bin masks processed")
-
     print("Calling reduction service")
     reductionService = ReductionService()
     interfaceController = InterfaceController()
 
     timestamp = reductionService.getUniqueTimestamp()
 
-    print(f"backgroundWSName is: {backgroundWSName}")
-    print(f"attenuationWSName is: {attenuationWSName}")
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    #process options that require SNAPRed hooks
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    hooks = None
+    #hook: background and attenuation correction
 
     if backgroundWSName is not None or attenuationWSName is not None: # do if either is true
 
+        # print(f"backgroundWSName is: {backgroundWSName}")
+        # print(f"attenuationWSName is: {attenuationWSName}")
+
         print("\nHOOK WILL BE APPLIED!!!!\n")
         #define hook
-
         hook = Hook(func=BackgroundAttenuationCorrection,
                     attenuationWSName = attenuationWSName, #TODO: correctly manage ws names 
                     backgroundWSName= backgroundWSName) #TODO: correctly manage ws names
 
-        emptyHook = Hook(func=doNothingHook)
+        emptyHook = Hook(func=doNothingHook) #dummy doesn't do anything for now
         hooks = {
             "PostPreprocessReductionRecipe" : [hook, emptyHook]
         }
 
-        reductionRequest = ReductionRequest(
+    if len(binMaskList) > 0:
+        print("\nBIN MASK HOOK WILL BE APPLIED!!!!\n")
+
+        binMaskHook = Hook(func=cheeseMask,
+                           binMaskList=binMaskList)
+        emptyHook = Hook(func=doNothingHook) #dummy doesn't do anything for now
+
+        hooks = {
+            "PreprocessReductionRecipe" : [emptyHook,emptyHook] #look like need two hooks. a pre and post?
+        }
+        
+    else:
+        hooks = None
+
+    reductionRequest = ReductionRequest(
             runNumber=runNumber,
             useLiteMode=useLiteMode,
             timestamp=timestamp,
@@ -1037,18 +1059,6 @@ def reduce(runNumber,
             artificialNormalizationIngredients=artificialNormalizationIngredients,
             hooks = hooks,
         )
-    else:
-        reductionRequest = ReductionRequest(
-            runNumber=runNumber,
-            useLiteMode=useLiteMode,
-            timestamp=timestamp,
-            continueFlags=continueFlags,
-            pixelMasks=pixelMasks,
-            keepUnfocused=keepUnfocussed,
-            convertUnitsTo=convertUnitsTo,
-            artificialNormalizationIngredients=artificialNormalizationIngredients
-        )
-
 
     snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
 
@@ -1275,12 +1285,12 @@ def reduce(runNumber,
         # Execute reduction here
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        # TODO: This breaks Q-space option...
-
-        # data = ReductionRecipe().cook(ingredients, groceries)
         data = interfaceController.executeRequest(snapRequest).data
-        # record = reductionService._createReductionRecord(reductionRequest, ingredients, data["outputs"])
         record=data.record
+
+        # print("\n\ndata\n\n")
+        # print(data.record.workspaceNames)
+
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
@@ -1468,7 +1478,7 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
         # first generate list of redObjects for this run:
 
         redWSList = []
-        for ws in data["outputs"]:
+        for ws in data.record.workspaceNames:
             redObj = io.redObject(ws)
             if redObj.isReducedDataWorkspace:
                 redWSList.append(redObj)
