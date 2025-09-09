@@ -9,6 +9,7 @@ import os
 import shutil
 import importlib
 import copy
+import time
 
 from .wrapConfig import WrapConfig
 import snapwrap.snapStateMgr as ssm
@@ -801,102 +802,118 @@ def autoMask(inputWorkspace,maskType="PE",plotOn=True):
 
 ########## Define SNAPRed hook functions here ##################
 
-def doNothingHook(self):
+class HookCollection:
 
-    pass
 
-def BackgroundAttenuationCorrection(self, attenuationWSName = None, backgroundWSName=None):
+    @staticmethod
+    def doNothingHook(context):
 
-    # TODO: validate input ws match sample workspace: need to be from same state
-    # note this is post hook to preprocessReductionRecipe, so outputWS starts as unfocussed TOF
-    # and needs to end this way too.
+        pass
 
-    if backgroundWSName is not None:
+    @staticmethod
+    def BackgroundAttenuationCorrection(context, attenuationWSName=None, backgroundWSName=None):
 
-        # if background workspace is specified, subtract it before attenuation correction
+        # TODO: validate input ws match sample workspace: need to be from same state
+        # note this is post hook to preprocessReductionRecipe, so outputWS starts as unfocussed TOF
+        # and needs to end this way too.
 
-        # background must be in TOF too
+        if backgroundWSName is not None:
 
-        self.mantidSnapper.ConvertUnits("",InputWorkspace=backgroundWSName,
-                                        OutputWorkspace=backgroundWSName,
-                                        Target="TOF")
-        
-        # rebin to match sample data
+            # if background workspace is specified, subtract it before attenuation correction
 
-        self.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=backgroundWSName,
-                                            WorkspaceToMatch=self.outputWs,
+            # background must be in TOF too
+
+            context.mantidSnapper.ConvertUnits("",InputWorkspace=backgroundWSName,
                                             OutputWorkspace=backgroundWSName,
-                                            PreserveEvents=True) 
+                                            Target="TOF")
+            
+            # rebin to match sample data
 
-        # sample ws needs to be NBC here
-        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
-                                InputWorkspace=self.outputWs,
-                                OutputWorkspace=self.outputWs)
-        # and background too
-        self.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
-                                InputWorkspace=backgroundWSName,
-                                OutputWorkspace=backgroundWSName)
-        
+            context.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=backgroundWSName,
+                                                WorkspaceToMatch=context.outputWs,
+                                                OutputWorkspace=backgroundWSName,
+                                                PreserveEvents=True) 
 
-        self.mantidSnapper.Minus("",LHSWorkspace=self.outputWs,
-                                 RHSWorkspace=backgroundWSName,
-                                 OutputWorkspace=self.outputWs)
-        
-    if attenuationWSName is not None:
+            # sample ws needs to be NBC here
+            context.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
+                                    InputWorkspace=context.outputWs,
+                                    OutputWorkspace=context.outputWs)
+            # and background too
+            context.mantidSnapper.NormalizeByCurrentButTheCorrectWay("",
+                                    InputWorkspace=backgroundWSName,
+                                    OutputWorkspace=backgroundWSName)
 
-        # if attenuation workspace is specified divide by it
+            context.mantidSnapper.Minus("",LHSWorkspace=context.outputWs,
+                                    RHSWorkspace=backgroundWSName,
+                                    OutputWorkspace=context.outputWs)
 
-        self.mantidSnapper.ConvertUnits("",InputWorkspace=self.outputWs,
-                                        OutputWorkspace=self.outputWs,
-                                        Target="Wavelength")
-        
-        self.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=attenuationWSName,
-                                            WorkspaceToMatch=self.outputWs,
-                                            OutputWorkspace=attenuationWSName,
-                                            PreserveEvents=True) 
+        if attenuationWSName is not None:
 
-        self.mantidSnapper.Divide("",LHSWorkspace=self.outputWs,
-                                  RHSWorkspace=attenuationWSName,
-                                  OutputWorkspace=self.outputWs)
-    
-    self.mantidSnapper.ConvertUnits("",InputWorkspace=self.outputWs,
-                                    OutputWorkspace=self.outputWs,
-                                    Target="dSpacing")
-        
-    self.mantidSnapper.executeQueue()
+            # if attenuation workspace is specified divide by it
+
+            context.mantidSnapper.ConvertUnits("",InputWorkspace=context.outputWs,
+                                            OutputWorkspace=context.outputWs,
+                                            Target="Wavelength")
+
+            context.mantidSnapper.RebinToWorkspace("",WorkspaceToRebin=attenuationWSName,
+                                                WorkspaceToMatch=context.outputWs,
+                                                OutputWorkspace=attenuationWSName,
+                                                PreserveEvents=True) 
+
+            context.mantidSnapper.Divide("",LHSWorkspace=context.outputWs,
+                                    RHSWorkspace=attenuationWSName,
+                                    OutputWorkspace=context.outputWs)
+
+        context.mantidSnapper.ConvertUnits("",InputWorkspace=context.outputWs,
+                                        OutputWorkspace=context.outputWs,
+                                        Target="dSpacing")
+
+        context.mantidSnapper.executeQueue()
+
+    @staticmethod
+    def cheeseMask(context, binMaskList):
+
+        # this hook will take a list of bin mask table workspaces and run a maskBinsFromTable on each of these.
+
+        for mask in binMaskList:
+            # extract units from ws name (table workspaces don't have logs)
+            maskUnits = mask.split("_")[-1]
+
+            # check current units of workspace
+            currentUnits = mtd[context.outputWs].getAxis(0).getUnit().unitID()
+            if currentUnits != maskUnits:
+
+                # ensure units of workspace match
+                context.mantidSnapper.ConvertUnits(
+                    f"Hook: Converting current units {currentUnits} to match Bin Mask with units of {maskUnits}",
+                    InputWorkspace=context.outputWs,
+                    Target=maskUnits,
+                    OutputWorkspace=context.outputWs,
+                )
+            # mask bins
+            context.mantidSnapper.MaskBinsFromTable(
+                f"Hook: Masking bins on workspace {context.outputWs} using table {mask}",
+                InputWorkspace=context.outputWs,
+                MaskingInformation=mask,
+                OutputWorkspace=context.outputWs,
+            )
+            if currentUnits != maskUnits:
+                # convert back to original units
+                context.mantidSnapper.ConvertUnits(
+                    f"Hook: Converting units back to original {currentUnits}",
+                    InputWorkspace=context.outputWs,
+                    Target=currentUnits,
+                    OutputWorkspace=context.outputWs,
+                )
+
+        context.mantidSnapper.executeQueue()
 
 
-def cheeseMask(self,binMaskList):
-        
-    # this hook will take a list of bin mask table workspaces and run a maskBinsFromTable on each of these. 
-
-    for mask in binMaskList:
-        # extract units from ws name (table workspaces don't have logs)
-        maskUnits = mask.split("_")[-1]
-        # ensure units of workspace match
-        self.mantidSnapper.ConvertUnits(
-            f"Converting units to match Bin Mask with units of {maskUnits}",
-            InputWorkspace=self.outputWs,
-            Target=maskUnits,
-            OutputWorkspace=self.outputWs,
-        )
-        # mask bins
-        self.mantidSnapper.MaskBinsFromTable(
-            "Masking bins...",
-            InputWorkspace=self.outputWs,
-            MaskingInformation=mask,
-            OutputWorkspace=self.outputWs,
-        )
-
-    # convert back to dSpacing if needed
-    self.mantidSnapper.ConvertUnits(
-        "Converting to dSpacing...",
-        InputWorkspace=self.outputWs,
-        Target="dSpacing",
-        OutputWorkspace=self.outputWs,
-    )
-
-    self.mantidSnapper.executeQueue()
+def citation():
+    print("\nIf you use SNAPRed or snapwrap in your work please cite:\n")
+    print("SNAPRed: Reduction of multidimensional neutron time-of-flight diffraction data")
+    print("M. Guthrie, M. Walsh, K. Travis, R. Boston, D. Caballero, D. Dinger, G. ElsarBoukh, J. Hetrick, A.T. Savici and P. Peterson")
+    print("Manuscript in preparation (2025)\n")
 
 def reduce(runNumber,
                sampleEnv='none',
@@ -1012,9 +1029,9 @@ def reduce(runNumber,
 
     timestamp = reductionService.getUniqueTimestamp()
 
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    #process options that require SNAPRed hooks
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#process options that require SNAPRed hooks
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     #hook: background and attenuation correction
 
@@ -1035,14 +1052,15 @@ def reduce(runNumber,
         }
 
     if len(binMaskList) > 0:
+        # currently doesn't do anything, just runs empty hook in PreprocessReductionRecipe
+
         print("\nBIN MASK HOOK WILL BE APPLIED!!!!\n")
 
-        binMaskHook = Hook(func=cheeseMask,
+        binMaskHook = Hook(func=HookCollection.cheeseMask,
                            binMaskList=binMaskList)
-        emptyHook = Hook(func=doNothingHook) #dummy doesn't do anything for now
 
         hooks = {
-            "PreprocessReductionRecipe" : [emptyHook,emptyHook] #look like need two hooks. a pre and post?
+            "PostPreprocessReductionRecipe" : [binMaskHook,binMaskHook]
         }
         
     else:
@@ -1175,16 +1193,15 @@ def reduce(runNumber,
                 allPixelGroups.append(item.focusGroup.name)
 
     print(f"""
-            SNAPRed:
 
-                - Run Number: {ingredients.runNumber}
+READY TO REDUCE. SNAPRed status:
 
-                - state: 
-                    - ID: {stateID},
-                    - definition: {stateDict}
+- Run Number: {ingredients.runNumber}
 
-                - Pixel Groups to process: {allPixelGroups}
-
+- state: 
+    - ID: {stateID},
+    - definition: {stateDict}
+    - Pixel Groups to process: {allPixelGroups}
             """)
     
     
@@ -1192,64 +1209,61 @@ def reduce(runNumber,
     if calibrationRecord.version==0 and continueNoDifcal:
         print("""
 
-          - WARNING: DIAGNOSTIC MODE! DEFAULT GEOMETRY USED.
+    WARNING: DIAGNOSTIC MODE! DEFAULT GEOMETRY USED.
 
-              """)
+        """)
     else:
         print(f"""
-          Calibration Status:
-            - Diffraction Calibration:
-                - .h5 path: {calibrationPath}
-                - .h5 version: {calibrationRecord.version}
+    - Diffraction Calibration:
+        - .h5 path: {calibrationPath}
+        - .h5 version: {calibrationRecord.version}
 
     """)
 
     if continueNoVan:
         print("""         
                  
-          - WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
-            DATA WILL BE ARTIFICIALLY NORMALISED BY DIVISION BY BACKGROUND.
+    WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
+    DATA WILL BE ARTIFICIALLY NORMALISED BY DIVISION BY BACKGROUND.
 
             """)
     else:
         print(f"""            
-                - Normalisation Calibration:
-                    - raw vanadium path: {normalizationPath}
-                    - raw vanadium version: {normalizationRecord.version}
+    - Normalisation Calibration:
+        - raw vanadium path: {normalizationPath}
+        - raw vanadium version: {normalizationRecord.version}
 
             """)
-
 
     #optional arguments provided...
 
-    if sampleEnv != 'none':
-        print(f"""          
-            Sample environment was specified.
-
-                - name: {seeDict["name"]}
-                - id: {seeDict["id"]}
-                - type: {seeDict["type"]}
-                - mask: {seeDict["masks"]["maskFilenameList"]} NOT YET IMPLEMENTED
-            
-            """)
-
     if pixelMasks != 'none' or []:
         print(f"""
-            Mask workspace(s) specified:
+    Mask workspace(s) specified:
         """)
         for mask in pixelMasks:
             print(f"""
-                {mask}
+        {mask}
                   """)
 
+    if binMaskList != []:
+        print(f"""
+    Bin Mask workspace(s) specified:
+        """)
+        for mask in binMaskList:
+            print(f"""
+        {mask}
+                  """)
+
+    time.sleep(5) #pause to allow user to read status info
     #obtain useful values from instrument state
 
-        farmFresh = FarmFreshIngredients(
+    farmFresh = FarmFreshIngredients(
         runNumber=runNumber,
         useLiteMode=useLiteMode,
         focusGroups=[{"name":"All", "definition":""}], #pixel group irrelevant, so just choose one.
         state=stateID)
-        instrumentState = SousChef().prepInstrumentState(farmFresh)
+    instrumentState = SousChef().prepInstrumentState(farmFresh)
 
     if qsp:
 
@@ -1364,9 +1378,7 @@ def reduce(runNumber,
                   """)
 
 
-    if verbose:
-
-        
+    if verbose:       
 
         print("\nINSTRUMENT PARAMETERS")
         print(f"- Calib.home: {Config['instrument.calibration.home']}")
@@ -1468,10 +1480,10 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
             print("dMax (Å) - cropped".ljust(just),cropDMaxs)
             print("dBin".ljust(just),dBins)
 
-    if reduceData:
-        print(data)
-        for dat in data:
-            print(dat)
+    # if reduceData:
+    #     print(data)
+    #     for dat in data:
+    #         print(dat)
 
     if qsp:
         # snapwrapIO.convertToQ()
@@ -1517,6 +1529,8 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
 
     # for par in instrumentState:
     #     print(par)
+
+    citation()
     config.setLogLevel(3, quiet=True)
 
 
