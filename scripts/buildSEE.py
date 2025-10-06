@@ -13,7 +13,7 @@ jsonDir = WrapConfig.get("SEE/json/home")
 
 
 ###################################################################
-# Pressure controller and Temperature controller:
+# Build Pressure controller and Temperature controller:
 ###################################################################
 
 teledyne = pressureController(manufacturer="Teledyne", 
@@ -51,7 +51,7 @@ gasket = makeDACGasket(anvil,
 DAC = assembly.DAC(components=[anvil, gasket, teledyne], 
                comment="DAC template", 
                model="markVI", 
-               serialNumber="",
+               serialNumber="001",
                orientation=[0.0, 0.0, 1.0])
 
 print("Created assembly:")
@@ -60,7 +60,7 @@ print(DAC.stringDescriptor)
 # serialize and save 
 payload = DAC.to_dict()
 #save json
-json = f"{jsonDir}/DAC.json"
+json = f"{jsonDir}/DAC_template.json"
 utils.SEEMetaSaver(payload,json)
 
 ###################################################################

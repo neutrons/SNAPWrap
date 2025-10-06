@@ -710,6 +710,8 @@ def processResolutionWS(resWSName,bankID):
     # instprm file.
 
     ws = mtd[resWSName]
+    # difc = ws.getSpectrumInfo().difcUncalibrated(bankID)
+    difc = 5241.5467662253222443 # UGH!!!! I can't figure out how to extract this!!!!!!!
     d = ws.dataX(bankID)
     sig = ws.dataY(bankID)
     bet = np.zeros_like(sig)
@@ -728,7 +730,7 @@ def processResolutionWS(resWSName,bankID):
 
     # GSAS uses sig in TOF, so need to convert from d-space here:
 
-    sig = tof/d*sig
+    sig = (tof/d)*sig
 
     i = 0
     resString = f"pdabc:\"\"\"{d[i]:.4f}, {tof[i]:8.1f}, {alp[i]:8.6f}, {bet[i]:8.6f}, {sig[i]:8.6f}\n"
@@ -753,6 +755,7 @@ def createGSASInstPrm(gsaPath):
     print(f"export test: basename:{baseName} pgs: {pgs} runNumber {runNumber}")
     
     if resWSName in mtd.getObjectNames():
+        print("found resolution workspace, adding to instprm")
         resExists = True
     else:
         resExists = False

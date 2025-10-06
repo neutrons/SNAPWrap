@@ -58,6 +58,10 @@ class globalParams:
 
         return
     
+
+def fork():
+    print("this is a fork")
+
 def makeDefaultYML(outputYML):
 
     #dictionary of params
@@ -193,9 +197,123 @@ def indexStates(isLite=True):
         if statuses[i] == "*CALIB*":
             print(string) 
 
+
+def estimatePixelAspect(pixelID,spectrumInfo,isLite=True):
+    
+    #This attempts to estimate the aspect ratio of a pixel by looking at 
+    #relative angles from detector centre
+
+    pixelID = int(pixelID)
+
+    if isLite:
+        if pixelID >= 0 and pixelID <=9215 :
+            bank = 'east'
+            centrePixel = int((4096+5119)/2)
+        elif pixelID > 9215:
+            bank = 'west'
+            centrePixel = int((13312+14335)/2)
+    else:
+        print("Error: doesn\'t currently work for native mode")
+
+    centreAngles = np.array(spectrumInfo.geographicalAngles(centrePixel))
+    pixelAngles = np.array(spectrumInfo.geographicalAngles(pixelID))
+    relativeAngles = pixelAngles-centreAngles
+    aspect = np.cos(relativeAngles[0])*np.cos(relativeAngles[1])
+
+
+    return aspect
+
+
+def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName):
+
+    # for makeResolutionWorkspace to work properly I need a special version of 
+    # GroupDetectors algo that will ignore NAN when calculating average values
+    # GroupDetectors, just gives NAN as output when it encounters these.
+
+    ws = mtd[wsName]
+
+    #some validation
+    if not ws.isCommonBins():
+        print("error: GroupDetectorsIgnoreNAN requires common bins (non ragged)")
+        return
+    
+    #TODO: check this is not an event workspace (how?)
+
+    specInfo=ws.spectrumInfo()
+    gpws = mtd[groupingWSName]
+
+    # get ID's of subgroups and loop over these
+    groupIDs = gpws.getGroupIDs()
+    ngroup = len(groupIDs)
+
+    print(f"found {ngroup} subgroups in {groupingWSName}")
+
+
+    # x-array is common
+    x = ws.dataX(0)
+
+    # loop over these
+    for sub in groupIDs:
+        print(f"processing subgroup group {sub}")
+        
+        #list of pixels in group
+        idList = gpws.getDetectorIDsOfGroup(int(sub))
+        nPixelsInGroup = len(idList)
+        
+        # Purge fully masked spectra
+        idList = [i for i in idList if not ws.getDetector(int(i)).isMasked()]
+
+        if len(idList) < nPixelsInGroup:
+            print(f"Notice: {nPixelsInGroup - len(idList)} pixels were masked in subgroup {sub}.")
+
+        # set all masked bins to nan and collect y-arrays
+        Y = []
+        totalMaskedBins = 0
+        for j, i in enumerate(idList):
+
+            #also weight by pixel aspect ratio
+            y = np.array(ws.readY(int(i)) * estimatePixelAspect(i, specInfo), dtype=float)
+            if ws.hasMaskedBins(int(i)):
+                mask_indices = ws.maskedBinsIndices(int(i))
+                y[mask_indices] = np.nan  # set masked bins to nan
+                totalMaskedBins += len(mask_indices)
+            Y.append(y)
+
+        if totalMaskedBins > 0:
+            print(f"Notice: a total of {totalMaskedBins} bins were masked in subgroupID {sub}.")
+
+        if len(Y) == 0:
+            print(f"Warning: all spectra in subgroupID {sub} are fully masked.")
+            y_avg = np.full_like(x, np.nan)
+        else:
+            Y = np.vstack(Y)
+            y_avg = np.nanmean(Y, axis=0)
+
+        if sub == 1:
+            yarrays = y_avg
+            xarrays = x
+        else:
+            yarrays = np.concatenate((yarrays, y_avg))
+            xarrays = np.concatenate((xarrays, x))
+
+    #try to preserve x-unit
+    try:
+        unit_id = ws.getAxis(0).getUnit().unitID()
+    except Exception:
+        unit_id = ""
+
+    CreateWorkspace(OutputWorkspace=outputWSName,
+                    DataX=xarrays,
+                    DataY=yarrays,
+                    NSpec=ngroup,
+                    UnitX=unit_id)
+
+
+
 def makeResolutionWorkspace(prefix,
                             runNumber,
                             pixelMask=None,
+                            binMaskList=[],
                             isLite=True):
     
     # This function will use donor workspace to create a resolution workspace
@@ -249,8 +367,13 @@ def makeResolutionWorkspace(prefix,
     else:
         raise Exception(f"ERROR: unexpected guide status {instrumentState.detectorState.guideStat} for run {runNumber}")
 
+    lamMin = instrumentState.particleBounds.wavelength.minimum
+    lamMax = instrumentState.particleBounds.wavelength.maximum
+    lowdSpacingCrop = Config["constants.CropFactors.lowdSpacingCrop"]
+    highdSpacingCrop = Config["constants.CropFactors.highdSpacingCrop"]
+
     #make delDOverD workspace
-    print(f"Resolution params: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.4f}")
+    print(f"Resolution params: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.6f}")
 
     ConvertUnits(InputWorkspace=donorWSName,
         OutputWorkspace=donorWSName,
@@ -288,7 +411,10 @@ def makeResolutionWorkspace(prefix,
             OutputWorkspace=resWSName)
     
 
-    # get global d limits
+    # Create unfocussed workspace with x-axes in units of d-spacing 
+    # running between global d limits with constant log binning. The
+    # y-values are calculated delta-d
+
     ws = mtd[resWSName]
     xMin = 100000.0
     xMax = 0.0
@@ -321,7 +447,7 @@ def makeResolutionWorkspace(prefix,
         
         ws.setY(pix,yVals)
 
-    #apply pixel mask if provided
+    #apply pixel mask if requested
     if pixelMask is not None:
         if mtd.doesExist(pixelMask):
             print(f"Applying pixel mask: {pixelMask}")
@@ -332,14 +458,9 @@ def makeResolutionWorkspace(prefix,
             print(f"ERROR: pixel mask {pixelMask} does not exist")
             return
         
-    # apply full set of masks: pixel and bin to resWSName
-
-    #bin masks: pending proper snapred 4.0 this follows the very imperfect strategy
-    # of applying any workspace with string "maskBins_" in its name found in the ADS. 
-
-    maskBinTables = [table for table in mtd.getObjectNames() if "maskBins_" in table]
-    print(f"found {len(maskBinTables)} bin mask workspaces")
-    for table in maskBinTables:
+    # apply bin mask if requested
+    print(f"will apply {len(binMaskList)} bin mask workspaces")
+    for table in binMaskList:
         
         maskBinUnit = table.split("_")[1]
 
@@ -356,10 +477,39 @@ def makeResolutionWorkspace(prefix,
     ConvertUnits(InputWorkspace=resWSName,
         OutputWorkspace=resWSName,
         Target="dSpacing")
+    
+    #Finally, apply d-limits to every spectrum by setting d values out of range to NAN
+    ws = mtd[resWSName]
+    spectrumInfo = ws.spectrumInfo()
+    for pix in range(nPix):
+        theta = spectrumInfo.twoTheta(pix)/2.0
+        dMin = lamMin/(2*np.sin(theta)) + lowdSpacingCrop 
+        dMax = lamMax/(2*np.sin(theta)) - highdSpacingCrop
+        x = ws.dataX(pix)
+        y = ws.dataY(pix)
 
-    #GroupDetectors for all pgs present in ws handle. 
+        # Handle histogram vs point data
+        if len(x) == len(y) + 1:
+            x_centers = 0.5 * (x[:-1] + x[1:])
+        else:
+            x_centers = x
+
+        #indices for bins within range
+        inside = (x_centers >= dMin) & (x_centers <= dMax)
+        
+        #copy original y values, but set those outside range to be NAN
+        y_new = np.array(y, dtype=float, copy=True)
+        y_new[~inside] = np.nan
+        ws.setY(pix, y_new)
+
+
+    #Finally, GroupDetectors for all pgs present in ws handle. 
     # By selecting `Behaviour='Average'` populate
     # each grouped output spectrum to contain averaged del_d. 
+    #
+    # Note GroupDetectors does not handle NAN values properly, so created
+    # GroupDetectorsIgnoreNAN instead.
+
 
     for handle in handles:
 
@@ -372,12 +522,7 @@ def makeResolutionWorkspace(prefix,
 
         outWS = f"resolution_dsp_{pgs.lower()}_{str(runNumber).zfill(6)}"
 
-        GroupDetectors(InputWorkspace=resWSName, 
-            OutputWorkspace=outWS, 
-            IgnoreGroupNumber=False,
-            Behaviour='Average', 
-            PreserveEvents=False,
-            CopyGroupingFromWorkspace=gpWSName)
+        GroupDetectorsIgnoreNAN(resWSName, gpWSName, outWS)
 
         ConvertToPointData(InputWorkspace=outWS,
         OutputWorkspace=outWS)
@@ -404,6 +549,9 @@ def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
 # if operation = "empty" cabinet will be emptied and removed
  
     if operation.lower() == "empty":
+        if not mtd.doesExist(cabinetName):
+            print(f"{cabinetName} doesn\'t exist cannot empty it")
+            return
         groupWS = mtd[cabinetName]
         UnGroupWorkspace(groupWS)
         return
@@ -906,6 +1054,9 @@ class HookCollection:
                     OutputWorkspace=context.outputWs,
                 )
 
+        context.mantidSnapper.CloneWorkspace("Hook: keep copy of masked unfocussed workspace",
+                                             InputWorkspace=context.outputWs,
+                                            OutputWorkspace=f"{context.outputWs}_unfoc_masked")
         context.mantidSnapper.executeQueue()
 
 
@@ -1174,12 +1325,10 @@ def reduce(runNumber,
             )
     
     if type(normalizationRecord) == None:
-        print("""         
-                 
+        print("""                         
           - WARNING: NO VANADIUM FOUND. TO PROCEED EITHER: 
               1. RUN A VANADIUM CALIBRATION OR 
               2. SET "continueNoVan = True" TO USE ARTIFICIAL NORMALISATION
-
             """)
         
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1193,67 +1342,47 @@ def reduce(runNumber,
                 allPixelGroups.append(item.focusGroup.name)
 
     print(f"""
-
 READY TO REDUCE. SNAPRed status:
-
 - Run Number: {ingredients.runNumber}
-
 - state: 
     - ID: {stateID},
     - definition: {stateDict}
     - Pixel Groups to process: {allPixelGroups}
             """)
-    
-    
-    
     if calibrationRecord.version==0 and continueNoDifcal:
         print("""
-
     WARNING: DIAGNOSTIC MODE! DEFAULT GEOMETRY USED.
-
         """)
     else:
         print(f"""
     - Diffraction Calibration:
         - .h5 path: {calibrationPath}
         - .h5 version: {calibrationRecord.version}
-
     """)
 
     if continueNoVan:
-        print("""         
-                 
+        print("""                         
     WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
     DATA WILL BE ARTIFICIALLY NORMALISED BY DIVISION BY BACKGROUND.
-
             """)
     else:
         print(f"""            
     - Normalisation Calibration:
         - raw vanadium path: {normalizationPath}
         - raw vanadium version: {normalizationRecord.version}
-
             """)
 
     #optional arguments provided...
 
     if pixelMasks != 'none' or []:
         print(f"""
-    Mask workspace(s) specified:
+    Mask workspace(s) specified: {pixelMasks}
         """)
-        for mask in pixelMasks:
-            print(f"""
-        {mask}
-                  """)
 
     if binMaskList != []:
         print(f"""
-    Bin Mask workspace(s) specified:
+    Bin Mask workspace(s) specified: {binMaskList}
         """)
-        for mask in binMaskList:
-            print(f"""
-        {mask}
-                  """)
 
     time.sleep(5) #pause to allow user to read status info
     #obtain useful values from instrument state
@@ -1300,7 +1429,11 @@ READY TO REDUCE. SNAPRed status:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         data = interfaceController.executeRequest(snapRequest).data
-        record=data.record
+        try:
+            record=data.record
+        except:
+            print("ERROR: reduction failed")
+            assert False
 
         # print("\n\ndata\n\n")
         # print(data.record.workspaceNames)
@@ -1532,6 +1665,7 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
 
     citation()
     config.setLogLevel(3, quiet=True)
+    return ingredients.pixelGroups
 
 
     
