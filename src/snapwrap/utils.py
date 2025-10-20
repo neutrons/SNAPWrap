@@ -224,11 +224,22 @@ def estimatePixelAspect(pixelID,spectrumInfo,isLite=True):
     return aspect
 
 
-def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName):
+def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Average",solidAngleWSName=None):
 
     # for makeResolutionWorkspace to work properly I need a special version of 
-    # GroupDetectors algo that will ignore NAN when calculating average values
-    # GroupDetectors, just gives NAN as output when it encounters these.
+    # GroupDetectors algo that will ignore the NAN values that occur in in spectra 
+    # That have been diamond notched.
+    # 
+    # In addition, a workspace containing the solid angle of each pixel 
+    # can be specified. If it is, the contribution of each pixel to the 
+    # grouped spectrum will be weighted according to this
+
+    if solidAngleWSName:
+        behaviour = "Sum" #required for correct application of pixel weighting
+
+    if behaviour not in ["Sum","Average"]:
+        print("Error: unexpected behaviour requested. Should be either \'Sum\' or \'Average\'")
+        return
 
     ws = mtd[wsName]
 
@@ -246,69 +257,87 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName):
     groupIDs = gpws.getGroupIDs()
     ngroup = len(groupIDs)
 
-    print(f"found {ngroup} subgroups in {groupingWSName}")
-
+    # print(f"found {ngroup} subgroups in {groupingWSName}") 
 
     # x-array is common
     x = ws.dataX(0)
+    
+    # loop over subgroups, and average all y arrays for each, ignoring NAN and weighting
+    # if, requested, weighting individual pixels contributions according to their solid angle
+    #to retain geometry, create a grouped workspace using normal GroupDetectors, but then over
+    #write this with the weighted/NAN-ignored data
 
-    # loop over these
+    #build workspace that retains geometry    
+    GroupDetectors(InputWorkspace=wsName,
+                OutputWorkspace=outputWSName,
+                CopyGroupingFromWorkspace=groupingWSName,
+                PreserveEvents=False)
+    
+    wsOut = mtd[outputWSName]
+    groupPixelCount = []
     for sub in groupIDs:
-        print(f"processing subgroup group {sub}")
+        # print(f"processing subgroup group {sub}")
         
         #list of pixels in group
         idList = gpws.getDetectorIDsOfGroup(int(sub))
         nPixelsInGroup = len(idList)
-        
+        groupPixelCount.append(nPixelsInGroup)
+
+
         # Purge fully masked spectra
-        idList = [i for i in idList if not ws.getDetector(int(i)).isMasked()]
+        idList = [int(i) for i in idList if not ws.getDetector(int(i)).isMasked()]
 
         if len(idList) < nPixelsInGroup:
             print(f"Notice: {nPixelsInGroup - len(idList)} pixels were masked in subgroup {sub}.")
 
-        # set all masked bins to nan and collect y-arrays
-        Y = []
+        if solidAngleWSName:
+            
+            #calculate total solid angle of (masked) subgroup
+            ws_omega = mtd[solidAngleWSName]
+            subgroupSolidAngle = 0
+            for id in idList:
+                subgroupSolidAngle += ws_omega.dataY(id)[0] 
+            # print(f"subgroup {sub} with {len(idList)}pixels. omega_tot: {subgroupSolidAngle:.6f} sterad (avg = {subgroupSolidAngle/len(idList):.6f} per pixels)") 
+
+        # set all masked bins to nan, average remaining bins in all spectra ignoring NAN
+        YNorm = []
+
         totalMaskedBins = 0
         for j, i in enumerate(idList):
 
-            #also weight by pixel aspect ratio
-            y = np.array(ws.readY(int(i)) * estimatePixelAspect(i, specInfo), dtype=float)
+            if solidAngleWSName:
+                pixelWeight = ws_omega.dataY(i)[0]/subgroupSolidAngle
+            else:
+                pixelWeight = 1.0
+            
+            y_in = ws.readY(int(i))
+            y = y_in*pixelWeight
+
             if ws.hasMaskedBins(int(i)):
                 mask_indices = ws.maskedBinsIndices(int(i))
                 y[mask_indices] = np.nan  # set masked bins to nan
                 totalMaskedBins += len(mask_indices)
-            Y.append(y)
+            YNorm.append(y)
 
         if totalMaskedBins > 0:
             print(f"Notice: a total of {totalMaskedBins} bins were masked in subgroupID {sub}.")
 
-        if len(Y) == 0:
+        if len(YNorm) == 0:
             print(f"Warning: all spectra in subgroupID {sub} are fully masked.")
             y_avg = np.full_like(x, np.nan)
         else:
-            Y = np.vstack(Y)
-            y_avg = np.nanmean(Y, axis=0)
+            
+            YNorm = np.vstack(YNorm)
+            if behaviour == "Sum":
+                y_avg = np.nansum(YNorm, axis=0) 
+            elif behaviour == "Average":
+                y_avg = np.nanmean(YNorm, axis=0)
 
-        if sub == 1:
-            yarrays = y_avg
-            xarrays = x
-        else:
-            yarrays = np.concatenate((yarrays, y_avg))
-            xarrays = np.concatenate((xarrays, x))
+        h = int(sub)-1 # subgroupID starts at one instead of zero
+        wsOut.setY(h,y_avg)
 
-    #try to preserve x-unit
-    try:
-        unit_id = ws.getAxis(0).getUnit().unitID()
-    except Exception:
-        unit_id = ""
-
-    CreateWorkspace(OutputWorkspace=outputWSName,
-                    DataX=xarrays,
-                    DataY=yarrays,
-                    NSpec=ngroup,
-                    UnitX=unit_id)
-
-
+    #debug info
+    # CreateWorkspace(DataX=groupIDs,DataY=groupPixelCount,OutputWorkspace="pixelCount")
 
 def makeResolutionWorkspace(prefix,
                             runNumber,

@@ -604,9 +604,11 @@ def make_resolution_workspaces(donorWSName):
             continue
         
         did = int(dids[0])
-        if detInfo.isMonitor(did):
-            print(f"histogram:{s} is a monitor")
-            continue
+
+        #TODO: why is this not correct?
+        # if detInfo.isMonitor(did):
+        #     print(f"histogram:{s} is a monitor")
+        #     continue
 
         id_list.append(did)
         id_map[did]= s #map pixels id to spectrum number
@@ -662,6 +664,9 @@ def make_resolution_workspaces(donorWSName):
     for i,did in enumerate(id_list):
         wi = id_map[did]
         ws_om.dataY(wi)[0] = omegaList[i]
-        ws_d2t.dataY(wi)[0] = d2tList[i]
-
-    print("generated workspaces: omega and d2t")
+        #calculated d2t is full 2theta range. But typically will be comparing with
+        #std deviation from Gaussian peak fits. Take full range to be equiv to 2*FWHM
+        #then std deviation given by: 
+        sig = (d2tList[i]/2)/(2*np.sqrt(2*np.log(2)))
+        ws_d2t.dataY(wi)[0] = sig
+    print("generated workspaces: omega and d2t (with d2t as Gaussian sigma equivalent)")
