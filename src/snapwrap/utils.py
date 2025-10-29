@@ -232,7 +232,7 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
     # 
     # In addition, a workspace containing the solid angle of each pixel 
     # can be specified. If it is, the contribution of each pixel to the 
-    # grouped spectrum will be weighted according to this
+    # grouped spectrum will be weighted according to its solid angle.
 
     if solidAngleWSName:
         behaviour = "Sum" #required for correct application of pixel weighting
@@ -267,7 +267,7 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
     #to retain geometry, create a grouped workspace using normal GroupDetectors, but then over
     #write this with the weighted/NAN-ignored data
 
-    #build workspace that retains geometry    
+    #build workspace that retains instrument geometry    
     GroupDetectors(InputWorkspace=wsName,
                 OutputWorkspace=outputWSName,
                 CopyGroupingFromWorkspace=groupingWSName,
@@ -292,7 +292,7 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
 
         if solidAngleWSName:
             
-            #calculate total solid angle of (masked) subgroup
+            #calculate total solid angle of all pixels in (masked) subgroup
             ws_omega = mtd[solidAngleWSName]
             subgroupSolidAngle = 0
             for id in idList:
@@ -306,7 +306,7 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
         for j, i in enumerate(idList):
 
             if solidAngleWSName:
-                pixelWeight = ws_omega.dataY(i)[0]/subgroupSolidAngle
+                pixelWeight = ws_omega.dataY(i)[0]/subgroupSolidAngle # fractional contribution of pixel to group 
             else:
                 pixelWeight = 1.0
             
@@ -338,6 +338,14 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
 
     #debug info
     # CreateWorkspace(DataX=groupIDs,DataY=groupPixelCount,OutputWorkspace="pixelCount")
+
+# def EstimateResolutionDiffractionSNAP(InputWorkspace=donorWSName,
+#         DeltaTOFOverTOF = delTOverT,
+#         DeltaL = delLOverL*Ltot,
+#         SourceDeltaThetaDivergence = delTh, #
+#         PartialResolutionWorkspaces="partial",
+#         OutputWorkspace="delDOverD"):
+    
 
 def makeResolutionWorkspace(prefix,
                             runNumber,
@@ -402,7 +410,17 @@ def makeResolutionWorkspace(prefix,
     highdSpacingCrop = Config["constants.CropFactors.highdSpacingCrop"]
 
     #make delDOverD workspace
-    print(f"Resolution params: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.6f}")
+    print(f"Resolution params from SNAPRed: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.6f}")
+
+    # update 20251029: finished an extensive investigation into resolution calculation. It demonstrated that we need to
+    # include the resolution effects of indicidual pixels (at least in lite mode). It also demonstrated that the effective
+    # size of lite pixels is larger than the definition in IDF due to physical realities in the detector.
+    # Finally, it also revealed that the true beam is rotated 1.5 deg towards the east bank relative to the ideal location
+    # To handle all of this. I have had to create a custom version of EstimateResolutionDiffraction that includes pixel aspects and
+    # allows me to handle beam angle offsets. I've imaginatively called this EstimateResolutionDiffractionSNAP.
+
+
+
 
     ConvertUnits(InputWorkspace=donorWSName,
         OutputWorkspace=donorWSName,

@@ -627,7 +627,7 @@ def make_resolution_workspaces(donorWSName):
     nPix = len(id_list)
     if nPix == 18432:
         #instrument is SNAPLite
-        h = 0.004944 # size of lite pixel edge from IDF
+        h = 1.0*0.004944 # size of lite pixel edge from IDF
     elif nPix == 1179648:
         #instrument is SNAP
         h = 0.000618 # size of pixel edge from IDF
