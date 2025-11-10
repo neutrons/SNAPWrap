@@ -1,4 +1,5 @@
 # some helpful functions for use with SNAPRed script version
+from inspect import stack
 import yaml
 from mantid.simpleapi import *
 from mantid.kernel import PhysicalConstants
@@ -15,6 +16,8 @@ from .wrapConfig import WrapConfig
 import snapwrap.snapStateMgr as ssm
 import snapwrap.io as io
 import snapwrap.maskUtils as mut
+import snapwrap.pixelResolution.mantid_utils as pixRes
+importlib.reload(pixRes)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -224,7 +227,7 @@ def estimatePixelAspect(pixelID,spectrumInfo,isLite=True):
     return aspect
 
 
-def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Average",solidAngleWSName=None):
+def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Average",weightWorkspaceName=None):
 
     # for makeResolutionWorkspace to work properly I need a special version of 
     # GroupDetectors algo that will ignore the NAN values that occur in in spectra 
@@ -234,8 +237,6 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
     # can be specified. If it is, the contribution of each pixel to the 
     # grouped spectrum will be weighted according to its solid angle.
 
-    if solidAngleWSName:
-        behaviour = "Sum" #required for correct application of pixel weighting
 
     if behaviour not in ["Sum","Average"]:
         print("Error: unexpected behaviour requested. Should be either \'Sum\' or \'Average\'")
@@ -245,12 +246,18 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
 
     #some validation
     if not ws.isCommonBins():
-        print("error: GroupDetectorsIgnoreNAN requires common bins (non ragged)")
-        return
+        # if bins aren't common, might still be point data, check this
+        x = ws.dataX(0)
+        if len(x) != 1:
+            print("error: GroupDetectorsIgnoreNAN requires common bins (non ragged)")
+            return
+        else:
+            print("NOTICE: input workspace appears to contain point data")
     
     #TODO: check this is not an event workspace (how?)
 
-    specInfo=ws.spectrumInfo()
+    # specInfo=ws.spectrumInfo()
+
     gpws = mtd[groupingWSName]
 
     # get ID's of subgroups and loop over these
@@ -259,30 +266,35 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
 
     # print(f"found {ngroup} subgroups in {groupingWSName}") 
 
-    # x-array is common
-    x = ws.dataX(0)
     
     # loop over subgroups, and average all y arrays for each, ignoring NAN and weighting
     # if, requested, weighting individual pixels contributions according to their solid angle
     #to retain geometry, create a grouped workspace using normal GroupDetectors, but then over
     #write this with the weighted/NAN-ignored data
 
-    #build workspace that retains instrument geometry    
+    #build grouped workspace that retains instrument geometry. Y-values will be overwritten    
     GroupDetectors(InputWorkspace=wsName,
                 OutputWorkspace=outputWSName,
                 CopyGroupingFromWorkspace=groupingWSName,
                 PreserveEvents=False)
     
+    # if provided extract array of weights for all pixels
+    if weightWorkspaceName is not None:
+        weightWS = mtd[weightWorkspaceName]
+        w = []
+        for i in range(weightWS.getNumberHistograms()):
+            w.append(weightWS.readY(i)[0]) #assumes single bin
+        pixelWeight = np.array(w)
+        print(f"Created weight array of length {len(pixelWeight)} from {weightWorkspaceName}")
+
     wsOut = mtd[outputWSName]
     groupPixelCount = []
     for sub in groupIDs:
-        # print(f"processing subgroup group {sub}")
         
         #list of pixels in group
         idList = gpws.getDetectorIDsOfGroup(int(sub))
         nPixelsInGroup = len(idList)
         groupPixelCount.append(nPixelsInGroup)
-
 
         # Purge fully masked spectra
         idList = [int(i) for i in idList if not ws.getDetector(int(i)).isMasked()]
@@ -290,29 +302,12 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
         if len(idList) < nPixelsInGroup:
             print(f"Notice: {nPixelsInGroup - len(idList)} pixels were masked in subgroup {sub}.")
 
-        if solidAngleWSName:
-            
-            #calculate total solid angle of all pixels in (masked) subgroup
-            ws_omega = mtd[solidAngleWSName]
-            subgroupSolidAngle = 0
-            for id in idList:
-                subgroupSolidAngle += ws_omega.dataY(id)[0] 
-            # print(f"subgroup {sub} with {len(idList)}pixels. omega_tot: {subgroupSolidAngle:.6f} sterad (avg = {subgroupSolidAngle/len(idList):.6f} per pixels)") 
-
         # set all masked bins to nan, average remaining bins in all spectra ignoring NAN
         YNorm = []
-
         totalMaskedBins = 0
-        for j, i in enumerate(idList):
+        for j, i in enumerate(idList): #for each subgroup, loop over all pixels here.
 
-            if solidAngleWSName:
-                pixelWeight = ws_omega.dataY(i)[0]/subgroupSolidAngle # fractional contribution of pixel to group 
-            else:
-                pixelWeight = 1.0
-            
-            y_in = ws.readY(int(i))
-            y = y_in*pixelWeight
-
+            y = ws.dataY(int(i))
             if ws.hasMaskedBins(int(i)):
                 mask_indices = ws.maskedBinsIndices(int(i))
                 y[mask_indices] = np.nan  # set masked bins to nan
@@ -331,21 +326,99 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
             if behaviour == "Sum":
                 y_avg = np.nansum(YNorm, axis=0) 
             elif behaviour == "Average":
-                y_avg = np.nanmean(YNorm, axis=0)
+                if weightWorkspaceName is None:
+                    # equal weights for the subgroup only
+                    w_pix = np.ones(YNorm.shape[0], dtype=float)
+                else:
+                    w_pix = pixelWeight[np.asarray(idList, dtype=int)]  # or row_idx if mapped
+
+                w = w_pix[:, None]
+                mask = np.isfinite(YNorm)
+                num = np.nansum((YNorm**2) * w, axis=0)
+                den = np.sum(w * mask, axis=0)
+                y_avg = np.sqrt(np.divide(num, den, out=np.full_like(num, np.nan), where=den > 0))
+
+                # sanity check
+                assert len(idList) == YNorm.shape[0], "idList length must match YNorm rows"
+                assert w_pix.shape[0] == YNorm.shape[0], "weights must align with YNorm rows"
 
         h = int(sub)-1 # subgroupID starts at one instead of zero
         wsOut.setY(h,y_avg)
 
-    #debug info
-    # CreateWorkspace(DataX=groupIDs,DataY=groupPixelCount,OutputWorkspace="pixelCount")
-
-# def EstimateResolutionDiffractionSNAP(InputWorkspace=donorWSName,
-#         DeltaTOFOverTOF = delTOverT,
-#         DeltaL = delLOverL*Ltot,
-#         SourceDeltaThetaDivergence = delTh, #
-#         PartialResolutionWorkspaces="partial",
-#         OutputWorkspace="delDOverD"):
+def getDetectorArcs(wsName,alias=True):
     
+    # extract detector arc values these can either come from the original
+    # pv logs or their aliases.
+    #
+    # important note, it seems like it is the aliases that are used to adjust
+    # the IDF detector positions to their actual values
+
+    ws = mtd[wsName]
+
+    logs = ws.getRun().getLogData()
+
+    if alias:
+        arcLogs = ["det_arc1","det_arc2"]
+    else:
+        arcLogs = ["BL3:Mot:vdet_arc1","BL3:Mot:vdet_arc2"]
+
+    print("\n Debug getDetectorArcs:")
+    for log in logs:
+
+        if log.name == arcLogs[0]:
+            arc1 = log.value[0]
+        if log.name == arcLogs[1]:
+            arc2 = log.value[0]
+
+    print("arc1",arc1)
+    print("arc2",arc2)
+    if not arc1 and arc2:
+        print(f"Error: did not find logs {arcLogs}")
+
+    return [arc1,arc2]    
+
+def resetDetectorArcs(donorWSName):
+
+    # will set detector arcs equal to original pv log values
+    # and reload instrument to apply them
+
+    #first get original pv log values
+    [origArc1,origArc2] = getDetectorArcs(donorWSName,alias=False)
+
+    # then update to these values
+    updateDetectorArcs(donorWSName,origArc1,origArc2)
+
+def updateDetectorArcs(donorWSName,arc1,arc2,isLite=True):
+
+    #update detector arc aliases and reload instrument to apply
+    # need arcs angles to be strings. 
+    arcs = {
+        "det_arc1": str(arc1),
+        "det_arc2": str(arc2)
+    }
+
+    for arc in arcs.keys():
+
+        AddSampleLog(Workspace=donorWSName,
+                    LogName=arc,
+                    LogText=arcs[arc],
+                    LogType="Number Series")
+        
+    if isLite:
+        xml = Config["instrument.lite.definition.file"]
+        LoadInstrument(Workspace=donorWSName,
+                   Filename=xml,
+                   MonitorList="-2--1",
+                   RewriteSpectraMap=False)
+        print("loaded SNAP lite instrument")
+    else:
+        LoadInstrument(Workspace=donorWSName,
+                   FilenamInstrumentName="SNAP",
+                   MonitorList="-2--1",
+                   RewriteSpectraMap=False)
+        print("loaded native instrument")
+    return
+
 
 def makeResolutionWorkspace(prefix,
                             runNumber,
@@ -396,6 +469,7 @@ def makeResolutionWorkspace(prefix,
     Ltot = L1 + L2
     delTOverT = instrumentState.instrumentConfig.delTOverT
     delLOverL = instrumentState.instrumentConfig.delLOverL
+    delL = delLOverL*Ltot
     #divergence is guide dependent
     if instrumentState.detectorState.guideStat == 1:
         delTh = instrumentState.instrumentConfig.delThWithGuide
@@ -404,10 +478,11 @@ def makeResolutionWorkspace(prefix,
     else:
         raise Exception(f"ERROR: unexpected guide status {instrumentState.detectorState.guideStat} for run {runNumber}")
 
+    # also need values to correctly calculate d-limits
     lamMin = instrumentState.particleBounds.wavelength.minimum
     lamMax = instrumentState.particleBounds.wavelength.maximum
     lowdSpacingCrop = Config["constants.CropFactors.lowdSpacingCrop"]
-    highdSpacingCrop = Config["constants.CropFactors.highdSpacingCrop"]
+    highdSpacingCrop = Config["constants.CropFactors.highdSpacingCrop"] 
 
     #make delDOverD workspace
     print(f"Resolution params from SNAPRed: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.6f}")
@@ -419,28 +494,76 @@ def makeResolutionWorkspace(prefix,
     # To handle all of this. I have had to create a custom version of EstimateResolutionDiffraction that includes pixel aspects and
     # allows me to handle beam angle offsets. I've imaginatively called this EstimateResolutionDiffractionSNAP.
 
+    # create workspaces containing pixel solid angle and pixel delta2Theta. The pixEdgeMultiplier value
+    # should be considered provisional, but was fitted to a series of peak fit data extracted from run 64413
+    # TODO: how on earth should this be properly handled??
 
+    #override SNAPRed values for now with values fitted on 20251029 for run 64413 in Lite mode
+    #TODO: migrate to SNAPInstPRm once these are confirmed
 
+    delTOverT = 0.00111
+    delTh = 0.00317
+    delL = 0.005
+    pixMult = 1.621
+    beamTilt = -1.509 #best fit: 1.509degrees TODO: why is sign negative? This was confirmed to equate to the beam
+    #pointing right looking a long the beam, explicitly: 
+        # magnitude of angle of East bank increases, while West decreases. It should be the opposite?
+        # Yet, this perfectly fits the data. 
+
+    print(f"Resolution params override: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.6f}")
+    print(f"Pixel edge multiplier: {pixMult:.6f}, beam tilt: {beamTilt:.6f} deg.")
+
+    #calculate d2t workspace
+    pixRes.make_resolution_workspaces(donorWSName,pixelEdgeMultiplier=pixMult) 
+    #EstimateResolutionDiffraction requires a workspace with delta-theta, not delta-2theta, so divide by two
+    Scale(InputWorkspace="d2t",
+        OutputWorkspace="delThetaPix",
+        Factor = 0.5,
+        Operation = "Multiply")
+    
+    
+    # apply beam tilt correction by adjusting detector arcs
+    oldArc1, oldArc2 = getDetectorArcs(donorWSName)
+    
+    arc1 = oldArc1 + beamTilt #note: arc1 and arc2 have opposite senses, so adding to both is the correct way to apply tilt
+    arc2 = oldArc2 + beamTilt
+
+    updateDetectorArcs(donorWSName,arc1,arc2)
+
+    arc1, arc2 = getDetectorArcs(donorWSName)
+    print(f"beam tilt of {beamTilt} deg. was applied during resolution calculation")
 
     ConvertUnits(InputWorkspace=donorWSName,
         OutputWorkspace=donorWSName,
-        Target="dSpacing")
+        Target="dSpacing")    
     
     #this calculates delta_d/d for each pixel using the TOF resolution equation
     EstimateResolutionDiffraction(InputWorkspace=donorWSName,
-        DeltaTOFOverTOF = delTOverT,
-        SourceDeltaL = delLOverL*Ltot,
-        SourceDeltaTheta = delTh,
-        PartialResolutionWorkspaces="partial",
-        OutputWorkspace="delDOverD")
-    
-    #TODO: delete partial workspaces
+                                DivergenceWorkspace="delThetaPix",
+                                DeltaTOFOverTOF = delTOverT,
+                                SourceDeltaL = delL,
+                                SourceDeltaTheta = delTh,
+                                PartialResolutionWorkspaces="partial",
+                                OutputWorkspace="delDOverD_ERD_Output")
+
+    resetDetectorArcs(donorWSName) #reset detector arcs to original values
+
+    delDOverD= CloneWorkspace(InputWorkspace="omega") #make clone to use its x-values
+
+    wsRes = mtd["delDOverD"]
+    nhist = wsRes.getNumberHistograms()
+    for i in range(nhist):
+        wsERD = mtd["delDOverD_ERD_Output"]
+        wsRes.dataY(i)[0]= wsERD.dataY(i)[0] # overwrite with original y-value with ERD output
+
+    DeleteWorkspaces(["partial_tof","partial_length","partial_angle","delDOverD_ERD_Output"])
 
     #get grouping workspaces
 
     snap = ssm.SNAPHome()
     calibrationHome = snap.calib
 
+    pgsWorkspaces = []
     for pgs in pgsList:
         pgsDefinition = f"{calibrationHome}/Powder/PixelGroupingDefinitions/SNAPFocGroup_{pgs.capitalize()}.lite.hdf"
         if isLite:
@@ -451,12 +574,15 @@ def makeResolutionWorkspace(prefix,
         if not mtd.doesExist(gpWSName):
             mut.LoadH5GroupingDefinition(donorWSName=donorWSName,
                                         groupingFilePath=pgsDefinition,
-                                        gWS=gpWSName)    
+                                        gWS=gpWSName)
+        pgsWorkspaces.append(gpWSName)    
 
     resWSName = f"resolution_dsp_unfoc_{str(runNumber).zfill(6)}"
+
+    GroupWorkspaces(InputWorkspaces=pgsWorkspaces,OutputWorkspace="groupingWorkspaces")
+
     CloneWorkspace(InputWorkspace=donorWSName,
             OutputWorkspace=resWSName)
-    
 
     # Create unfocussed workspace with x-axes in units of d-spacing 
     # running between global d limits with constant log binning. The
@@ -475,7 +601,7 @@ def makeResolutionWorkspace(prefix,
    
     Rebin(InputWorkspace=resWSName,
           OutputWorkspace=resWSName,
-          Params=(xMin,-0.005,xMax),
+          Params=(xMin,-0.005,xMax), #TODO: check that delta is appropriate
           PreserveEvents=False)
     
     ws = mtd[resWSName]
@@ -557,6 +683,7 @@ def makeResolutionWorkspace(prefix,
     # Note GroupDetectors does not handle NAN values properly, so created
     # GroupDetectorsIgnoreNAN instead.
 
+    # resWSName = resWSName + "_nrm"
 
     for handle in handles:
 
@@ -569,7 +696,12 @@ def makeResolutionWorkspace(prefix,
 
         outWS = f"resolution_dsp_{pgs.lower()}_{str(runNumber).zfill(6)}"
 
-        GroupDetectorsIgnoreNAN(resWSName, gpWSName, outWS)
+        GroupDetectorsIgnoreNAN(resWSName, 
+                                gpWSName, 
+                                outWS,
+                                behaviour="Average",
+                                weightWorkspaceName="pixWeights"
+                                )
 
         ConvertToPointData(InputWorkspace=outWS,
         OutputWorkspace=outWS)
@@ -585,6 +717,9 @@ def makeResolutionWorkspace(prefix,
         # ws.setDistribution=False
 
         print(f"created resolution workspace: {outWS}")
+
+    # keep resolution workspaces, but tidy up into group
+    GroupWorkspaces(InputWorkspaces=["d2t","delThetaPix","omega","delDOverD"],OutputWorkspace="resolutionWorkspaces")
 
     return 
 

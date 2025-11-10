@@ -1,4 +1,4 @@
-# pixelResolution/mantid_bridge.py
+# pixelResolution/mantid_utils.py
 """
 Mantid bridge: compute per-pixel solid angle (Ω) and Δ2θ for one or many DetectorIDs.
 
@@ -577,11 +577,18 @@ def pixel_center_small_angle(ws, detid: int, hx: float = None, hy: float = None)
     cos_th = 1.0
     return A * cos_th / (L * L)
 
-def make_resolution_workspaces(donorWSName):
+def make_resolution_workspaces(donorWSName,
+                            pixelEdgeMultiplier=1,
+                            solidAngleWSName="omega",
+                            d2tWSName="d2t"):
     """
     Using a supplied donor workspace, which should be unfocussed, to
     manufacture workspaces containing calculated omega (solid angle) and d2t
     (2theta uncertainty) for every pixel as their y-values.
+
+    a detailed investigation revealled that the active pixel size appears to be significantly
+    bigger than the IDF description. This is handled by allowing an option to supply a multiplier
+    to increase the edge size of a pixel.
     """
 
     ws = mtd[donorWSName]
@@ -613,45 +620,30 @@ def make_resolution_workspaces(donorWSName):
         id_list.append(did)
         id_map[did]= s #map pixels id to spectrum number
 
-    # using donor, create a clone workspace with a single bin and no events.
-    # there's probably a better way to do this...
-
-    x = ws.dataX(id_list[0])
-    x_1 = ws.dataX(id_list[1])
-
-    if not np.array_equal(x,x_1):
-        print("Error: input workspace must have common x-arrays for all spectra")
-        return
     
-    #determine which instrumenbt we have
+    #determine which instrument we have
     nPix = len(id_list)
     if nPix == 18432:
         #instrument is SNAPLite
-        h = 1.0*0.004944 # size of lite pixel edge from IDF
+        h = pixelEdgeMultiplier*0.004944 # size of lite pixel edge from IDF
     elif nPix == 1179648:
         #instrument is SNAP
-        h = 0.000618 # size of pixel edge from IDF
+        h = pixelEdgeMultiplier*0.000618 # size of pixel edge from IDF
     else:
         print(f"Error: instrument not recognised, donorWS has: {nPix} pixels != 18432 or 1179648")
+
+
+    # using donor, create a clone workspace with a single bin and no events.
+    Rebin(InputWorkspace=donorWSName,
+          OutputWorkspace=solidAngleWSName,
+          Params = "0,1,1",
+          PreserveEvents=False) #should ensure single bin , while discarding eventsSW
     
+    ws_om = mtd[solidAngleWSName]
 
-    #ensure donor is in TOF
-    ConvertUnits(InputWorkspace=donorWSName,
-                 OutputWorkspace="omega",
-                 Target="TOF"
-                 )
-
-    xRange = abs(x[-1]-x[0])
-
-    Rebin(InputWorkspace="omega",
-          OutputWorkspace="omega",
-          Params = f"{x[0]},{xRange},{x[-1]}",
-          PreserveEvents=False) #should ensure single bin , while discarding events
-    ws_om = mtd["omega"]
-
-    CloneWorkspace(InputWorkspace="omega",
-            OutputWorkspace="d2t")
-    ws_d2t = mtd["d2t"]
+    CloneWorkspace(InputWorkspace=solidAngleWSName,
+            OutputWorkspace=d2tWSName)
+    ws_d2t = mtd[d2tWSName]
 
 
     # calculate lists of solid angles (omega) and delta 2theta (d2t) for all pixel ids in list
@@ -669,4 +661,5 @@ def make_resolution_workspaces(donorWSName):
         #then std deviation given by: 
         sig = (d2tList[i]/2)/(2*np.sqrt(2*np.log(2)))
         ws_d2t.dataY(wi)[0] = sig
-    print("generated workspaces: omega and d2t (with d2t as Gaussian sigma equivalent)")
+    
+    print(f"generated workspaces: {solidAngleWSName} containing pixel solid angles and {d2tWSName} containing their 2theta uncertainty")
