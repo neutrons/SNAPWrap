@@ -368,7 +368,7 @@ def getDetectorArcs(wsName,alias=True):
 
     print("arc1",arc1)
     print("arc2",arc2)
-    if not arc1 and arc2:
+    if not arc1 or not arc2:
         print(f"Error: did not find logs {arcLogs}")
 
     return [arc1,arc2]    
