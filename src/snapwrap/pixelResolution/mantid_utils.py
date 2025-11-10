@@ -585,7 +585,7 @@ def make_resolution_workspaces(donorWSName,
     manufacture workspaces containing calculated omega (solid angle) and d2t
     (2theta uncertainty) for every pixel as their y-values.
 
-    a detailed investigation revealled that the active pixel size appears to be significantly
+    a detailed investigation revealed that the active pixel size appears to be significantly
     bigger than the IDF description. This is handled by allowing an option to supply a multiplier
     to increase the edge size of a pixel.
     """
