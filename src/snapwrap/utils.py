@@ -17,7 +17,6 @@ import snapwrap.snapStateMgr as ssm
 import snapwrap.io as io
 import snapwrap.maskUtils as mut
 import snapwrap.pixelResolution.mantid_utils as pixRes
-importlib.reload(pixRes)
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
