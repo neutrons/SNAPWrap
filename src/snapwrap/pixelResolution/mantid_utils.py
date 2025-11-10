@@ -636,7 +636,7 @@ def make_resolution_workspaces(donorWSName,
     Rebin(InputWorkspace=donorWSName,
           OutputWorkspace=solidAngleWSName,
           Params = "0,1,1",
-          PreserveEvents=False) #should ensure single bin , while discarding eventsSW
+          PreserveEvents=False) #should ensure single bin , while discarding events
     
     ws_om = mtd[solidAngleWSName]
 
