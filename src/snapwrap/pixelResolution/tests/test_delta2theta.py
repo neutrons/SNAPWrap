@@ -1,5 +1,5 @@
 import numpy as np
-from pixelResolution import delta_two_theta_over_rectangle
+from snapwrap.pixelResolution import delta_two_theta_over_rectangle
 
 def _z_rect(center_z, hx, hy):
     # rectangle in plane z=L, centered on z-axis; pixel axes along x/y
