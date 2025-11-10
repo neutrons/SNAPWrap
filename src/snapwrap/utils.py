@@ -547,8 +547,8 @@ def makeResolutionWorkspace(prefix,
 
     wsRes = mtd["delDOverD"]
     nhist = wsRes.getNumberHistograms()
+    wsERD = mtd["delDOverD_ERD_Output"]
     for i in range(nhist):
-        wsERD = mtd["delDOverD_ERD_Output"]
         wsRes.dataY(i)[0]= wsERD.dataY(i)[0] # overwrite with original y-value with ERD output
 
     DeleteWorkspaces(["partial_tof","partial_length","partial_angle","delDOverD_ERD_Output"])
