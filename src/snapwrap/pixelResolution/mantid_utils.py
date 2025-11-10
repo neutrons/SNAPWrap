@@ -114,7 +114,6 @@ def _delta_two_theta_sampled(sample: Array, center: Array, u: Array, v: Array, h
     uu, vv = np.meshgrid(uv, uv, indexing="xy")
     UU = uu.ravel()  # (G,)
     VV = vv.ravel()
-    G = UU.size
     out = np.empty((N,), dtype=float)
 
     for i in range(N):
