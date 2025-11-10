@@ -595,7 +595,6 @@ def make_resolution_workspaces(donorWSName,
     id_map = {}
     #first need to collect a list of detectorID's from the donor
     # instr = ws.getInstrument()
-    detInfo = ws.detectorInfo()
 
     nHisto = ws.getNumberHistograms()
     print(f"nHisto: {nHisto}")
