@@ -13,23 +13,34 @@ jsonDir = WrapConfig.get("SEE/json/home")
 
 
 ###################################################################
-# Pressure controller and Temperature controller:
+# Build Pressure controller and Temperature controller:
 ###################################################################
 
-teledyne = pressureController(manufacturer="Teledyne", 
+teledyne = pressureController(manufacturer="teledyne", 
                               model="", serialNumber="",
                               pvLogs=["BL3:SE:Teledyne1:PressSet",
                                       "BL3:SE:Teledyne1:Pressure"])
 
-pace = pressureController(manufacturer="PACE", 
+pace = pressureController(manufacturer="pace", 
                          model="", serialNumber="",
                          pvLogs=["BL3:SE:PACE1:PressSet",
                                  "BL3:SE:PACE1:Pressure"])
 
-cryo_12 = temperatureController(manufacturer="", 
+cryo_12 = temperatureController(manufacturer="cryo-12", #TODO: need a nickname property
                                  model="", serialNumber="",
                                  pvLogs=["BL3:SE:Lakeshore:SETP4",
-                                          "BL3:SE:Teledyne1:TempSet"])
+                                          "BL3:SE:Lakeshore:TempSet"])
+
+#save these as separate jsons
+for controller in [teledyne, pace, cryo_12]:
+    print("Created component:")
+    print(controller.stringDescriptor)
+
+    # serialize and save
+    payload = controller.to_dict()
+    #save json
+    json = f"{jsonDir}/components/{controller.manufacturer}.json"
+    utils.SEEMetaSaver(payload,json)
 
 ###################################################################
 # DAC template:
@@ -48,10 +59,10 @@ gasket = makeDACGasket(anvil,
                        material="W")
 
 # assemble
-DAC = assembly.DAC(components=[anvil, gasket, teledyne], 
+DAC = assembly.DAC(components=[anvil, gasket, teledyne,cryo_12], 
                comment="DAC template", 
                model="markVI", 
-               serialNumber="",
+               serialNumber="001",
                orientation=[0.0, 0.0, 1.0])
 
 print("Created assembly:")
@@ -60,7 +71,7 @@ print(DAC.stringDescriptor)
 # serialize and save 
 payload = DAC.to_dict()
 #save json
-json = f"{jsonDir}/DAC.json"
+json = f"{jsonDir}/DAC_template.json"
 utils.SEEMetaSaver(payload,json)
 
 ###################################################################

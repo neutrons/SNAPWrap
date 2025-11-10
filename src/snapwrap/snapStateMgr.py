@@ -501,7 +501,7 @@ def autoStateName(stateDict):
             name += f"{map[key]}:{stateDict[key]:6.1f}::"
         else:
             name += f"{map[key]}:{stateDict[key]}::"
-    print(len(name))
+    
     #strip final two colons
     name = name[:-2]
 

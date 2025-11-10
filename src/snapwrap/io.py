@@ -69,7 +69,6 @@ class redObject:
         self.exportPaths = self.buildExportPaths()
         self.dateTime = datetime.datetime.strptime(self.timeStamp,'%Y-%m-%dT%H%M%S')
 
-        
 
         #create a dictionary to hold metadata to include as a comment in output files
 
@@ -368,7 +367,7 @@ def exportRecipe(runDict,pgs,processIndices,gsaInstPrm):
                     UseSpectrumNumberAsBankID=True,
                     OverwriteStandardHeader=True,
                     UserSpecifiedGSASHeader=json.dumps(redObj.meta))
-            
+
             if gsaInstPrm:
                 createGSASInstPrm(fName)
             
@@ -710,6 +709,8 @@ def processResolutionWS(resWSName,bankID):
     # instprm file.
 
     ws = mtd[resWSName]
+    # # difc = ws.getSpectrumInfo().difcUncalibrated(bankID)
+    # difc = 5241.5467662253222443 # UGH!!!! I can't figure out how to extract this!!!!!!!
     d = ws.dataX(bankID)
     sig = ws.dataY(bankID)
     bet = np.zeros_like(sig)
@@ -724,11 +725,10 @@ def processResolutionWS(resWSName,bankID):
 
     # all arrays have to be identical size
     assert all(len(d) == len(a) for a in (tof, sig, bet, alp))
-    print(f"Found {len(d)} entries")
+    # print(f"Found {len(d)} entries")
 
     # GSAS uses sig in TOF, so need to convert from d-space here:
-
-    sig = tof/d*sig
+    sig = (tof/d)*sig
 
     i = 0
     resString = f"pdabc:\"\"\"{d[i]:.4f}, {tof[i]:8.1f}, {alp[i]:8.6f}, {bet[i]:8.6f}, {sig[i]:8.6f}\n"
@@ -750,14 +750,15 @@ def createGSASInstPrm(gsaPath):
     runNumber =  baseName.split("_")[0][4:]
     resWSName = f"resolution_dsp_{pgs.lower()}_{runNumber.zfill(6)}"
 
-    print(f"export test: basename:{baseName} pgs: {pgs} runNumber {runNumber}")
+    print(f"export test: basename:{baseName}, pgs: {pgs}, runNumber: {runNumber}")
     
     if resWSName in mtd.getObjectNames():
+        print("found resolution workspace, adding to instprm")
         resExists = True
     else:
         resExists = False
 
-    print(f"Resolution w name: {resWSName}, exists: {resExists}")
+    print(f"Resolution ws name: {resWSName}, exists: {resExists}")
 
     f = open(iPath,'w')
     
