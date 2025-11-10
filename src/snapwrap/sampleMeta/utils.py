@@ -30,7 +30,7 @@ class crystalReflection:
         self.extentOverPosition = extentOverPosition #full extent of peak divided by its position
 
         # prototype idea is to ditch extentOverPosition, which - in retrospect - is a dumb idea as
-        # of course, this is not just a property of the reflection, but how also where it's measured
+        # of course, this is not just a property of the reflection, but how and where it's measured
         # Here, I'm testing a new parameter "sig" (not sure about the name, but it's inspired by the
         # GSAS param, reflecting a gaussian component of peak profile).
         # My initial plan is to use this as a multiplier for the separately-calculated resolution
