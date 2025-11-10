@@ -487,7 +487,7 @@ def makeResolutionWorkspace(prefix,
     print(f"Resolution params from SNAPRed: delT/T: {delTOverT:.6f}, delL {delLOverL*Ltot:.6f}, delTh: {delTh:.6f}")
 
     # update 20251029: finished an extensive investigation into resolution calculation. It demonstrated that we need to
-    # include the resolution effects of indicidual pixels (at least in lite mode). It also demonstrated that the effective
+    # include the resolution effects of individual pixels (at least in lite mode). It also demonstrated that the effective
     # size of lite pixels is larger than the definition in IDF due to physical realities in the detector.
     # Finally, it also revealed that the true beam is rotated 1.5 deg towards the east bank relative to the ideal location
     # To handle all of this. I have had to create a custom version of EstimateResolutionDiffraction that includes pixel aspects and
