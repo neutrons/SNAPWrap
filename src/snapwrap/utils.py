@@ -1608,7 +1608,7 @@ READY TO REDUCE. SNAPRed status:
         data = interfaceController.executeRequest(snapRequest).data
         try:
             record=data.record
-        except:
+        except AttributeError:
             print("ERROR: reduction failed")
             assert False
 
