@@ -1,316 +1,111 @@
-[33;20manalysis-node23 - 2025-10-27 16:39:55,696 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,237 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,698 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,238 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,698 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,238 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,698 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,238 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,700 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,458 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,701 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,595 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,701 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,595 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,701 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,596 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,702 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,596 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,702 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,598 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,703 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:42,605 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,703 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,111 - WARNING  - Mantid - Goniometer was initialized from a rotation matrix. No recalculation from motors will be done.[0m
+[33;20manalysis-node23 - 2025-11-10 14:01:51,148 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
+[33;20manalysis-node23 - 2025-11-10 14:01:51,149 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
+[33;20manalysis-node23 - 2025-11-10 14:01:51,155 - WARNING  - Mantid - WARNING: closing file /SNS/SNAP/IPTS-34952/shared/lite/SNAP_66569.lite.nxs.h5 which still has open references.[0m
+[33;20manalysis-node23 - 2025-11-10 14:01:51,248 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,703 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,250 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:39:55,704 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,251 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,243 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,244 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,523 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,251 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,523 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,251 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,524 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,252 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,525 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,253 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,525 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,253 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,526 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,253 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,530 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,253 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,530 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,253 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,530 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,309 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,531 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,312 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,534 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,312 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,534 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,312 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,537 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,313 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,538 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,314 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,538 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,314 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,538 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,314 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:03,539 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,315 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,516 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,517 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,633 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:01:51,315 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,634 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:02:20,115 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,634 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:02:20,116 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,634 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:02:20,116 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,635 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:02:20,119 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,635 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:02:20,123 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,635 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:02:23,808 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:02:23,891 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:02:23,943 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:02:23,995 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:02:24,052 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:02:24,106 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:27,346 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:28,262 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:28,311 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:28,362 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:28,415 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:28,468 - WARNING  - Mantid - Output error table workspace[0m
+[33;20manalysis-node23 - 2025-11-10 14:04:28,539 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,640 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:28,540 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,640 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:28,540 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,640 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:28,540 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,641 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:56,522 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,641 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:56,523 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,641 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:56,523 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,642 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:56,534 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,670 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:56,534 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,670 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
+[33;20manalysis-node23 - 2025-11-10 14:04:56,535 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
 [0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,670 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,670 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,671 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,672 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,672 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,672 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,673 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,673 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,681 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,681 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,681 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,682 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,682 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,682 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,683 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,686 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,686 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,686 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,686 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,687 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,687 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,688 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,688 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,689 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,689 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,689 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,691 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,889 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,889 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,890 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,890 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,890 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,890 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:06,893 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,087 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,087 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,087 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,087 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,088 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,088 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,090 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,282 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,282 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,283 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,283 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,283 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,283 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,286 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,497 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,497 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,497 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,497 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,497 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,498 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,500 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,876 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,876 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,876 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,877 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,877 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,878 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,880 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,898 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,898 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,898 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,899 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,899 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,900 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,902 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,922 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,923 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,923 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,923 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,923 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,924 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,926 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,948 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,948 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,948 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,949 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,949 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,949 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,952 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,997 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,998 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,998 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,998 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,998 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:07,999 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:08,002 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,513 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,513 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,513 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,514 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,514 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,514 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,514 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,516 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,517 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,517 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,517 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:40:37,517 - WARNING  - Mantid - no explicit representation of timezones available for np.datetime64
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,093 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,094 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,318 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,319 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,542 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,543 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,771 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,772 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,994 - WARNING  - Mantid - Cannot find period log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:42:13,995 - WARNING  - Mantid - Cannot find periods log. Logs will be not be filtered by current period[0m
-[33;20manalysis-node23 - 2025-10-27 16:47:37,168 - WARNING  - Mantid - Tight layout not applied. The bottom and top margins cannot be made large enough to accommodate all Axes decorations.
-[0m
-[33;20manalysis-node23 - 2025-10-27 16:47:37,929 - WARNING  - Mantid - Tight layout not applied. The bottom and top margins cannot be made large enough to accommodate all Axes decorations.
-[0m
+[31;20manalysis-node23 - 2025-11-10 14:05:56,909 - ERROR    - Mantid - logging set to error priority[0m

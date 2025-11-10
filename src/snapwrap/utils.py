@@ -147,7 +147,7 @@ def indexStates(isLite=True):
                                             stateID=stateID,
                                             isLite=isLite,
                                             calType='difcal')
-        
+
         nrmcal = ssm.checkCalibrationStatus(runNumber=None,
                                             stateID=stateID,
                                             isLite=isLite,
