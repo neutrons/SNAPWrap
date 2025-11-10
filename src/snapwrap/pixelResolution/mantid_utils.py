@@ -22,7 +22,6 @@ from mantid.simpleapi import *
 from .core import (
     solid_angle_square_from_corners,
     two_theta_batch,
-    omega_rect_perp,  # handy for sanity checks
 )
 
 Array = np.ndarray
