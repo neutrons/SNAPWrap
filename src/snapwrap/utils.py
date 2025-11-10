@@ -413,7 +413,7 @@ def updateDetectorArcs(donorWSName,arc1,arc2,isLite=True):
         print("loaded SNAP lite instrument")
     else:
         LoadInstrument(Workspace=donorWSName,
-                   FilenamInstrumentName="SNAP",
+                   InstrumentName="SNAP",
                    MonitorList="-2--1",
                    RewriteSpectraMap=False)
         print("loaded native instrument")
