@@ -314,7 +314,7 @@ def GroupDetectorsIgnoreNAN(wsName,groupingWSName,outputWSName,behaviour="Averag
 
         if len(YNorm) == 0:
             print(f"Warning: all spectra in subgroupID {sub} are fully masked.")
-            y_avg = np.full_like(x, np.nan)
+            y_avg = np.full(wsOut.blocksize(), np.nan)
         else:
             
             YNorm = np.vstack(YNorm)
