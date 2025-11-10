@@ -212,6 +212,7 @@ def estimatePixelAspect(pixelID,spectrumInfo,isLite=True):
             centrePixel = int((13312+14335)/2)
     else:
         print("Error: doesn\'t currently work for native mode")
+        raise NotImplementedError("estimatePixelAspect does not currently support native mode (isLite=False)")
 
     centreAngles = np.array(spectrumInfo.geographicalAngles(centrePixel))
     pixelAngles = np.array(spectrumInfo.geographicalAngles(pixelID))
