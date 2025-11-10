@@ -1,5 +1,4 @@
 # some helpful functions for use with SNAPRed script version
-from inspect import stack
 import yaml
 from mantid.simpleapi import *
 from mantid.kernel import PhysicalConstants
