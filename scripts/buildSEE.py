@@ -31,7 +31,7 @@ cryo_12 = temperatureController(manufacturer="cryo-12", #TODO: need a nickname p
                                  pvLogs=["BL3:SE:Lakeshore:SETP4",
                                           "BL3:SE:Lakeshore:TempSet"])
 
-#save these as seperate jsons
+#save these as separate jsons
 for controller in [teledyne, pace, cryo_12]:
     print("Created component:")
     print(controller.stringDescriptor)
