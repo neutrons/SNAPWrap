@@ -1552,7 +1552,7 @@ READY TO REDUCE. SNAPRed status:
 
     #optional arguments provided...
 
-    if pixelMasks != 'none' or []:
+    if pixelMasks not in ('none', []):
         print(f"""
     Mask workspace(s) specified: {pixelMasks}
         """)
