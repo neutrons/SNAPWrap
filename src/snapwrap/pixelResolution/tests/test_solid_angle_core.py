@@ -1,6 +1,5 @@
 # tests/test_solid_angle_core.py
 import numpy as np
-import pytest
 from snapwrap.pixelResolution import *
 
 def build_rect_corners_world(L, hx, hy):
