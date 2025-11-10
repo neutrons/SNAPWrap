@@ -60,9 +60,6 @@ class globalParams:
         return
     
 
-def fork():
-    print("this is a fork")
-
 def makeDefaultYML(outputYML):
 
     #dictionary of params
