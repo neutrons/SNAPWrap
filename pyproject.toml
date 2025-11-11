@@ -104,7 +104,8 @@ file = "src/snapwrap/_version.py"
 [tool.pixi.workspace]
 preview = ["pixi-build"] # Required until the build feature becomes stable
 channels = [
-  "conda-forge", 
+  "conda-forge",
+  "oncat",
   "mantid/label/nightly", 
   "mantid-ornl", 
   "mantid-ornl/label/rc", 
@@ -118,6 +119,8 @@ platforms = ["linux-64", "osx-arm64"] # add additional platforms as needed
 # TODO: This needs to be cleaned up, I'm not certain which deps are actually used.
 snapred = ">1.3.0"
 scikit-image = "*"
+pyoncat = "*"
+lmfit = "*"
 python = ">=3.10"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
