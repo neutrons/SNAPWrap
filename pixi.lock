@@ -12101,7 +12101,7 @@ packages:
   timestamp: 1762872488099
 - pypi: ./
   name: snapwrap
-  version: 2.1.0.dev32
+  version: 2.1.0.dev34
   sha256: cf750dba83b866373450c0ef939b9c53e20e839de16daf58c44771c7d9d29570
   requires_dist:
   - panel>=1.7.0

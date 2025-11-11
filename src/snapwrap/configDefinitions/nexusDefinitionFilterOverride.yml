@@ -1,0 +1,13 @@
+nexus:
+  lite:
+    prefix: shared/lite/filtered/SNAP_
+    extension: .lite.nxs.h5
+  native:
+    prefix: nexus/SNAP_
+    extension: .nxs.h5
+  file:
+    prefix: SNAP_
+    extension: .nxs.h5
+  dataFormat:
+    # Assume that input data will be in event format:
+    event: true

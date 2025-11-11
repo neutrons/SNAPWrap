@@ -10,6 +10,7 @@ import shutil
 import importlib
 import copy
 import time
+import importlib.resources as resources
 
 from .wrapConfig import WrapConfig
 import snapwrap.snapStateMgr as ssm
@@ -92,6 +93,186 @@ def deploy():
 
     for key in deployInfo["vcs_info"]:
         print(f"{key}:{deployInfo['vcs_info'][key]}")
+
+def getConfigPath(name: str):
+
+    # returns the full path to a SNAPRed config file stored in the 
+    # snapwrap package configDefinitions folder
+    
+    return str(resources.files("snapwrap.configDefinitions") / f"{name}.yml")
+
+def reloadRedConfig(path=None):
+
+    # allows reloading of specific overrides of SNAPRed application.yml parameters 
+    # by specifying the path to an override file
+    # if path is not specified then it will reload the original yml according to the
+    # current environment  
+
+    if path is None:
+        Config.reload() # reloads original config according to environment
+        print("Original SNAPRed config reloaded")
+    else:
+        # confirm file exists at path
+        if not os.path.isfile(path):
+            print(f"Error: specified SNAPRed config override file does not exist at {path}")
+            return
+        else:
+            Config.reload(path) # reloads specified override file
+            print(f"SNAPRed config override applied")
+    return
+
+def filterLite(runNumber, boundaries, **kwargs):
+
+    # accepts a single run number and instructions for filtering
+    # and then reduces the data accordingly
+
+    # first validate inputs
+    if not isinstance(runNumber, int):
+        print("Error: runNumber must be an integer")
+        return
+    if not isinstance(boundaries, dict):
+        print("Error: boundaries must be a dictionary")
+        return
+    
+    # process boundaries
+    if boundaries["type"] == "time":
+        # require list of times in seconds as floats.
+        if boundaries["units"] == "seconds":
+            secondBoundaries = [float(x) for x in boundaries["values"]] 
+        elif boundaries["units"] == "minutes":
+            secondBoundaries = [float(x)*60.0 for x in boundaries["values"]] 
+        elif boundaries["units"] == "hours":
+            secondBoundaries = [float(x)*3600.0 for x in boundaries["values"]]
+        else:
+            print(f"Error: currently only time units of seconds, minutes, and hours are supported. You requested: {boundaries['units']}")
+            return
+    else:
+        print("Error: currently only time boundaries are supported")
+        return
+
+    # obtain original nexus file path
+    iptsPath = GetIPTS(RunNumber=runNumber, Instrument="SNAP")
+    nexusPath = f"{iptsPath}/nexus/SNAP_{runNumber}.nxs.h5"
+
+    # override SNAPRed parameters lite location params
+    s = getConfigPath("nexusDefinitionFilterOverride")
+    reloadRedConfig(s)
+
+    # specify lite params
+    liteDir=f"{iptsPath}/{Config['nexus']['lite']['prefix'][0:-5]}"
+    liteFilename=f"SNAP_{runNumber}.lite.nxs.h5"
+    liteYml = f"SNAP_{runNumber}.lite.yml"
+    litePars = {"TOFTol" : -0.0001, #default for no TOF compression
+                            "clockTol": None,
+                            "liteGroupMapFile":Config['instrument']['lite']['map']['file'],
+                            "liteIDF":Config['instrument']['lite']['definition']['file'],
+                            "liteDir":liteDir,
+                            "liteFilename":liteFilename,
+                            "liteYAML":liteYml,
+                            "saveLite":True
+                            }
+    for key in litePars.keys():
+        print(f"{key}: {litePars[key]}")
+
+    #loop through boundaries and reduce
+    for i in range(len(secondBoundaries)-1):
+
+        startTime = secondBoundaries[i]
+        stopTime = secondBoundaries[i+1]
+
+        litePars["filterStartTime"]= startTime
+        litePars["filterStopTime"]= stopTime
+
+        LoadEventNexus(Filename=nexusPath,
+                       OutputWorkspace="tmp",
+                       LoadMonitors=False,
+                       FilterByTimeStart=startTime,
+                       FilterByTimeStop=stopTime)
+
+        
+        makeLite(inWS="tmp",outWS="tmpLite",litePars=litePars,overwrite=True)
+
+        print(f"Reducing run {runNumber} from {startTime}s to {stopTime}s")
+
+        DeleteWorkspace(Workspace="tmp")
+        DeleteWorkspace(Workspace="tmpLite")
+
+    return
+
+def makeLite(inWS,outWS,litePars,overwrite=False):
+
+    # utility to convert an input native workspace to a lite workspace
+    # requires litePars, a dictionary providing necessary parameters
+
+	#check if lite directory exists and create if it doesn't
+
+    mut.LoadH5GroupingDefinition(inWS,
+                            litePars["liteGroupMapFile"],
+                            "liteGroup")
+
+    logger.notice("makelite: Grouping Pixels")
+
+    GroupDetectors(InputWorkspace=inWS,
+                OutputWorkspace=outWS,
+                CopyGroupingFromWorkspace="liteGroup")
+
+    DeleteWorkspace(Workspace="liteGroup")
+
+    logger.notice("makelite: relabelling pixel IDs")
+    nHst = mtd[outWS].getNumberHistograms()
+    for i in range(nHst):
+        el = mtd[outWS].getSpectrum(i)
+        el.clearDetectorIDs()
+        el.addDetectorID(i)
+    mtd[outWS].setComment(mtd[outWS].getComment() + "\nLite")
+
+    logger.notice("makelite: loading instrument")
+
+    LoadInstrument(Workspace=outWS,
+                Filename=litePars["liteIDF"],
+                RewriteSpectraMap=False)
+
+    logger.notice("makelite: compressingEvents")
+    #modified to allow compression tolerances to be switched
+
+    if litePars["TOFTol"] is None:
+        tolVal = 1e-5
+    else:
+        tolVal = litePars["TOFTol"]
+
+    if litePars["clockTol"] is None:
+        
+        CompressEvents(InputWorkspace=outWS,
+                OutputWorkspace=outWS,
+                Tolerance=tolVal)
+                # sortFirst=False) #not in stable mantid release yet.
+    else:
+        CompressEvents(InputWorkspace=outWS,
+                OutputWorkspace=outWS,
+                Tolerance=tolVal,
+                WallClockTolerance=litePars["clockTol"])
+
+    if litePars["saveLite"]:
+        #check that lite directory exists
+        if not os.path.exists(litePars['liteDir']):
+            try: 
+                os.mkdir(litePars['liteDir'])
+            except:
+                logger.error(f"makelite: unable to create lite directory: {litePars['liteDir']}")
+                print(f"Perhaps you don't have write permissions?")
+
+        litePath = f"{litePars['liteDir']}{litePars['liteFilename']}"
+
+        SaveNexusProcessed(InputWorkspace=outWS,
+                    Filename=litePath,
+                    Title="autoLite")
+        
+        logger.notice(f"makelite: Lite file {litePath} written to disk")
+
+        with open(f"{litePars['liteDir']}{litePars['liteYAML']}", 'w') as file:
+            yaml.dump(litePars,file)
+
+        logger.notice(f"makelite: compression parameters written to: {litePars['liteDir']}{litePars['liteYAML']}")
 
 def purgeNormalisation(isLite=True,purge=False):
     #this removes all existing normalization folders. User with caution!!!!!!!!!!!
