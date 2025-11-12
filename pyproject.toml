@@ -12,7 +12,6 @@ dependencies = [
   "sqlalchemy >=2.0.0",
   "ruamel.yaml",
   "lmfit",
-  "pyoncat",
 ]
     # PyPI dependencies
 
