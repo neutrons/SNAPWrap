@@ -121,7 +121,7 @@ def reloadRedConfig(path=None):
             print(f"SNAPRed config override applied")
     return
 
-def filterLite(runNumber, boundaries, **kwargs):
+def filterLite(runNumber, boundaries, **reduce_kwargs):
 
     # accepts a single run number and instructions for filtering
     # and then reduces the data accordingly
@@ -146,6 +146,8 @@ def filterLite(runNumber, boundaries, **kwargs):
         else:
             print(f"Error: currently only time units of seconds, minutes, and hours are supported. You requested: {boundaries['units']}")
             return
+        # TODO: check if boundaries are within run time of run runNumber
+
     else:
         print("Error: currently only time boundaries are supported")
         return
@@ -175,6 +177,7 @@ def filterLite(runNumber, boundaries, **kwargs):
         print(f"{key}: {litePars[key]}")
 
     #loop through boundaries and reduce
+    outputWSNames = []
     for i in range(len(secondBoundaries)-1):
 
         startTime = secondBoundaries[i]
@@ -183,20 +186,39 @@ def filterLite(runNumber, boundaries, **kwargs):
         litePars["filterStartTime"]= startTime
         litePars["filterStopTime"]= stopTime
 
+        # load time filtered raw data
         LoadEventNexus(Filename=nexusPath,
                        OutputWorkspace="tmp",
                        LoadMonitors=False,
                        FilterByTimeStart=startTime,
                        FilterByTimeStop=stopTime)
 
-        
+        # make lite version and save to disk in special filtered folder
         makeLite(inWS="tmp",outWS="tmpLite",litePars=litePars,overwrite=True)
 
+        # reduce this filtered lite data.
         print(f"Reducing run {runNumber} from {startTime}s to {stopTime}s")
+
+        wsNames = reduce(runNumber=runNumber, **reduce_kwargs)
+
+        # rename output workspace to indicate sequence
+
+        for name in wsNames:
+            newName = f"{name[:-17]}_{str(i).zfill(3)}"
+            RenameWorkspace(InputWorkspace=name, OutputWorkspace=newName)
+            outputWSNames.append(newName)
 
         DeleteWorkspace(Workspace="tmp")
         DeleteWorkspace(Workspace="tmpLite")
 
+    # group output names into workspace group
+
+    GroupWorkspace(InputWorkspace=outputWSNames, OutputWorkspace=f"slice_{runNumber}")
+
+    #Reset config to original
+    reloadRedConfig()
+
+    print(f"Config reset. lite data directory is: {Config['nexus']['lite']['prefix'][0:-5]}")
     return
 
 def makeLite(inWS,outWS,litePars,overwrite=False):
@@ -2024,7 +2046,7 @@ with {len(pgs.pixelGroupingParameters)} subGroup(s)
 
     citation()
     config.setLogLevel(3, quiet=True)
-    return ingredients.pixelGroups
+    return data.record.workspaceNames #ingredients.pixelGroups
 
 
     
