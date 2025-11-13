@@ -666,8 +666,8 @@ def makeResolutionWorkspace(prefix,
         donorWSName = f"dsp_unfoc_lite_{str(runNumber).zfill(6)}"
 
         # load pixel weight workspace
-        LoadNexus(Filename="/SNS/SNAP/shared/Calibration/Auxiliary/pixWeightLite.nxs",
-           OutputWorkspace="pixWeightLite")
+        LoadNexus(Filename="/SNS/SNAP/shared/Calibration/Auxiliary/pixWeightsLite.nxs",
+           OutputWorkspace="pixWeightsLite")
     else:
         # donorWSName = f"dsp_unfoc_{str(runNumber).zfill(6)}"
         raise Exception("Error: Currently makeResolutionWorkspace only works with Lite data")
