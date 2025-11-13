@@ -178,10 +178,14 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
 
     #loop through boundaries and reduce
     outputWSNames = []
-    for i in range(len(secondBoundaries)-1):
+    for sliceID in range(len(secondBoundaries)-1):
 
-        startTime = secondBoundaries[i]
-        stopTime = secondBoundaries[i+1]
+        startTime = secondBoundaries[sliceID]
+        stopTime = secondBoundaries[sliceID+1]
+
+        displayStartTime = boundaries["values"][sliceID]
+        displayStopTime = boundaries["values"][sliceID+1]
+        displayUnits = boundaries["units"]
 
         litePars["filterStartTime"]= startTime
         litePars["filterStopTime"]= stopTime
@@ -203,22 +207,48 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
 
         # rename output workspace to indicate sequence
 
+        print(f"Renaming operation...for slice {sliceID}")
         for name in wsNames:
-            newName = f"{name[:-17]}_{str(i).zfill(3)}"
+            print("Original name: ",name)
+            newName = f"{name[:-17]}slice_{str(sliceID).zfill(3)}"
+            print("New name: ",newName)
             RenameWorkspace(InputWorkspace=name, OutputWorkspace=newName)
             outputWSNames.append(newName)
+
+            # update label for plotting
+
+            from mantid.api import TextAxis
+
+            ws = mtd[newName]
+            N = ws.getNumberHistograms()
+            labels = [f"bank {i+1}: {displayStartTime:.1f} to {displayStopTime:.1f} {displayUnits}" for i in range(N)]
+            taxis = TextAxis.create(N)
+            for i,lab in enumerate(labels):
+                taxis.setLabel(i, lab)
+
+            ws.replaceAxis(1, taxis)
 
         DeleteWorkspace(Workspace="tmp")
         DeleteWorkspace(Workspace="tmpLite")
 
     # group output names into workspace group
 
-    GroupWorkspace(InputWorkspace=outputWSNames, OutputWorkspace=f"slice_{runNumber}")
+    #First group alphabetically 
+
+    def sortKey(name):
+        parts = name.split("_")
+        string_id = parts[2]       # "all", "bank", "column"
+        slice_num = int(parts[-1]) # "000" -> 0
+        return (string_id, slice_num)
+    
+    sortedOutputWSNames = sorted(outputWSNames, key=sortKey)
+
+    GroupWorkspaces(InputWorkspaces=sortedOutputWSNames, OutputWorkspace=f"slice_{runNumber}")
 
     #Reset config to original
     reloadRedConfig()
 
-    print(f"Config reset. lite data directory is: {Config['nexus']['lite']['prefix'][0:-5]}")
+    print(f"Config reset. lite data directory reset to: {Config['nexus']['lite']['prefix'][0:-5]}")
     return
 
 def makeLite(inWS,outWS,litePars,overwrite=False):
