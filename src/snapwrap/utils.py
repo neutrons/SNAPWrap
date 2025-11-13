@@ -664,8 +664,14 @@ def makeResolutionWorkspace(prefix,
 
     if isLite:
         donorWSName = f"dsp_unfoc_lite_{str(runNumber).zfill(6)}"
+
+        # load pixel weight workspace
+        LoadNexus(Filename="/SNS/SNAP/shared/Calibration/Auxiliary/pixWeightLite.nxs",
+           OutputWorkspace="pixWeightLite")
     else:
-        donorWSName = f"dsp_unfoc_{str(runNumber).zfill(6)}"
+        # donorWSName = f"dsp_unfoc_{str(runNumber).zfill(6)}"
+        raise Exception("Error: Currently makeResolutionWorkspace only works with Lite data")
+
 
     #unfocused workspace must exist to proceed
     if donorWSName not in mtd.getObjectNames():
@@ -929,7 +935,7 @@ def makeResolutionWorkspace(prefix,
                                 gpWSName, 
                                 outWS,
                                 behaviour="Average",
-                                weightWorkspaceName="pixWeights"
+                                weightWorkspaceName="pixWeightsLite"
                                 )
 
         ConvertToPointData(InputWorkspace=outWS,
@@ -948,7 +954,7 @@ def makeResolutionWorkspace(prefix,
         print(f"created resolution workspace: {outWS}")
 
     # keep resolution workspaces, but tidy up into group
-    GroupWorkspaces(InputWorkspaces=["d2t","delThetaPix","omega","delDOverD"],OutputWorkspace="resolutionWorkspaces")
+    GroupWorkspaces(InputWorkspaces=["d2t","delThetaPix","omega","delDOverD","pixWeightsLite"],OutputWorkspace="resolutionWorkspaces")
 
     return 
 
