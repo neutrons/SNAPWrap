@@ -10,7 +10,8 @@ dependencies = [
   "scikit-image",
   "panel >=1.7.0",
   "sqlalchemy >=2.0.0",
-  "ruamel.yaml"
+  "ruamel.yaml",
+  "lmfit",
 ]
     # PyPI dependencies
 
@@ -126,7 +127,6 @@ versioningit = "*"
 numpy = "*"
 pandas = "*"
 lmfit = "*"
-pyoncat = "*"
 matplotlib = "*"
 jupyterlab = "*"
 ipympl = "*"
@@ -168,7 +168,6 @@ pyqt = "*"
 pyqtgraph = "*"
 scikit-image = "*"
 lmfit = "*"
-pyoncat = "*"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
 snapred = ">2.0.0"
