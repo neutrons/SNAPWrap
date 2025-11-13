@@ -61,6 +61,14 @@ def residual_hex(params, reflectionList):
     a, c = params
     residuals = []
 
+    # validate required inputs
+    for ref in reflectionList:
+        if not isinstance(ref.dObs, (float, np.floating)):
+            raise TypeError(f"Error: d-spacing {ref.dObs!r} is not a float")
+        if ref.extentOverPosition is None or not isinstance(ref.extentOverPosition, (float, np.floating)):
+            raise TypeError(f"Error: extentOverPosition {ref.extentOverPosition!r} is not a float")
+        # print("debug:", ref.dObs, ref.extentOverPosition)
+
     for ref in reflectionList:
         d2Inv_calc = hex_d2Inv(ref, a, c)
         d2Inv_obs = 1 / ref.dObs**2
