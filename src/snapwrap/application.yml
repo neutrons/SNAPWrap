@@ -9,3 +9,4 @@ SEE:
   materials:
     database: ${SEE.home}/materials/materials.db
     spectra: ${SEE.home}/materials/spectra
+cleanTree: true
