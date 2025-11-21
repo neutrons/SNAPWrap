@@ -39,9 +39,10 @@ class redObject:
         else:
             cleanTree = False
 
+        #TODO: delete with once cleanTree function is implemented.
         cleanTree = False
+        # print(f"cleanTree is {cleanTree}")
 
-        print(f"cleanTree is {cleanTree}")
         self.wsName = wsName #need to keep this too
 
         # reject everything that is inconsistent with the schema

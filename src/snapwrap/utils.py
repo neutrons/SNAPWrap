@@ -1012,6 +1012,10 @@ def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
     wsGroup = mtd[cabinetName]
     print(f"{cabinetName} has {wsGroup.getNumberOfEntries()} total workspaces")
 
+def cleanTree():
+    # TODO: add functionality to hide files with timestamps, keeping a copy of latest only
+    return
+
 def resample(sampleFactor=1):
 
     # function to downsample reduced workspaces
@@ -1064,7 +1068,10 @@ def exportData(exportFormats=['gsa','xye','csv'],
     
     io.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
 
-def workspaceHandles(prefix="reduced_dsp",pgs=None,runNumber=None):
+def workspaceHandles(prefix="reduced",
+                     units="dsp",
+                     PGS=None,
+                     runNumber=None):
 
     # returns a list of redObjects for the requested workspaces matching arguments
     # 20250530 modified to allow specific pgs or run number to be optionally specified
@@ -1072,40 +1079,41 @@ def workspaceHandles(prefix="reduced_dsp",pgs=None,runNumber=None):
 
     #currently only the latest timestamp is returned.
 
-    reducedList = io.reducedRuns([],prefix=prefix) #first argument is a list that isn't used but needs to exist
+    reducedList = io.reducedRuns(prefix=prefix,
+                                 units=units,
+                                 PGS=PGS,
+                                 runNumber=runNumber) #first argument is a list that isn't used but needs to exist
 
     if not reducedList:
-        print("No matching workspaces found")
+        print("No matching workspaces found. Check filters")
         return
     
     #if a pgs is specified filter only those matching, otherwise do nothing here
 
     handleList = []
     for red in reducedList:
+
         pgsList = red.objectDict.keys()
-        if runNumber == None:
-            for p in pgsList:                
-                redObj = red.objectDict[p][0]
-                handleList.append(redObj)
-        else:
-            if int(red.runNumber) == runNumber:
-                for p in pgsList:
-                    redObj = red.objectDict[p][0]
-                    handleList.append(redObj)
+        for p in pgsList:                
+            redObj = red.objectDict[p][0] # selects most recent workspace only 
+            handleList.append(redObj)
 
     # at this point all, pgs are included. If none is specified, return here otherwise
     # purge to match requested pgs
 
-    if pgs == None:
-        print(f"Found {len(handleList)} matching workspaces")
-        return handleList
-    else:
-        purgeHandleList = []
-        for h in handleList:
-            if h.pixelGroup == pgs:
-                purgeHandleList.append(h)
-        print(f"Found {len(purgeHandleList)} matching workspaces")
-        return purgeHandleList 
+    return handleList
+
+    #TODO: delete the following. shouldnt be needed with new redObject
+    # if PGS == None:
+    #     print(f"Found {len(handleList)} matching workspaces")
+    #     return handleList
+    # else:
+    #     purgeHandleList = []
+    #     for h in handleList:
+    #         if h.pixelGroup == PGS:
+    #             purgeHandleList.append(h)
+    #     print(f"Found {len(purgeHandleList)} matching workspaces")
+    #     return purgeHandleList 
 
     
 def confirmIPTS(ipts,comment="SNAPRed/snapwrap", subNum=1, redType="Scripts"):
