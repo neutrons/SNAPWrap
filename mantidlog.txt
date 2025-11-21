@@ -1,1 +1,0 @@
-[31;20manalysis-node23 - 2025-11-11 10:22:45,171 - ERROR    - Mantid - logging set to error priority[0m
