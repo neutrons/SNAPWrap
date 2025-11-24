@@ -8,6 +8,8 @@ import os
 import shutil
 from mantid.simpleapi import *
 from mantid.api import WorkspaceGroup
+from mantid.kernel import amend_config
+
 import datetime
 import json
 from snapred.meta.Config import Config
@@ -58,8 +60,12 @@ class redObject:
             self.isReducedDataWorkspace = False #necessary by not sufficient condition
             return
 
-        parsed = wsName.split('_')
-        # print("DEBUG:",parsed)
+        #manage special case where a hidden workspace prefix is specified
+        if requiredPrefix.startswith('__'):
+            parsed = wsName[2:].split('_')
+            parsed[0] = '__' + parsed[0] #ensure dunder is included in prefix
+        else:
+            parsed = wsName.split('_')
 
         if cleanTree:
             nElem = 4
@@ -355,7 +361,14 @@ def reducedRuns(prefix='reduced',
     #are a list of available reduction object for that group (each with all attributes needed
     #to export requested files)
 
-    allWorkspaces = mtd.getObjectNames()
+    # if prefix starts with dunder then assume we need to check hidden workspaces
+    if prefix.startswith('__'):
+        # with amend_config(**{"InvisibleWorkspaces": 1}): TODO: try to fix this.
+        config.setString('MantidOptions.InvisibleWorkspaces','1')
+        allWorkspaces = mtd.getObjectNames()
+        config.setString('MantidOptions.InvisibleWorkspaces','0')
+    else: 
+        allWorkspaces = mtd.getObjectNames()
 
     #filter out and parse reduced workspaces
     redObjectList = []

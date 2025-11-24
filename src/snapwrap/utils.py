@@ -1050,15 +1050,41 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False):
                     else: 
                         DeleteWorkspace(redObj.wsName)
 
+            if removePGS is None:
+                continue
 
             # ensure pgs is a list
-            if removePGS is not None and type(removePGS) != list:
+            if type(removePGS) != list:
                 removePGS = [removePGS]
 
             #if pgs is specified, also clean those workspaces
             if pgs in removePGS:
-
                 DeleteWorkspace(wsKeep)
+
+def revealHidden(prefix='reduced',
+           units='dsp',
+           PGS = None,
+           runNumber=None):
+
+    # function to unhide previously hidden workspaces
+
+    handles = workspaceHandles(prefix=f"__{prefix}",
+                              units=units,
+                              PGS=PGS,
+                              runNumber=runNumber,
+                              cleanTreeOverride=False) #finds all hidden workspaces with timestamps
+    
+    if handles is None:
+        print("No hidden workspaces found")
+        return
+
+    for handle in handles:
+        hiddenWSName = handle.wsName
+        unhiddenWSName = hiddenWSName.replace(f"__{prefix}_",f"{prefix}_")
+        print(f"Unhiding workspace: {hiddenWSName} to {unhiddenWSName}")
+        RenameWorkspace(InputWorkspace=hiddenWSName,
+                        OutputWorkspace=unhiddenWSName)
+    
 
 def resample(sampleFactor=1,
              prefix='reduced',
