@@ -8,7 +8,7 @@ import os
 import shutil
 from mantid.simpleapi import *
 from mantid.api import WorkspaceGroup
-from mantid.kernel import amend_config
+import mantid.kernel
 
 import datetime
 import json
@@ -363,9 +363,11 @@ def reducedRuns(prefix='reduced',
 
     # if prefix starts with dunder then assume we need to check hidden workspaces
     if prefix.startswith('__'):
-        # with amend_config(**{"InvisibleWorkspaces": 1}): TODO: try to fix this.
+        # print("looking for hidden")
+        # with mantid.kernel.amend_config(**{"InvisibleWorkspaces": "1"}):  # TODO: try to fix this.
         config.setString('MantidOptions.InvisibleWorkspaces','1')
         allWorkspaces = mtd.getObjectNames()
+            # print(allWorkspaces)
         config.setString('MantidOptions.InvisibleWorkspaces','0')
     else: 
         allWorkspaces = mtd.getObjectNames()

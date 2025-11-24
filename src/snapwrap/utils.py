@@ -1,7 +1,6 @@
 # some helpful functions for use with SNAPRed script version
 import yaml
 from mantid.simpleapi import *
-from mantid.kernel import PhysicalConstants
 import numpy as np
 import matplotlib.pyplot as plt
 import json
@@ -13,6 +12,12 @@ import time
 import importlib.resources as resources
 
 from .wrapConfig import WrapConfig
+from snapwrap.statusPrinter import (printWarning,
+                            citation,
+                            printStatus,
+                            completionMessage,
+                            verboseStatus)
+
 import snapwrap.snapStateMgr as ssm
 import snapwrap.io as io
 import snapwrap.maskUtils as mut
@@ -1061,6 +1066,23 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False):
             if pgs in removePGS:
                 DeleteWorkspace(wsKeep)
 
+    # to also support removing workspaces without timestamps that match removePGS need a second
+    # pass through all workspaces
+
+    if removePGS is None:
+        return  
+
+    reducedGroupsNoTimestamp = io.reducedRuns(prefix=prefix,
+                                   cleanTreeOverride=True) #will only find workspaces without timestamps
+    
+    for redGroup in reducedGroupsNoTimestamp:
+        
+        runDict = redGroup.objectDict
+        for pgs in runDict.keys():
+            if pgs in removePGS:
+                for redObj in runDict[pgs]:
+                    DeleteWorkspace(redObj.wsName)
+
 def revealHidden(prefix='reduced',
            units='dsp',
            PGS = None,
@@ -1072,6 +1094,7 @@ def revealHidden(prefix='reduced',
                               units=units,
                               PGS=PGS,
                               runNumber=runNumber,
+                              latestOnly=False,
                               cleanTreeOverride=False) #finds all hidden workspaces with timestamps
     
     if handles is None:
@@ -1081,10 +1104,35 @@ def revealHidden(prefix='reduced',
     for handle in handles:
         hiddenWSName = handle.wsName
         unhiddenWSName = hiddenWSName.replace(f"__{prefix}_",f"{prefix}_")
-        print(f"Unhiding workspace: {hiddenWSName} to {unhiddenWSName}")
+        # print(f"Unhiding workspace: {hiddenWSName} to {unhiddenWSName}")
         RenameWorkspace(InputWorkspace=hiddenWSName,
                         OutputWorkspace=unhiddenWSName)
     
+    # if we are unhiding workspaces with timestamps we no longer need to keep any copies without timestamps
+
+    reducedGroupsTS = io.reducedRuns(prefix=prefix,
+                                   cleanTreeOverride=False)
+    
+    reducedGroupsNoTS = io.reducedRuns(prefix=prefix,
+                                   cleanTreeOverride=True)
+    
+    for redGroupTS in reducedGroupsTS:
+        
+        runDictTS = redGroupTS.objectDict
+        for pgs in runDictTS.keys():
+            # for each pixel group in the timestamped group, check if there are any workspaces without timestamps
+            redGroupNoTS = None
+            for redGroupNT in reducedGroupsNoTS:
+                if redGroupNT.runNumber == redGroupTS.runNumber:
+                    redGroupNoTS = redGroupNT
+                    break
+            if redGroupNoTS is None:
+                continue
+            runDictNoTS = redGroupNoTS.objectDict
+            if pgs in runDictNoTS.keys():
+                for redObj in runDictNoTS[pgs]:
+                    # print(f"Deleting non-timestamped workspace: {redObj.wsName}")
+                    DeleteWorkspace(redObj.wsName)
 
 def resample(sampleFactor=1,
              prefix='reduced',
@@ -1564,12 +1612,6 @@ class HookCollection:
         context.mantidSnapper.executeQueue()
 
 
-def citation():
-    print("\nIf you use SNAPRed or snapwrap in your work please cite:\n")
-    print("SNAPRed: Reduction of multidimensional neutron time-of-flight diffraction data")
-    print("M. Guthrie, M. Walsh, K. Travis, R. Boston, D. Caballero, D. Dinger, G. ElsarBoukh, J. Hetrick, A.T. Savici and P. Peterson")
-    print("Manuscript in preparation (2025)\n")
-
 def reduce(runNumber,
                sampleEnv='none',
                pixelMaskIndex='none',
@@ -1588,9 +1630,32 @@ def reduce(runNumber,
                singlePixelGroup=None,
                qsp=False,
                linBin=0.01,
+               removePGS=None,
                save=True):
 
     from mantid import config
+
+    # Helper for consistent, graceful aborts when called from Mantid Workbench.
+    # IMPORTANT: this does not raise, it just logs/prints and returns a sentinel
+    # so that no traceback is produced by the surrounding interpreter.
+    def _abort(msg: str):
+        """Print/log a friendly error and signal that reduction failed.
+
+        Callers must immediately return the result of this function from
+        ``reduce`` so that the error does not propagate further.
+        """
+        try:
+            from mantid.kernel import Logger  # type: ignore
+            Logger("snapwrap").error(msg)
+        except Exception:
+            # Logger not critical in Workbench script context
+            pass
+        if msg == "":
+            print(f"\nReduction aborted.\n")
+        else:
+            print(f"\nERROR: {msg}\nReduction aborted.\n")
+        # Use None as a simple "aborted" sentinel
+        return None
 
     if verbose:
         config.setLogLevel(5, quiet=True)
@@ -1623,8 +1688,27 @@ def reduce(runNumber,
     # keepUnfocussed = snapwrapGlob.keepUnfocussed
     convertUnitsTo = snapwrapGlob.convertUnitsTo
 
-    #process continue flags
-    continueFlags = ContinueWarning.Type.UNSET #by default do not continue
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # process calibration status and continue flags
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+    #first catch dead ends, abort and return useful information
+    #difcal
+    calibrationStatus = ssm.isCalibrated(runNumber=runNumber,silent=True)
+    if not any([calibrationStatus[0],continueNoDifcal]):  # difcal is absent and fallback not requested
+        printWarning('noDifcal',runNumber)
+        return _abort(
+            f""
+        )
+    
+    #normcal
+    if not any([calibrationStatus[1],continueNoVan,noNorm]):  # van is absent and fallback not requested
+        printWarning('noNormcal',runNumber)
+        return _abort(
+            f""
+        )
+
+    continueFlags = ContinueWarning.Type.UNSET  # by default do not continue
 
     if continueNoVan and not noNorm:
         artificialNormalizationIngredients = ArtificialNormalizationIngredients(
@@ -1734,9 +1818,6 @@ def reduce(runNumber,
         )
 
     snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
-
-    print(reductionRequest)
-
     reductionService.validateReduction(reductionRequest)
 
     # 1. load default grouping workspaces from the state folder 
@@ -1752,7 +1833,6 @@ def reduce(runNumber,
             if singlePixelGroup.lower()==focGroup.name.lower():
                 print(f"Setting single focus group: {focGroup.name}")
                 reductionRequest.focusGroups.append(focGroup)
-
 
     print("request",reductionRequest.focusGroups)
 
@@ -1774,14 +1854,12 @@ def reduce(runNumber,
     print("groceries")
     print(groceries)
     
-
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #  Load the metadata i.e. ingredients
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     # 1. load reduction ingredients
-    ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))
-    
+    ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))    
     ingredients.artificialNormalizationIngredients = artificialNormalizationIngredients
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1805,14 +1883,8 @@ def reduce(runNumber,
             )
     
     if calibrationRecord.version == 0 and not continueNoDifcal:
-        print("""         
-                 
-          - WARNING: NO DIFFRACTION CALIBRATION FOUND. TO PROCEED EITHER:
-              1. RUN A DIFFRACTION CALIBRATION OR 
-              2. SET "continueNoDifcal = True" TO PROCEED WITH DEFAULT GEOMETRY
-
-            """)
-        assert False
+        printWarning('noDifcal')
+        _abort("")#No diffraction calibration found. Provide calibration or set continueNoDifcal=True to proceed in diagnostic mode.")
 
     # print(calibrationRecord.version)
     normalizationPath = dataFactoryService.getNormalizationDataPath(
@@ -1828,13 +1900,9 @@ def reduce(runNumber,
                 state = stateID
             )
     
-    if type(normalizationRecord) == None:
-        print("""                         
-          - WARNING: NO VANADIUM FOUND. TO PROCEED EITHER: 
-              1. RUN A VANADIUM CALIBRATION OR 
-              2. SET "continueNoVan = True" TO USE ARTIFICIAL NORMALISATION
-            """)
-        
+    if normalizationRecord is None and not (continueNoVan or noNorm):
+        printWarning('noNormcal')
+        _abort("No normalization (vanadium) calibration found. Provide normalization or set continueNoVan=True / noNorm=True to bypass.")
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Pretty print useful information regarding reduction status
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 
@@ -1845,52 +1913,26 @@ def reduce(runNumber,
             for item in ingredient[1]:
                 allPixelGroups.append(item.focusGroup.name)
 
-    print(f"""
-READY TO REDUCE. SNAPRed status:
-- Run Number: {ingredients.runNumber}
-- state: 
-    - ID: {stateID},
-    - definition: {stateDict}
-    - Pixel Groups to process: {allPixelGroups}
-            """)
-    if calibrationRecord.version==0 and continueNoDifcal:
-        print("""
-    WARNING: DIAGNOSTIC MODE! DEFAULT GEOMETRY USED.
-        """)
-    else:
-        print(f"""
-    - Diffraction Calibration:
-        - .h5 path: {calibrationPath}
-        - .h5 version: {calibrationRecord.version}
-    """)
-
-    if continueNoVan:
-        print("""                         
-    WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
-    DATA WILL BE ARTIFICIALLY NORMALISED BY DIVISION BY BACKGROUND.
-            """)
-    else:
-        print(f"""            
-    - Normalisation Calibration:
-        - raw vanadium path: {normalizationPath}
-        - raw vanadium version: {normalizationRecord.version}
-            """)
-
-    #optional arguments provided...
-
-    if pixelMasks not in ('none', []):
-        print(f"""
-    Mask workspace(s) specified: {pixelMasks}
-        """)
-
-    if binMaskList != []:
-        print(f"""
-    Bin Mask workspace(s) specified: {binMaskList}
-        """)
+    status = {
+        "ingredients": ingredients,
+        "stateID": stateID,
+        "stateDict": stateDict,
+        "allPixelGroups": allPixelGroups,
+        "calibrationRecord": calibrationRecord,
+        "calibrationPath": calibrationPath,
+        "normalizationRecord": normalizationRecord,     
+        "normalizationPath": normalizationPath,
+        "runNumber": runNumber,
+        "pixelMasks": pixelMasks,
+        "binMaskList": binMaskList,
+        "continueNoDifcal": continueNoDifcal,
+        "continueNoVan": continueNoVan,
+    }
+    printStatus(status)
 
     time.sleep(5) #pause to allow user to read status info
-    #obtain useful values from instrument state
 
+    #obtain useful values from instrument state
     farmFresh = FarmFreshIngredients(
         runNumber=runNumber,
         useLiteMode=useLiteMode,
@@ -1903,16 +1945,7 @@ READY TO REDUCE. SNAPRed status:
         #prior to reduction, need to determine appropriate binning to match requested
         #Q-space binning
 
-        originalIngredients,ingredients = updateBinForQ(ingredients,0.01)
-
-        # for pgs in ingredients.pixelGroups:
-        #     print(f"processing pgs: {pgs.focusGroup.name} with {len(pgs.pixelGroupingParameters)} subgroups")
-        
-        #     for subGroup in pgs.pixelGroupingParameters:
-        #         params = pgs.pixelGroupingParameters[subGroup]
-        #         dMax = params.dResolution.maximum
-        #         dMin = params.dResolution.minimum
-        #         dBin = params.dRelativeResolution/pgs.nBinsAcrossPeakWidth
+        originalIngredients,ingredients = updateBinForQ(ingredients,linBin)
 
         pgs = ingredients.pixelGroups
         print("UPDATED")
@@ -1925,23 +1958,20 @@ READY TO REDUCE. SNAPRed status:
                 dBin = params.dRelativeResolution/pg.nBinsAcrossPeakWidth
                 print(f"{dMin:.4f} {dBin:.6f} {dMax:.4f}")
 
-
     if reduceData:
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Execute reduction here
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        data = interfaceController.executeRequest(snapRequest).data
         try:
-            record=data.record
+            data = interfaceController.executeRequest(snapRequest).data
+        except Exception as e:
+            _abort(f"Reduction execution failed: {e}")
+        try:
+            record = data.record
         except AttributeError:
-            print("ERROR: reduction failed")
-            assert False
-
-        # print("\n\ndata\n\n")
-        # print(data.record.workspaceNames)
-
+            _abort("Reduction failed: response missing record attribute.")
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
@@ -1953,184 +1983,20 @@ READY TO REDUCE. SNAPRed status:
 
             reductionService.saveReduction(saveReductionRequest)
 
-        print(f"""
-        Reduction COMPLETE
-
-            - Run Number: {ingredients.runNumber}
-
-            - state: 
-                - ID: {stateID[0]},
-                - definition: {stateID[1]}
-
-            - Pixel Groups to process: {allPixelGroups}
-
-        """)
+        printStatus(status)
     
-    if calibrationRecord.version==0 and continueNoDifcal:
-        print("""
-          - WARNING: DIAGNOSTIC MODE! DEFAULT GEOMETRY USED TO CONVERT UNITS.
-              """)
-    else:
-        print(f"""
-          Calibration Status:
-            - Diffraction Calibration:
-                - .h5 path: {calibrationPath}
-                - .h5 version: {calibrationRecord.version}
-
-    """)
-
-    if continueNoVan:
-        print("""         
-          - WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
-            DATA WILL BE ARTIFICIALLY NORMALISED USING DIVISION BY BACKGROUND
-            """)
-    else:
-        print(f"""            
-            - Normalisation Calibration:
-                - raw vanadium path: {normalizationPath}
-                - raw vanadium version: {normalizationRecord.version}
-
-            """)
-
-    #optional arguments provided...
-
-    if sampleEnv != 'none':
-        print(f"""          
-            Sample environment was specified.
-
-                - name: {seeDict["name"]}
-                - id: {seeDict["id"]}
-                - type: {seeDict["type"]}
-                - mask: {seeDict["masks"]["maskFilenameList"]} NOT YET IMPLEMENTED
-            
-            """)
-
-    if pixelMasks != 'none' or []:
-        print(f"""
-            Mask workspace(s) specified:
-        """)
-        for mask in pixelMasks:
-            print(f"""
-                {mask}
-                  """)
-
-
     if verbose:       
+        verboseStatus(Config,instrumentState,ingredients)
 
-        print("\nINSTRUMENT PARAMETERS")
-        print(f"- Calib.home: {Config['instrument.calibration.home']}")
-        # print("\nParams in SNAPInstPrm:")
-        print("- L1: ",instrumentState.instrumentConfig.L1)
-        print("- L2: ",instrumentState.instrumentConfig.L2)
-        L = instrumentState.instrumentConfig.L1+instrumentState.instrumentConfig.L2
-        print("- bandwidth: ",instrumentState.instrumentConfig.bandwidth)
-        print("- lowWavelengthCrop: ",instrumentState.instrumentConfig.lowWavelengthCrop)
-
-        # print("\nParams in application.yml")
-        print("- low d-Spacing crop: ",Config["constants.CropFactors.lowdSpacingCrop"])
-        print("- high d-Spacing crop: ",Config["constants.CropFactors.highdSpacingCrop"])
-
-        # print("\nParams from state")
-        wav = instrumentState.detectorState.wav
-        print("- Central wavelength: ",wav)
-
-        print("\n")
-        bandwidth = instrumentState.instrumentConfig.bandwidth
-        lowWavelengthCrop = instrumentState.instrumentConfig.lowWavelengthCrop
-        lamMin = instrumentState.particleBounds.wavelength.minimum
-        lamMax = instrumentState.particleBounds.wavelength.maximum
-        tofMin = instrumentState.particleBounds.tof.minimum
-        tofMax = instrumentState.particleBounds.tof.maximum
-        
-        print(f"- wavelength limits: {lamMin:.4f}, {lamMax:.4f}")
-        # print(f"- TOF limits: {tofMin:.1f}, {tofMax:.1f}")
-
-        # some tests to confirm that these numbers are being calculated as expected
-        convFactor = Config["constants.m2cm"] * PhysicalConstants.h / PhysicalConstants.NeutronMass
-
-#         print(f""" SOME TESTING...
-# calculated lamMin is {wav - bandwidth/2 + lowWavelengthCrop}:.4f, {}
-# """)
-
-        assert lamMin == wav - bandwidth/2 + lowWavelengthCrop
-        assert lamMax == wav + bandwidth/2
-        # print(f"calculated tof limits: {lamMin*L/convFactor:.1f}, {lamMax*L/convFactor:.1f}")
-        assert tofMin == lamMin*L/convFactor
-        assert tofMax == lamMax*L/convFactor
-        # calcTofM
-        # calcTofMax
-
-        pgs = ingredients.pixelGroups #ingredients.pixelGroups is a list of pgs
-        print("\nPIXEL GROUP PARAMETERS")
-#         print(f"""TOF limits {pgs[0].timeOfFlight.minimum:.1f} - {pgs[0].timeOfFlight.maximum:.1f}
-# Requested Bins across halfWidth: {pgs[0].nBinsAcrossPeakWidth}""")
-
-        for pgs in ingredients.pixelGroups:     #ingredients.pixelGroups is a list of pgs
-            
-            #pgs are pixel group classes, they are iterable with each item in the class are
-            #tuples with the first value of the tuple being its name
-
-            print(f"""
------------------------------------------------
-pixel grouping scheme: {pgs.focusGroup.name}
-with {len(pgs.pixelGroupingParameters)} subGroup(s)
-                  """)
-            dMins = []
-            dMaxs = []
-            dBins = []
-            L2s = []
-            twoThetas = []
-
-            for subGroup in pgs.pixelGroupingParameters:
-
-                params = pgs.pixelGroupingParameters[subGroup]
-                dMaxs.append(params.dResolution.maximum)
-                dBins.append(params.dRelativeResolution/pgs.nBinsAcrossPeakWidth)
-                dMins.append(params.dResolution.minimum)
-                L2s.append(params.L2)
-                twoThetas.append(params.twoTheta)
-
-            twoThetasDeg = [180.0*x/np.pi for x in twoThetas]
-            cropDMins = [d+Config["constants.CropFactors.lowdSpacingCrop"] for d in dMins]
-            cropDMaxs = [d-Config["constants.CropFactors.highdSpacingCrop"] for d in dMaxs]
-            #reduce precision for pretty printing
-
-
-
-            dMaxs = [round(num,4) for num in dMaxs]
-            dMins = [round(num,4) for num in dMins]
-            dBins = [round(num,4) for num in dBins]
-            cropDMins = [round(num,4) for num in cropDMins]
-            cropDMaxs = [round(num,4) for num in cropDMaxs]    
-
-            L2s = [round(num,4) for num in L2s]
-            twoThetas = [round(num,4) for num in twoThetas]
-            twoThetasDeg = [round(num,1) for num in twoThetasDeg]
-
-            just = 20
-            print("L2 (m)".ljust(just),L2s)
-            print("twoTheta (rad)".ljust(just),twoThetas)
-            print("twoTheta (deg)".ljust(just),twoThetasDeg)
-            print("dMin (Å)".ljust(just),dMins)
-            print("dMax (Å)".ljust(just),dMaxs)
-            print("dMin (Å) - cropped".ljust(just),cropDMins)
-            print("dMax (Å) - cropped".ljust(just),cropDMaxs)
-            print("dBin".ljust(just),dBins)
-
-    # if reduceData:
-    #     print(data)
-    #     for dat in data:
-    #         print(dat)
 
     if qsp:
-        # snapwrapIO.convertToQ()
-        # first generate list of redObjects for this run:
+        # post reduction, need to convert d-space reduced data to Q-space
 
         redWSList = []
         for ws in data.record.workspaceNames:
             redObj = io.redObject(ws)
             if redObj.isReducedDataWorkspace:
-                redWSList.append(redObj)
+                redWSList.append(redObj)    
             
         for redObj in redWSList:
             dspName = redObj.wsName
