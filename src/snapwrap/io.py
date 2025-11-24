@@ -39,10 +39,6 @@ class redObject:
         else:
             cleanTree = False
 
-        #TODO: delete with once cleanTree function is implemented.
-        cleanTree = False
-        # print(f"cleanTree is {cleanTree}")
-
         self.wsName = wsName #need to keep this too
 
         # reject everything that is inconsistent with the schema
@@ -67,7 +63,7 @@ class redObject:
             nElem = 5
 
         #process prefix
-        prefix = parsed[0]
+        # prefix = parsed[0]
         if parsed[0] != requiredPrefix:
             self.isReducedDataWorkspace = False
             return
@@ -276,7 +272,8 @@ class redObject:
 
 class reductionGroup:
     #instantiated with a list of redObject classes and a run number, it reparses the list into
-    #a dictionary where the keys are the pixel group and the values are a list of redObjects 
+    #a dictionary where the keys are the pixel group and the values are a list of redObjects
+    # if a timestamp is present these are ordered with latest first. 
 
 
     def __init__(self,runNumber,redObjectList):
@@ -295,7 +292,7 @@ class reductionGroup:
             pgsList.append(run.pixelGroup)
         
         allPixelGroups = set(pgsList)
-        print(f"run {runNumber} has {len(allPixelGroups)} pixel groups")
+        print(f"run {runNumber} has {len(allPixelGroups)} pixel group(s)")
 
         redObjects = {}
         #populate dictionaries with empty lists to hold contents
@@ -307,16 +304,18 @@ class reductionGroup:
             key = run.pixelGroup
             redObjects[key].append(run)
 
-        #sort lists for each key in order of decreasing time
+        cleanTree = WrapConfig.get("cleanTree")
+
+        #if not cleanTree need to sort lists for each key in order of decreasing time
         for pgs in allPixelGroups:
-            objects = redObjects[pgs] # a list of redObjects un sorted in time
-            sortedObjects = sorted(
-                objects,
-                key = lambda obj: obj.timeStamp,
-                reverse=True
-           ) #This list sorted according to timestamp of objects
-            
-            redObjects[pgs]=sortedObjects #replace list with sorted list
+            if not cleanTree:
+                objects = redObjects[pgs] # a list of redObjects un sorted in time
+                sortedObjects = sorted(
+                    objects,
+                    key = lambda obj: obj.timeStamp,
+                    reverse=True
+                ) #This list sorted according to timestamp of objects            
+                redObjects[pgs]=sortedObjects #replace list with sorted list
 
         self.objectDict = redObjects
 
@@ -344,7 +343,7 @@ def reducedRuns(prefix='reduced',
                 exportFormats=[], 
                 fileTag=None):#,latestOnly=True,gsaInstPrm=True):
 
-    #generates a list of reductionGroups. Each of these has a .runNumber attribute
+    #generates a list of reductionGroups. Each of these has a `runNumber` attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
     #are a list of available reduction object for that group (each with all attributes needed
     #to export requested files)
@@ -372,7 +371,7 @@ def reducedRuns(prefix='reduced',
     nReduced = len(redObjectList)
     uniqueRuns = set(redRuns)
     nUnique = len(uniqueRuns)
-    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction groups")
+    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction group(s)")
 
     #parse these creating "reductionGroup" for each run numbner
     reducedGroups = []
@@ -397,14 +396,11 @@ def exportReducedGroup(redGroup,latestOnly,gsaInstPrm):
     print(f"Exporting run: {runNumber} with {len(runDict)} pixel group(s)")
     for pgs in runDict.keys():
         #each key is a pixel group and each pixel group has a list of objects (each is a workspace)
-        print(f"processing {pgs} with {len(runDict[pgs])} associated workspaces")
-        listOfDates = [x.dateTime for x in runDict[pgs]]
-        mostRecent = max(listOfDates)
-        mostRecentIndex = listOfDates.index(mostRecent)
+        print(f"processing pixel group {pgs} with {len(runDict[pgs])} associated workspaces")
         if latestOnly:
-            processIndices = [mostRecentIndex]
+            processIndices = [0]
         else:
-            processIndices = np.arange(len(listOfDates))
+            processIndices = np.arange(len(runDict[pgs])).tolist()
 
         exportRecipe(runDict,pgs,processIndices,gsaInstPrm)
 
