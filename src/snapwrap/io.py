@@ -32,12 +32,16 @@ class redObject:
                  requiredRunNumber=None, #allow processing of specific run numbers only
                  iptsOverride=None,
                  exportFormats=[],
-                 fileTag=None):
+                 fileTag=None,
+                 cleanTreeOverride=None):
 
         if WrapConfig.get("cleanTree"): #new variable to ignore timestamps
             cleanTree = True
         else:
             cleanTree = False
+
+        if cleanTreeOverride is not None:
+            cleanTree = cleanTreeOverride
 
         self.wsName = wsName #need to keep this too
 
@@ -276,7 +280,7 @@ class reductionGroup:
     # if a timestamp is present these are ordered with latest first. 
 
 
-    def __init__(self,runNumber,redObjectList):
+    def __init__(self,runNumber,redObjectList,cleanTreeOverride = None):
 
         self.runNumber = runNumber
         
@@ -305,6 +309,8 @@ class reductionGroup:
             redObjects[key].append(run)
 
         cleanTree = WrapConfig.get("cleanTree")
+        if cleanTreeOverride is not None:
+            cleanTree = cleanTreeOverride # need this option so tree can be cleaned
 
         #if not cleanTree need to sort lists for each key in order of decreasing time
         for pgs in allPixelGroups:
@@ -341,7 +347,8 @@ def reducedRuns(prefix='reduced',
                 runNumber = None,
                 iptsOverride=None,
                 exportFormats=[], 
-                fileTag=None):#,latestOnly=True,gsaInstPrm=True):
+                fileTag=None,
+                cleanTreeOverride=None):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a `runNumber` attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
@@ -362,7 +369,8 @@ def reducedRuns(prefix='reduced',
                         requiredRunNumber=runNumber,
                         iptsOverride=iptsOverride,
                         exportFormats=exportFormats,
-                        fileTag=fileTag) 
+                        fileTag=fileTag,
+                        cleanTreeOverride=cleanTreeOverride) 
 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)

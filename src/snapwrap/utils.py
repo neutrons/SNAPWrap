@@ -1012,9 +1012,53 @@ def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
     wsGroup = mtd[cabinetName]
     print(f"{cabinetName} has {wsGroup.getNumberOfEntries()} total workspaces")
 
-def cleanTree():
-    # TODO: add functionality to hide files with timestamps, keeping a copy of latest only
-    return
+def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False):
+    
+    # finds files with timestamps, creates a clone of the latest workspace without a timestamp
+    # if cleanMode = "hide" the older workspaces are hidden else
+    # if cleanMode = "delete" the older workspaces are deleted
+    # if pgs is not None, specified pixel groups will also be cleaned.  
+    
+    reducedGroups = io.reducedRuns(prefix=prefix,
+                                   cleanTreeOverride=False) #by setting cleanTreeOverride to False, we get all workspaces
+
+    for redGroup in reducedGroups:
+
+        runDict = redGroup.objectDict
+        for pgs in runDict.keys():
+            print(f"Found pixel group: {pgs}")
+
+            # identify latest workspace in group and rename it.
+            latest = runDict[pgs][0] #redObject for most recent workspace
+            wsKeep = f"{latest.prefix}_{latest.units}_{latest.pixelGroup}_{latest.runNumber}"
+            if deleteWorkspaces:
+                RenameWorkspace(InputWorkspace=latest.wsName,
+                            OutputWorkspace=wsKeep)
+            else:
+                CloneWorkspace(InputWorkspace=latest.wsName,
+                            OutputWorkspace=wsKeep)
+                RenameWorkspace(InputWorkspace=latest.wsName,
+                            OutputWorkspace=f"__{latest.wsName}")
+
+            #Delete or hide any remaining workspaces. 
+            if len(runDict[pgs]) > 1:
+                for i in range(1,len(runDict[pgs])):
+                    redObj = runDict[pgs][i]
+                    if deleteWorkspaces == False:
+                        RenameWorkspace(InputWorkspace=redObj.wsName,
+                                        OutputWorkspace=f"__{redObj.wsName}")
+                    else: 
+                        DeleteWorkspace(redObj.wsName)
+
+
+            # ensure pgs is a list
+            if removePGS is not None and type(removePGS) != list:
+                removePGS = [removePGS]
+
+            #if pgs is specified, also clean those workspaces
+            if pgs in removePGS:
+
+                DeleteWorkspace(wsKeep)
 
 def resample(sampleFactor=1,
              prefix='reduced',
@@ -1096,15 +1140,16 @@ def workspaceHandles(prefix="reduced",
                      units="dsp",
                      PGS=None,
                      runNumber=None,
-                     latestOnly=True):
+                     latestOnly=True,
+                     cleanTreeOverride = None):
 
     # returns a list of redObjects for the requested workspaces matching arguments
 
     reducedList = io.reducedRuns(prefix=prefix,
                                  units=units,
                                  PGS=PGS,
-                                 runNumber=runNumber) #first argument is a list that isn't used but needs to exist
-
+                                 runNumber=runNumber,
+                                 cleanTreeOverride=cleanTreeOverride)
     if not reducedList:
         print("No matching workspaces found. Check filters")
         return
