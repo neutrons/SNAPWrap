@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import json
 import os
 import shutil
+import inspect
 import importlib
 import copy
 import time
@@ -139,6 +140,11 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
         print("Error: boundaries must be a dictionary")
         return
     
+    # check current value for qsp parameter
+    sig = inspect.signature(reduce)
+    qsp = reduce_kwargs.get('qsp', sig.parameters['qsp'].default)
+    
+
     # process boundaries
     if boundaries["type"] == "time":
         # require list of times in seconds as floats.
@@ -159,7 +165,9 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
 
     # obtain original nexus file path
     iptsPath = GetIPTS(RunNumber=runNumber, Instrument="SNAP")
+    # iptsNumber = iptsPath.split("IPTS-")[-1].split("/")[0]
     nexusPath = f"{iptsPath}/nexus/SNAP_{runNumber}.nxs.h5"
+
 
     # override SNAPRed parameters lite location params
     s = getConfigPath("nexusDefinitionFilterOverride")
@@ -171,7 +179,7 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
     liteYml = f"SNAP_{runNumber}.lite.yml"
     litePars = {"TOFTol" : -0.0001, #default for no TOF compression
                             "clockTol": None,
-                            "liteGroupMapFile":Config['instrument']['lite']['map']['file'],
+                            "liteGroupMapFile": Config['instrument']['lite']['map']['file'],
                             "liteIDF":Config['instrument']['lite']['definition']['file'],
                             "liteDir":liteDir,
                             "liteFilename":liteFilename,
@@ -181,8 +189,10 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
     for key in litePars.keys():
         print(f"{key}: {litePars[key]}")
 
-    #loop through boundaries and reduce
+    #loop through boundaries, create lite file for each, then reduce that
     outputWSNames = []
+    if qsp:
+        outputWSNames_qsp = []
     for sliceID in range(len(secondBoundaries)-1):
 
         startTime = secondBoundaries[sliceID]
@@ -207,21 +217,21 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
 
         # reduce this filtered lite data.
         print(f"Reducing run {runNumber} from {startTime}s to {stopTime}s")
-
         wsNames = reduce(runNumber=runNumber, **reduce_kwargs)
 
-        # rename output workspace to indicate sequence
-
-        print(f"Renaming operation...for slice {sliceID}")
+        # rename output workspace to indicate sequencess
         for name in wsNames:
             print("Original name: ",name)
-            newName = f"{name[:-17]}slice_{str(sliceID).zfill(3)}"
-            print("New name: ",newName)
+            if qsp:
+                handle=io.redObject(name,requiredUnits="qsp")
+            else:
+                handle = io.redObject(name)
+
+            newName = f"slice{str(sliceID).zfill(3)}_{handle.units}_{handle.pixelGroup}_{handle.runNumberString}"
             RenameWorkspace(InputWorkspace=name, OutputWorkspace=newName)
             outputWSNames.append(newName)
 
             # update label for plotting
-
             from mantid.api import TextAxis
 
             ws = mtd[newName]
@@ -236,19 +246,30 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
         DeleteWorkspace(Workspace="tmp")
         DeleteWorkspace(Workspace="tmpLite")
 
+
+
+
     # group output names into workspace group
 
     #First group alphabetically 
 
     def sortKey(name):
         parts = name.split("_")
-        string_id = parts[2]       # "all", "bank", "column"
+        string_id = parts[2]       # "all", "bank", "column
         slice_num = int(parts[-1]) # "000" -> 0
         return (string_id, slice_num)
     
     sortedOutputWSNames = sorted(outputWSNames, key=sortKey)
+    if qsp:
+        groupUnits = "qsp"
+    else:
+        groupUnits = "dsp"
 
-    GroupWorkspaces(InputWorkspaces=sortedOutputWSNames, OutputWorkspace=f"slice_{runNumber}")
+    GroupWorkspaces(InputWorkspaces=sortedOutputWSNames, OutputWorkspace=f"slice_{groupUnits}_{runNumber}")
+    # if qsp:
+    #     sortedOutputWSNames_qsp = sorted(outputWSNames_qsp, key=sortKey)
+    #     GroupWorkspaces(InputWorkspaces=sortedOutputWSNames_qsp, OutputWorkspace=f"slice_qsp_{runNumber}")
+
 
     #Reset config to original
     reloadRedConfig()
@@ -1035,7 +1056,7 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False):
 
             # identify latest workspace in group and rename it.
             latest = runDict[pgs][0] #redObject for most recent workspace
-            wsKeep = f"{latest.prefix}_{latest.units}_{latest.pixelGroup}_{latest.runNumber}"
+            wsKeep = f"{latest.prefix}_{latest.units}_{latest.pixelGroup}_{latest.runNumberString}"
             if deleteWorkspaces:
                 RenameWorkspace(InputWorkspace=latest.wsName,
                             OutputWorkspace=wsKeep)
@@ -1904,6 +1925,7 @@ def reduce(runNumber,
     if normalizationRecord is None and not (continueNoVan or noNorm):
         printWarning('noNormcal')
         _abort("No normalization (vanadium) calibration found. Provide normalization or set continueNoVan=True / noNorm=True to bypass.")
+
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Pretty print useful information regarding reduction status
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 
@@ -1992,45 +2014,49 @@ def reduce(runNumber,
         cleanTree = WrapConfig.get("cleanTree")
         if cleanTree:
             cleanTheTree(removePGS=removePGS)
-            print(" time stamped Workspaces have been hidden")
+            print("Time-stamped Workspaces have been hidden")
+            outputWSList = [ws[:-18] for ws in data.record.workspaceNames]
 
-
+    else:
+        outputWSList = None
 
     if verbose:       
         verboseStatus(Config,instrumentState,ingredients)
 
-
     if qsp:
         # post reduction, need to convert d-space reduced data to Q-space
 
-        redWSList = []
-        for ws in data.record.workspaceNames:
-            redObj = io.redObject(ws)
-            if redObj.isReducedDataWorkspace:
-                redWSList.append(redObj)    
-            
-        for redObj in redWSList:
-            dspName = redObj.wsName
-            qspName = dspName.replace("_dsp_","_qsp_")
-            ConvertUnits(InputWorkspace=dspName,
-                        OutputWorkspace=qspName,
-                        Target="MomentumTransfer")
+        # redWSList = []
+        # for ws in data.record.workspaceNames:
+        #     redObj = io.redObject(ws)
+        #     if redObj.isReducedDataWorkspace:
+        #         redWSList.append(redObj)    
+        # redWSList = workspaceHandles(prefix="reduced",
+        #                              units="dsp",
+        #                              PGS=None,
+        #                              runNumber=runNumber,
+        #                              latestOnly=True,
+        #                              cleanTreeOverride=True) #dsp workspaces already cleaned 
+        
+        outputWSList_Q = [] #reset to hold q-space names
+        if outputWSList is not None:
+            for dspName in outputWSList:
+                qspName = dspName.replace("_dsp_","_qsp_")
+                ConvertUnits(InputWorkspace=dspName,
+                            OutputWorkspace=qspName,
+                            Target="MomentumTransfer")
 
-            rebPrm = linBin*np.ones(mtd[qspName].getNumberHistograms())
-            RebinRagged(InputWorkspace = qspName,
-                        OutputWorkspace= qspName,
-                        Delta = rebPrm) #ragged is needed as Qmin/max vary
-            
-            #lastly, downsample d-space data back to original request
-            restoreDBins(redObj,originalIngredients)
+                rebPrm = linBin*np.ones(mtd[qspName].getNumberHistograms())
+                RebinRagged(InputWorkspace = qspName,
+                            OutputWorkspace= qspName,
+                            Delta = rebPrm) #ragged is needed as Qmin/max vary
+                
+                #lastly, downsample d-space data back to original request
+                handle = io.redObject(dspName)
+                restoreDBins(handle,originalIngredients)
 
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-            #  if cleanTree, hide timstamped reduced workspaces.
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-            cleanTree = WrapConfig.get("cleanTree")
-            if cleanTree:
-                cleanTheTree(units="qsp",removePGS=removePGS)
-                print(" time stamped Workspaces have been hidden")
+                outputWSList_Q.append(qspName)
+            outputWSList = outputWSList_Q
 
     #clean up after myself
 
@@ -2054,7 +2080,7 @@ def reduce(runNumber,
 
     citation()
     config.setLogLevel(3, quiet=True)
-    return data.record.workspaceNames #ingredients.pixelGroups
+    return outputWSList 
 
 
     

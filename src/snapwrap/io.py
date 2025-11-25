@@ -118,7 +118,7 @@ class redObject:
         self.runNumber=int(self.runNumberString)
 
         if requiredRunNumber is not None:
-            if self.runNumber != requiredRunNumber:
+            if self.runNumber != int(requiredRunNumber):
                 self.isReducedDataWorkspace = False
                 return  
 
