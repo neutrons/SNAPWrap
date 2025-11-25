@@ -64,26 +64,21 @@ def printStatus(status):
     continueNoDifcal = status["continueNoDifcal"]
     continueNoVan = status["continueNoVan"]
 
+    snapHome = ssm.SNAPHome()
+
     print(f"""
 SNAPRed reduction status:
 - Run Number: {ingredients.runNumber}
-- state: 
-    - ID: {stateID},
-    - definition: {stateDict}
-    - Pixel Groups to process: {allPixelGroups}
+- ID: {stateID}
             """)
     if calibrationRecord.version==0 and continueNoDifcal:
         print("""
     WARNING: DIAGNOSTIC MODE! DEFAULT GEOMETRY USED.
         """)
     else:
-        print(f"""
-    - Diffraction Calibration:
-        - .h5 path: {calibrationPath}
-        - .h5 version: {calibrationRecord.version}
-        - difcal runNumber: {calibrationRecord.runNumber}
-    """)
-
+        print(f"""- Calibration: home: {snapHome.calib}
+- difcal version: {calibrationRecord.version} runNumber: {calibrationRecord.runNumber}
+- comment: {calibrationRecord.indexEntry.comments}""")
 
     if continueNoVan:
         print("""                         
@@ -91,12 +86,9 @@ SNAPRed reduction status:
     DATA WILL BE ARTIFICIALLY NORMALISED BY DIVISION BY BACKGROUND.
             """)
     else:
-        print(f"""            
-    - Normalisation Calibration:
-        - raw vanadium path: {normalizationPath}
-        - raw vanadium version: {normalizationRecord.version}
-        - vanadium runNumber: {normalizationRecord.runNumber}
-            """)
+        print(f"""- normCal version: {normalizationRecord.version} runNumber: {normalizationRecord.runNumber}
+- comment: {normalizationRecord.indexEntry.comments}
+""")
 
     #optional arguments provided...
 

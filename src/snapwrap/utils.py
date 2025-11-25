@@ -1175,6 +1175,7 @@ def resample(sampleFactor=1,
 
                 print(f"inputWorkspace is: {redObj.wsName}")
 
+                cleanTree= WrapConfig.get("cleanTree")
                 if cleanTree:
                     outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumber}"
                 else:
@@ -1985,6 +1986,16 @@ def reduce(runNumber,
 
         printStatus(status)
     
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        #  if cleanTree, hide timstamped reduced workspaces.
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        cleanTree = WrapConfig.get("cleanTree")
+        if cleanTree:
+            cleanTheTree(removePGS=removePGS)
+            print(" time stamped Workspaces have been hidden")
+
+
+
     if verbose:       
         verboseStatus(Config,instrumentState,ingredients)
 
@@ -2012,6 +2023,14 @@ def reduce(runNumber,
             
             #lastly, downsample d-space data back to original request
             restoreDBins(redObj,originalIngredients)
+
+            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            #  if cleanTree, hide timstamped reduced workspaces.
+            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            cleanTree = WrapConfig.get("cleanTree")
+            if cleanTree:
+                cleanTheTree(units="qsp",removePGS=removePGS)
+                print(" time stamped Workspaces have been hidden")
 
     #clean up after myself
 
