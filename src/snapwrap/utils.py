@@ -2020,6 +2020,8 @@ def reduce(runNumber,
             cleanTheTree(prefix="diagnostic",removePGS=removePGS) #also clean diagnostic workspaces
             print("Time-stamped Workspaces have been hidden")
             outputWSList = [ws[:-18] for ws in data.record.workspaceNames]
+        else:
+            outputWSList = data.record.workspaceNames
 
     else:
         outputWSList = None
