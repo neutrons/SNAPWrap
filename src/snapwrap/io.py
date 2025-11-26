@@ -8,12 +8,15 @@ import os
 import shutil
 from mantid.simpleapi import *
 from mantid.api import WorkspaceGroup
+import mantid.kernel
+
 import datetime
 import json
 from snapred.meta.Config import Config
 
 import snapwrap.snapStateMgr as ssm
 import snapwrap.maskUtils as mut
+from .wrapConfig import WrapConfig
 
 #Mantid interface
 
@@ -24,36 +27,118 @@ class redObject:
     #and then builds further attributes from these
 
 
-    def __init__(self, wsName,exportFormats=[],
-                 requiredPrefix='reduced_dsp',
+    def __init__(self, wsName,
+                 requiredPrefix='reduced',
+                 requiredUnits='dsp', #allow override of expected units
+                 requiredPGS=None, #allow processing of specific pixel groups only
+                 requiredRunNumber=None, #allow processing of specific run numbers only
                  iptsOverride=None,
-                 fileTag=None):
+                 exportFormats=[],
+                 fileTag=None,
+                 cleanTreeOverride=None):
+
+        if WrapConfig.get("cleanTree"): #new variable to ignore timestamps
+            cleanTree = True
+        else:
+            cleanTree = False
+
+        if cleanTreeOverride is not None:
+            cleanTree = cleanTreeOverride
+
+        self.wsName = wsName #need to keep this too
+
+        # reject everything that is inconsistent with the schema
+        # and requested filters
+
+        # schema 
+        # cleanTree: 
+        #     <prefix>_<units>_<pixelGroup>_<runNumber> (4 elements)
+        # not cleanTree:
+        #    <prefix>_<units>_<pixelGroup>_<runNumber>_<timestamp> (5 elements)
 
         if '_' not in wsName:
+            self.isReducedDataWorkspace = False #necessary by not sufficient condition
+            return
+
+        #manage special case where a hidden workspace prefix is specified
+        if requiredPrefix.startswith('__'):
+            parsed = wsName[2:].split('_')
+            parsed[0] = '__' + parsed[0] #ensure dunder is included in prefix
+        else:
+            parsed = wsName.split('_')
+
+        if cleanTree:
+            nElem = 4
+        else:
+            nElem = 5
+
+        #process prefix
+        # prefix = parsed[0]
+        if parsed[0] != requiredPrefix:
+            self.isReducedDataWorkspace = False
+            return
+        else:
+            self.prefix = parsed[0]
+
+        #process units
+        units = parsed[1]
+        if units != requiredUnits:
+            self.isReducedDataWorkspace = False
+            return
+        else:
+            self.units = parsed[1]
+        
+        # AT THIS POINT need to manage 2_4 instances. A terrible mistake where PGS has an underscore in its name :( 
+        if parsed[2] == "2" and parsed[3] == "4":
+            twoFour = True
+            nElem += 1 # this adds an additional element to total count.
+            indexShift = 1
+        else:
+            twoFour = False
+            indexShift = 0  
+
+        # filter on parsed length            
+        if len(parsed) != nElem:
             self.isReducedDataWorkspace = False
             return
 
-        parsed = wsName.split('_')
-        prefix = f"{parsed[0]}_{parsed[1]}"
-        
-        # print(f"prefix: {prefix}, required prefix: {requiredPrefix}")
+        #process pixel group
+        if twoFour:
+            self.pixelGroup = "2_4"
+        else:
+            self.pixelGroup = parsed[2]
 
-        if prefix != requiredPrefix:
-            self.isReducedDataWorkspace = False
-            return
-        
-        #get useful workspace properties
+        if requiredPGS is not None:
+            if self.pixelGroup != requiredPGS:
+                self.isReducedDataWorkspace = False
+                return
+
+        #process run number ensure it is an int retain original string
+        self.runNumberString = parsed[3+indexShift] # indexShift should handle 2_4 case. 
+        self.runNumber=int(self.runNumberString)
+
+        if requiredRunNumber is not None:
+            if self.runNumber != int(requiredRunNumber):
+                self.isReducedDataWorkspace = False
+                return  
+
+        # At this point we have passed all available filters
+
+        # aquire timestamp only if it exists
+        if cleanTree:
+            self.timeStamp = None
+        else:       
+            self.timeStamp = parsed[4+indexShift]
+
+        #get useful workspace spectral properties (e.g. number histograms, binning etc)
         self.wsProperties(wsName)
         if not self.isReducedDataWorkspace:
             return
         
         self.isReducedDataWorkspace = True
 
-        self.suffix = f"{parsed[2]}_{parsed[3]}_{parsed[4]}"
-        self.pixelGroup = parsed[2]
-        self.runNumber = parsed[3]
-        self.timeStamp = parsed[4]
-        self.wsName = wsName #need to keep this too
+        # self.suffix = f"{parsed[2]}_{parsed[3]}_{parsed[4]}"
+        
         if iptsOverride is None:
             self.ipts = GetIPTS(RunNumber=self.runNumber,
                                 Instrument='SNAP')
@@ -67,8 +152,11 @@ class redObject:
 
         self.exportFormats = exportFormats
         self.exportPaths = self.buildExportPaths()
-        self.dateTime = datetime.datetime.strptime(self.timeStamp,'%Y-%m-%dT%H%M%S')
 
+        if self.timeStamp is not None:      
+            self.dateTime = datetime.datetime.strptime(self.timeStamp,'%Y-%m-%dT%H%M%S')
+        else:
+            self.dateTime = None
 
         #create a dictionary to hold metadata to include as a comment in output files
 
@@ -194,10 +282,11 @@ class redObject:
 
 class reductionGroup:
     #instantiated with a list of redObject classes and a run number, it reparses the list into
-    #a dictionary where the keys are the pixel group and the values are a list of redObjects 
+    #a dictionary where the keys are the pixel group and the values are a list of redObjects
+    # if a timestamp is present these are ordered with latest first. 
 
 
-    def __init__(self,runNumber,redObjectList):
+    def __init__(self,runNumber,redObjectList,cleanTreeOverride = None):
 
         self.runNumber = runNumber
         
@@ -213,7 +302,7 @@ class reductionGroup:
             pgsList.append(run.pixelGroup)
         
         allPixelGroups = set(pgsList)
-        print(f"run {runNumber} has {len(allPixelGroups)} pixel groups")
+        print(f"run {runNumber} has {len(allPixelGroups)} pixel group(s)")
 
         redObjects = {}
         #populate dictionaries with empty lists to hold contents
@@ -225,16 +314,20 @@ class reductionGroup:
             key = run.pixelGroup
             redObjects[key].append(run)
 
-        #sort lists for each key in order of decreasing time
+        cleanTree = WrapConfig.get("cleanTree")
+        if cleanTreeOverride is not None:
+            cleanTree = cleanTreeOverride # need this option so tree can be cleaned
+
+        #if not cleanTree need to sort lists for each key in order of decreasing time
         for pgs in allPixelGroups:
-            objects = redObjects[pgs] # a list of redObjects un sorted in time
-            sortedObjects = sorted(
-                objects,
-                key = lambda obj: obj.timeStamp,
-                reverse=True
-           ) #This list sorted according to timestamp of objects
-            
-            redObjects[pgs]=sortedObjects #replace list with sorted list
+            if not cleanTree:
+                objects = redObjects[pgs] # a list of redObjects un sorted in time
+                sortedObjects = sorted(
+                    objects,
+                    key = lambda obj: obj.timeStamp,
+                    reverse=True
+                ) #This list sorted according to timestamp of objects            
+                redObjects[pgs]=sortedObjects #replace list with sorted list
 
         self.objectDict = redObjects
 
@@ -254,22 +347,46 @@ def convertToQ():
             
     #TODO: rebin S(Q) once I know how to do this
 
-def reducedRuns(exportFormats,prefix,iptsOverride=None, fileTag=None):#,latestOnly=True,gsaInstPrm=True):
+def reducedRuns(prefix='reduced',
+                units = 'dsp',
+                PGS = None,
+                runNumber = None,
+                iptsOverride=None,
+                exportFormats=[], 
+                fileTag=None,
+                cleanTreeOverride=None):#,latestOnly=True,gsaInstPrm=True):
 
-    #generates a list of reductionGroups. Each of these has a .runNumber attribute
+    #generates a list of reductionGroups. Each of these has a `runNumber` attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
     #are a list of available reduction object for that group (each with all attributes needed
     #to export requested files)
 
-
-    allWorkspaces = mtd.getObjectNames()
+    # if prefix starts with dunder then assume we need to check hidden workspaces
+    if prefix.startswith('__'):
+        # print("looking for hidden")
+        # with mantid.kernel.amend_config(**{"InvisibleWorkspaces": "1"}):  # TODO: try to fix this.
+        config.setString('MantidOptions.InvisibleWorkspaces','1')
+        allWorkspaces = mtd.getObjectNames()
+            # print(allWorkspaces)
+        config.setString('MantidOptions.InvisibleWorkspaces','0')
+    else: 
+        allWorkspaces = mtd.getObjectNames()
 
     #filter out and parse reduced workspaces
     redObjectList = []
     redRuns = []
     for ws in allWorkspaces:
 
-        red = redObject(ws,exportFormats,prefix,iptsOverride,fileTag) 
+        red = redObject(ws,
+                        requiredPrefix=prefix,
+                        requiredUnits=units,
+                        requiredPGS=PGS,
+                        requiredRunNumber=runNumber,
+                        iptsOverride=iptsOverride,
+                        exportFormats=exportFormats,
+                        fileTag=fileTag,
+                        cleanTreeOverride=cleanTreeOverride) 
+
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
             redRuns.append(red.runNumber)
@@ -277,7 +394,7 @@ def reducedRuns(exportFormats,prefix,iptsOverride=None, fileTag=None):#,latestOn
     nReduced = len(redObjectList)
     uniqueRuns = set(redRuns)
     nUnique = len(uniqueRuns)
-    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction groups")
+    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction group(s)")
 
     #parse these creating "reductionGroup" for each run numbner
     reducedGroups = []
@@ -302,14 +419,11 @@ def exportReducedGroup(redGroup,latestOnly,gsaInstPrm):
     print(f"Exporting run: {runNumber} with {len(runDict)} pixel group(s)")
     for pgs in runDict.keys():
         #each key is a pixel group and each pixel group has a list of objects (each is a workspace)
-        print(f"processing {pgs} with {len(runDict[pgs])} associated workspaces")
-        listOfDates = [x.dateTime for x in runDict[pgs]]
-        mostRecent = max(listOfDates)
-        mostRecentIndex = listOfDates.index(mostRecent)
+        print(f"processing pixel group {pgs} with {len(runDict[pgs])} associated workspaces")
         if latestOnly:
-            processIndices = [mostRecentIndex]
+            processIndices = [0]
         else:
-            processIndices = np.arange(len(listOfDates))
+            processIndices = np.arange(len(runDict[pgs])).tolist()
 
         exportRecipe(runDict,pgs,processIndices,gsaInstPrm)
 

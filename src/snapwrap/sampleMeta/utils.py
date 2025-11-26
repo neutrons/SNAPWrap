@@ -13,7 +13,9 @@ from scipy.optimize import least_squares
 # from snapwrap.wrapConfig import WrapConfig
 # from snapwrap.SEEMeta.material import material
 # from snapwrap.SEEMeta.db import engine
+import importlib
 import snapwrap.sampleMeta.latticeFittingFunctions as lff
+importlib.reload(lff) #is this needed?
 
 class crystalReflection:
 
@@ -28,16 +30,6 @@ class crystalReflection:
         self.l = hkl[2]
         self.dObs = dObs
         self.extentOverPosition = extentOverPosition #full extent of peak divided by its position
-
-        # prototype idea is to ditch extentOverPosition, which - in retrospect - is a dumb idea as
-        # of course, this is not just a property of the reflection, but how and where it's measured
-        # Here, I'm testing a new parameter "sig" (not sure about the name, but it's inspired by the
-        # GSAS param, reflecting a gaussian component of peak profile).
-        # My initial plan is to use this as a multiplier for the separately-calculated resolution
-        # of a pixel group
-        # original extentOverPosition is kept for now, but should be removed in the future 
-
-        self.sig = None # this is a prototype parameter
 
     def to_dict(self):
         return self.__dict__ #returns a json string of attributes
@@ -108,7 +100,8 @@ class crystalSpecies:
                 spaceGroup,
                 observedReflections,
                 name = None, #a name for this species
-                scatterers = ""): #fraction of maximum intensity to use as threshold for d-spacing generation
+                scatterers = "",
+                dLimits = None): #fraction of maximum intensity to use as threshold for d-spacing generation
         
         # spaceGroups is string with H-M space group
         # observedReflections is a list of crystalReflection objects
@@ -145,7 +138,10 @@ class crystalSpecies:
         self.unitCell = self._cellFromReflections()
 
         #attempt to build crystalStructure object
-        self.hasCrystalStructure = self._buildCrystalStructure()  
+        self.hasCrystalStructure = self._buildCrystalStructure()
+
+        #encountered a need to specify d-range to use when calculating d-spacings
+        self.dLimits = dLimits
 
     def _systemFromSG(self):
 
@@ -199,7 +195,8 @@ class crystalSpecies:
         #TODO count independent reflections and check there are enough.
         nRef = len(reflectionList)
         if nRef >= cell.minRefs:
-            print(f"{len(reflectionList)} reflections provided. This is sufficient for {cell.crystalSystem} system (assuming independence).")
+            pass
+            # print(f"{len(reflectionList)} reflections provided. This is sufficient for {cell.crystalSystem} system (assuming independence).")
         else:
             print(f"Error: you provided {nRef} refs, but {cell.minRefs} are required for {cell.crystalSystem} system")
             return
@@ -308,7 +305,10 @@ class crystalSpecies:
                     scatterers=self.scatterers)
                 return True
             except:
-                print("Failed to generate crystalStructure object")
+                print("Failed to generate crystalStructure object with provided input:")
+                print(f"  unitCell: {a} {b} {c} {alpha} {beta} {gamma}")
+                print(f"  spaceGroup: {self.spaceGroup}")
+                print(f"  scatterers: {self.scatterers}")
                 return False
 
     def printCrystal(self):
@@ -387,6 +387,8 @@ class crystalSpecies:
             return
 
         generator = ReflectionGenerator(self.crystalStructure)
+
+        allRefs = generator.getUniqueHKLs(dMin,dMax)
         
         # Create list of unique reflections between 0.7 and 3.0 Angstrom
         hkls = generator.getUniqueHKLsUsingFilter(dMin, dMax, ReflectionConditionFilter.StructureFactor)
@@ -418,7 +420,7 @@ class crystalSpecies:
                 dFiltered.append(ref[1])
 
 
-        print(f"after filtering have {len(dFiltered)} reflections")
+        print(f"after filtering have {len(dFiltered)} reflections (this is {100*len(dFiltered)/len(reflections):.2f}%)")
         
         self.dSpacings = sorted(dFiltered,reverse=True)
         
@@ -455,7 +457,8 @@ class crystalSpecies:
             "valid": self.valid,
             "extentOverPosition": self.extentOverPosition,
             "unitCell": unit_cell_dict,
-            "hasCrystalStructure": self.hasCrystalStructure
+            "hasCrystalStructure": self.hasCrystalStructure,
+            "dLimits": self.dLimits  # <-- preserve dLimits
         }
     
         return species_dict
@@ -473,13 +476,15 @@ class crystalSpecies:
         space_group = d.get("spaceGroup", "")
         name = d.get("name")
         scatterers = d.get("scatterers", "")
+        dLimits = d.get("dLimits", None)  # <-- restore dLimits
     
         # Create a crystalSpecies object
         species = cls(
             spaceGroup=space_group,
             observedReflections=observed_reflections,
             name=name,
-            scatterers=scatterers
+            scatterers=scatterers,
+            dLimits=dLimits
         )
     
         # Restore additional attributes

@@ -4,17 +4,48 @@ import numpy as np
 from mantid.simpleapi import *
 from snapwrap.utils import workspaceHandles
 
-def excludeROI(wsName,wsIndex,roiList):
-    #takes a list of [xMin,xMax] values and for specified index in WS sets corresponding Y-values
+def excludeROI(wsName, wsIndex, roiList, createExcludedWS=False):
+    # takes a list of [xMin,xMax] values and for specified index in WS sets corresponding Y-values
     # to NAN
-    ws = mtd[wsName]
-    x = ws.readX(wsIndex)
-    y = ws.dataY(wsIndex)
-    for roi in roiList:
-        roiIndices = np.argwhere( (x[:-2]>=roi[0]) & (x[:-2]<=roi[1]) ) #x[:-2] is to avoid index error
-        y[roiIndices] = np.nan
-        ws.setY(wsIndex,y)
 
+    ws = mtd[wsName]
+    x = ws.readX(wsIndex)  # bin edges length = nBins+1
+    y = ws.dataY(wsIndex).copy()  # work on a copy
+
+    if createExcludedWS:
+        y_excl = np.full_like(y, np.nan)
+
+    excludedPoints = 0
+    original_y = ws.dataY(wsIndex)  # keep original for excluded_ws
+
+    # use x[:-1] to align with y (bins)
+    x_bin_edges = x[:-1]
+
+    for roi in roiList:
+        # boolean mask for bins whose left-edge falls inside ROI
+        mask = (x_bin_edges >= roi[0]) & (x_bin_edges <= roi[1])
+        if not np.any(mask):
+            continue
+        indices = np.where(mask)[0]  # 1D index array
+        y[indices] = np.nan
+        excludedPoints += len(indices)
+        if createExcludedWS:
+            y_excl[indices] = original_y[indices]
+
+    # write back once
+    ws.setY(wsIndex, y)
+
+    if createExcludedWS:
+        out_name = "excluded_" + wsName
+        CloneWorkspace(InputWorkspace=wsName, OutputWorkspace=out_name)
+        excluded_ws = mtd[out_name]  # get workspace object
+        excluded_ws.setY(wsIndex, y_excl)
+        excluded_ws.setX(wsIndex, x)
+        excluded_ws.setTitle("Excluded data from " + wsName)
+        excluded_ws.setPlotType("marker")
+        excluded_ws.setMarkerStyle("circle")
+
+    print(f"Debug: excluded {excludedPoints} points in total from spectrum {wsIndex} of workspace {wsName}")
 
 def replacePrefix(wsName,newPrefix):
     #update SNAPRed style ws name
@@ -105,17 +136,20 @@ def compatibleWorkspaces(handles):
     return True
 
 
-def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.00):
+def compositeBackground(handles,dMin=0.65,
+                        dMax=10.0,
+                        minFractionOfMaxIntensity=0.00,
+                        createExcludedWS=False):
 
     #calculate exclusion ROI's using crystalSpecies
     #calculation runs as a for loop over number of input spectra that are specified by the handles list 
 
     # Need to ensure all input workspaces have same number of spectra
     if not compatibleWorkspaces(handles):
-        print("Submitted workspaces not compatible")
+        print("compositeBackground: Submitted workspaces not compatible")
         return
     else:
-        print("workspaces are compatible")
+        print("compositeBackground: workspaces are compatible")
 
     #create clones of input workspace to hold the de-peaked spectra 
     # calculate the exclusion regions for each spectrum and set the corresponding
@@ -123,8 +157,7 @@ def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.
 
     for runID,handle in enumerate(handles):
         wsName = handle.wsName
-        runNo = handle.runNumber
-        runInt = int(runNo.strip())
+        runInt = handle.runNumber
         
         dePeakWS = replacePrefix(wsName,"dePeak")
         CloneWorkspace(InputWorkspace=wsName,
@@ -142,9 +175,21 @@ def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.
 
             excludeList = []
             for creature in handle.crystalSpeciesList:
-                            
-                creature.calcDSpacings(dMin=dMin,
-                                        dMax=dMax,
+
+                print(f"\nProcessing species {creature.name} for spectrum {specID} of run {runInt}")
+                
+                #apply dLimit override if specified taking care to retain original dMin,dMax values        
+                if creature.dLimits is not None:
+                    print(f"applying dLimits for species {creature.name}")
+                    dMinOverride = creature.dLimits[0]
+                    dMaxOverride = creature.dLimits[1]
+                else:
+                    dMinOverride = dMin
+                    dMaxOverride = dMax
+
+                print(f"using dMin: {dMinOverride} and dMax: {dMaxOverride} for d-spacing calculation")
+                creature.calcDSpacings(dMin=dMinOverride,
+                                        dMax=dMaxOverride,
                                         minFractionOfMaxIntensity=minFractionOfMaxIntensity)
                 
                 for d in creature.dSpacings:
@@ -152,14 +197,14 @@ def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.
                     roi = [d-extent/2,d+extent/2]
                     excludeList.append(roi)      
 
-            excludeROI(dePeakWS,specID,excludeList) #will set x-ranges in excludeList in spectrum specID to NAN
-            print(f"for spec: {specID} {len(excludeList)} regions were excluded")              
+            excludeROI(dePeakWS,specID,excludeList,createExcludedWS=createExcludedWS) #will set x-ranges in excludeList in spectrum specID to NAN
+            print(f"for spec: {specID}, {len(excludeList)} regions were excluded")              
 
     #now need to determine the average of all depeaked spectra ignoring NAN values
     #first need handles on the dePeaked workspaces
 
-    dePeakedHandles = workspaceHandles(prefix="dePeak_dsp",
-                                            pgs = handles[0].pixelGroup)
+    dePeakedHandles = workspaceHandles(prefix="dePeak",
+                                            PGS = handles[0].pixelGroup)
        
     CloneWorkspace(InputWorkspace=handles[0].wsName,
         OutputWorkspace="avgBgnd")

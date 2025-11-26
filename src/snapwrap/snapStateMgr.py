@@ -137,7 +137,7 @@ def VBRunNumberFromVersion(calDict,calFolder):
 
         return normRec["backgroundRunNumber"]
 
-def isCalibrated(runNumber,isLite=True):
+def isCalibrated(runNumber,isLite=True,silent=False):
 
     # returns tuple of booleans for difcal and normcal status respectively
     # values will only be true if valid calibration exists
@@ -149,7 +149,11 @@ def isCalibrated(runNumber,isLite=True):
     nrmcal = checkCalibrationStatus(runNumber, stateID=None,
                                     isLite=isLite, 
                                     calType="normcal")
-    
+
+    if silent:
+        return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"])
+
+    #otherwise print calibration status
     if difcal['runIsCalibrated']:
         print(f"difcal: is calibrated: {difcal['runIsCalibrated']} with run {difcal['latestValidCalibrationDict']['runNumber']} ")
     else:
