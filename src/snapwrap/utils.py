@@ -1484,6 +1484,9 @@ def reload(runNumber,
              keepMask=keepMask,
              pixelGroup=pixelGroup,
              )
+    if WrapConfig.get("cleanTree"):
+        cleanTheTree(prefix="reduced",
+                     deleteWorkspaces=False)
 
 def autoMask(inputWorkspace,maskType="PE",plotOn=True):
 
@@ -2014,6 +2017,7 @@ def reduce(runNumber,
         cleanTree = WrapConfig.get("cleanTree")
         if cleanTree:
             cleanTheTree(removePGS=removePGS)
+            cleanTheTree(prefix="diagnostic",removePGS=removePGS) #also clean diagnostic workspaces
             print("Time-stamped Workspaces have been hidden")
             outputWSList = [ws[:-18] for ws in data.record.workspaceNames]
 
@@ -2025,18 +2029,6 @@ def reduce(runNumber,
 
     if qsp:
         # post reduction, need to convert d-space reduced data to Q-space
-
-        # redWSList = []
-        # for ws in data.record.workspaceNames:
-        #     redObj = io.redObject(ws)
-        #     if redObj.isReducedDataWorkspace:
-        #         redWSList.append(redObj)    
-        # redWSList = workspaceHandles(prefix="reduced",
-        #                              units="dsp",
-        #                              PGS=None,
-        #                              runNumber=runNumber,
-        #                              latestOnly=True,
-        #                              cleanTreeOverride=True) #dsp workspaces already cleaned 
         
         outputWSList_Q = [] #reset to hold q-space names
         if outputWSList is not None:

@@ -136,7 +136,10 @@ def compatibleWorkspaces(handles):
     return True
 
 
-def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.00,createExcludedWS=False):
+def compositeBackground(handles,dMin=0.65,
+                        dMax=10.0,
+                        minFractionOfMaxIntensity=0.00,
+                        createExcludedWS=False):
 
     #calculate exclusion ROI's using crystalSpecies
     #calculation runs as a for loop over number of input spectra that are specified by the handles list 
@@ -154,8 +157,7 @@ def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.
 
     for runID,handle in enumerate(handles):
         wsName = handle.wsName
-        runNo = handle.runNumber
-        runInt = int(runNo.strip())
+        runInt = handle.runNumber
         
         dePeakWS = replacePrefix(wsName,"dePeak")
         CloneWorkspace(InputWorkspace=wsName,
@@ -201,8 +203,8 @@ def compositeBackground(handles,dMin=0.65,dMax=10.0,minFractionOfMaxIntensity=0.
     #now need to determine the average of all depeaked spectra ignoring NAN values
     #first need handles on the dePeaked workspaces
 
-    dePeakedHandles = workspaceHandles(prefix="dePeak_dsp",
-                                            pgs = handles[0].pixelGroup)
+    dePeakedHandles = workspaceHandles(prefix="dePeak",
+                                            PGS = handles[0].pixelGroup)
        
     CloneWorkspace(InputWorkspace=handles[0].wsName,
         OutputWorkspace="avgBgnd")
