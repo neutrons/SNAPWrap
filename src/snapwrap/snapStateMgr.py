@@ -48,8 +48,19 @@ def stateDef(runNumber):
         key: logs[key] for key in keys
     }
 
-    #convert arrays to values
-    cleaned = {k: v.item() for k, v in stateDict.items()}
+    #convert arrays to scalar values
+    # - for single-element arrays: use .item()
+    # - for multi-element arrays (legacy time-series logs): take last value
+    # - for already-scalar values: use as-is
+    def to_scalar(v):
+        import numpy as np
+        if isinstance(v, np.ndarray):
+            return v.item() if v.size == 1 else v[-1].item()
+        elif hasattr(v, 'item'):
+            return v.item()
+        return v
+
+    cleaned = {k: to_scalar(v) for k, v in stateDict.items()}
 
 
     return [stateID,cleaned]

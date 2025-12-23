@@ -1435,7 +1435,7 @@ Donor calibration info
     recipientState = []
     recipientDetConfig = []
 
-    # The calibration being propagated will become the latest calibration in the receiving state
+    # Note: The calibration being propagated will become the latest calibration in the receiving state
     # However, the validity of the propagated state will follow that of the donor calibration
 
     for stateID in ssm.availableStates():
@@ -1460,7 +1460,7 @@ Donor calibration info
         print(state)
 
     if propagate:
-        print("\nThese will be states will accept the donor calibration")
+        print("\nThese states will accept the donor calibration")
         for calStatus in recipientCalStatus:
 
             print("recipient:")
@@ -2020,6 +2020,7 @@ def reduce(runNumber,
 
         try:
             data = interfaceController.executeRequest(snapRequest).data
+            assert False
         except Exception as e:
             _abort(f"Reduction execution failed: {e}")
         try:
