@@ -46,7 +46,8 @@ def citation():
     print("\nIf you use SNAPRed or snapwrap in your work please cite:\n")
     print("SNAPRed: Reduction of multidimensional neutron time-of-flight diffraction data")
     print("M. Guthrie, M. Walsh, K. Travis, R. Boston, D. Caballero, D. Dinger, G. ElsarBoukh, J. Hetrick, A.T. Savici and P. Peterson")
-    print("SoftwareX (2025) https://doi-org.ornl.idm.oclc.org/10.1016/j.softx.2025.102464\n")
+    print("Software X, 33, 102464 (2026)")
+    print("https://doi-org.ornl.idm.oclc.org/10.1016/j.softx.2025.102464\n")
 
 def printStatus(status):
     
