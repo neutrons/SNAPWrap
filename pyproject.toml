@@ -176,10 +176,10 @@ snapred = ">2.0.0"
 
 [tool.pixi.package]
 name = "snapwrap"
-version = "0.0.0"     # placeholder, overwritten by sync-version
+version = "2.2.0.dev31"     # placeholder, overwritten by sync-version
 
 [tool.pixi.package.build]
-backend = { name = "pixi-build-python", version = "0.1.*" }
+backend = { name = "pixi-build-python", version = "0.4.*" }
 
 # Environments and Features
 
