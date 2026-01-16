@@ -42,6 +42,7 @@ from snapred.backend.dao.request.FarmFreshIngredients import FarmFreshIngredient
 from snapred.backend.service.SousChef import SousChef
 from snapred.backend.dao.Hook import Hook
 
+from packaging.version import Version
 from snapred import __version__ as redVersion
 from snapwrap import __version__ as snapwrapVersion
 
@@ -99,6 +100,12 @@ def deploy():
 
     for key in deployInfo["vcs_info"]:
         print(f"{key}:{deployInfo['vcs_info'][key]}")
+
+# Utility to allow some checking of version
+
+def versionAtLeast(current, required):
+    return Version(current) >= Version(required)
+
 
 def getConfigPath(name: str):
 
@@ -1428,7 +1435,7 @@ Donor calibration info
     recipientState = []
     recipientDetConfig = []
 
-    # The calibration being propagated will become the latest calibration in the receiving state
+    # Note: The calibration being propagated will become the latest calibration in the receiving state
     # However, the validity of the propagated state will follow that of the donor calibration
 
     for stateID in ssm.availableStates():
@@ -1453,7 +1460,7 @@ Donor calibration info
         print(state)
 
     if propagate:
-        print("\nThese will be states will accept the donor calibration")
+        print("\nThese states will accept the donor calibration")
         for calStatus in recipientCalStatus:
 
             print("recipient:")
@@ -1652,7 +1659,7 @@ def reduce(runNumber,
                noNorm=False,
                emptyTrash=True, #remove temporary mantid workspaces at the end of reduction
                cisMode=False,
-               singlePixelGroup=None,
+               focusGroupAllowList=None,
                qsp=False,
                linBin=0.01,
                removePGS=None,
@@ -1847,23 +1854,44 @@ def reduce(runNumber,
 
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
+    pgs = groupings["focusGroups"]
+    print(f"pgs: {pgs}")
 
-    # allow selection of singlePixelGroup
+    pgsNames = []
+    for p in pgs:
+        pgsNames.append(p.name)
 
-    if singlePixelGroup is None:
-        reductionRequest.focusGroups = groupings["focusGroups"]
-    else:
-        reductionRequest.focusGroups = []
-        for focGroup in groupings["focusGroups"]:
-            if singlePixelGroup.lower()==focGroup.name.lower():
-                print(f"Setting single focus group: {focGroup.name}")
-                reductionRequest.focusGroups.append(focGroup)
-
-    print("request",reductionRequest.focusGroups)
-
-    # 2. Load Calibration (error out if it doesnt exist, comment out if continue anyway)
-    # 3. Load Normalization (error out if it doesnt exist, comment out if continue anyway)
-    # 3. Load the run data (lite or native)
+    # focusGroupAllowList is only available with red version 2.2.0
+    if focusGroupAllowList is not None:
+        if versionAtLeast(redVersion,"2.2.0"):
+            pass
+        else:
+            print("Warning: focusGroupAllowList not supported, reseting to None")
+            focusGroupAllowList = None 
+    
+    if focusGroupAllowList is not None:
+        print("focusGroupAllowList not currently supported")
+        focusGroupAllowList = [s.capitalize() for s in focusGroupAllowList] # ensure capitilized strings
+        # ensure requested allow list is a subset of available names
+        missing = [s for s in focusGroupAllowList if s not in pgsNames]
+        assert not missing,f"Reduce Error: requested focus group(s) available. Requested: {missing}, available: {pgsNames} "
+        #reinstantiate reductionRequest with requested allow List
+        reductionRequest = ReductionRequest(
+            runNumber=runNumber,
+            useLiteMode=useLiteMode,
+            timestamp=timestamp,
+            continueFlags=continueFlags,
+            pixelMasks=pixelMasks,
+            focusGroupAllowList=focusGroupAllowList,
+            keepUnfocused=keepUnfocussed,
+            convertUnitsTo=convertUnitsTo,
+            artificialNormalizationIngredients=artificialNormalizationIngredients,
+            hooks = hooks,
+        )
+        snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
+        reductionService.validateReduction(reductionRequest)
+        groupings = reductionService.fetchReductionGroupings(reductionRequest)
+        pgs = groupings["focusGroups"]
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # "fetchReductionGroceries" Loads necessary data (e.g. sample neutron data,
@@ -1992,6 +2020,7 @@ def reduce(runNumber,
 
         try:
             data = interfaceController.executeRequest(snapRequest).data
+            assert False
         except Exception as e:
             _abort(f"Reduction execution failed: {e}")
         try:
