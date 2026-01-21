@@ -1345,7 +1345,7 @@ def updateBinForQ(inputIngredients,linBin):
   
     pgs = inputIngredients.pixelGroups
     originalIngredients = copy.deepcopy(pgs)
-    print(f"copied {len(originalIngredients)} groups from {len(pgs)} original groups")
+
     for pg in pgs:
         print(f"pgs: {pg.focusGroup.name} with {len(pg.pixelGroupingParameters)} subgroups")
         for subgroup in pg.pixelGroupingParameters:
@@ -1987,7 +1987,6 @@ def reduce(runNumber,
 
     time.sleep(5) #pause to allow user to read status info
 
-    numPixelGroups = len(ingredients.pixelGroups)
 
     #obtain useful values from instrument state
     farmFresh = FarmFreshIngredients(
@@ -2001,7 +2000,6 @@ def reduce(runNumber,
 
         #prior to reduction, need to determine appropriate binning to match requested
         #Q-space binning
-        assert numPixelGroups == len(ingredients.pixelGroups)
         originalIngredients,ingredients = updateBinForQ(ingredients,linBin)
 
         pgs = ingredients.pixelGroups
