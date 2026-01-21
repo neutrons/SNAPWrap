@@ -1365,11 +1365,11 @@ def restoreDBins(redObj,originalIngredients):
     #extract ragged binning params from originalIngredients
 
     pgName = redObj.pixelGroup.lower()
+    dMins = []
+    dMaxs = []
+    dBins = []
     for pg in originalIngredients:
         if pg.focusGroup.name.lower() == pgName:
-            dMins = []
-            dMaxs = []
-            dBins = []
             for subgroup in pg.pixelGroupingParameters:
                 params = pg.pixelGroupingParameters[subgroup]
                 dMin = params.dResolution.minimum + Config["constants.CropFactors.lowdSpacingCrop"]
@@ -1378,6 +1378,8 @@ def restoreDBins(redObj,originalIngredients):
                 dMins.append(dMin)
                 dMaxs.append(dMax)
                 dBins.append(-1*dBin) #ugh...
+        else:
+            print(f"{pg.focusGroup.name.lower() } did not match {pgName}")
 
     if len(dMins) == 0:
         print(f"ERROR: could not match pixelGroupingScheme {pgName} with reduction ingredients")
@@ -1855,6 +1857,7 @@ def reduce(runNumber,
     # 1. load default grouping workspaces from the state folder 
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
     pgs = groupings["focusGroups"]
+    reductionRequest.focusGroups = pgs
     print(f"pgs: {pgs}")
 
     pgsNames = []
@@ -1892,13 +1895,13 @@ def reduce(runNumber,
         reductionService.validateReduction(reductionRequest)
         groupings = reductionService.fetchReductionGroupings(reductionRequest)
         pgs = groupings["focusGroups"]
+        reductionRequest.focusGroups = pgs
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # "fetchReductionGroceries" Loads necessary data (e.g. sample neutron data,
     # raw vanadium data, pixel group definitions, DIFCs
     # and pixel masks )
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
     groceries = reductionService.fetchReductionGroceries(reductionRequest)
 
     groceries["groupingWorkspaces"] = groupings["groupingWorkspaces"]
@@ -1910,11 +1913,9 @@ def reduce(runNumber,
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #  Load the metadata i.e. ingredients
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
     # 1. load reduction ingredients
     ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))    
     ingredients.artificialNormalizationIngredients = artificialNormalizationIngredients
-
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Determine calibration status and process this
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1986,6 +1987,7 @@ def reduce(runNumber,
 
     time.sleep(5) #pause to allow user to read status info
 
+
     #obtain useful values from instrument state
     farmFresh = FarmFreshIngredients(
         runNumber=runNumber,
@@ -1998,7 +2000,6 @@ def reduce(runNumber,
 
         #prior to reduction, need to determine appropriate binning to match requested
         #Q-space binning
-
         originalIngredients,ingredients = updateBinForQ(ingredients,linBin)
 
         pgs = ingredients.pixelGroups
