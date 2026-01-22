@@ -624,7 +624,7 @@ def getDetectorArcs(wsName,alias=True):
     else:
         arcLogs = ["BL3:Mot:vdet_arc1","BL3:Mot:vdet_arc2"]
 
-    print("\n Debug getDetectorArcs:")
+    # print("\n Debug getDetectorArcs:")
     for log in logs:
 
         if log.name == arcLogs[0]:
@@ -1343,6 +1343,13 @@ def updateBinForQ(inputIngredients,linBin):
     # that will ensure that *after converion to Q-space* the largest Q-bin is equal to
     # the requrested linBin value.
   
+
+    # print("DEBUG: copying original pixel groups info here")
+    # print("original pixelGroups object:", inputIngredients.pixelGroups)
+    # print("Entire input ingredients:")
+    # for name, value in vars(inputIngredients).items():
+    #     print(f"{name} = {value!r}")
+
     pgs = inputIngredients.pixelGroups
     originalIngredients = copy.deepcopy(pgs)
 
@@ -1365,6 +1372,13 @@ def restoreDBins(redObj,originalIngredients):
     #extract ragged binning params from originalIngredients
 
     pgName = redObj.pixelGroup.lower()
+    # print(f"Debug: restoring dbinning for pixel group: {pgName}")
+    # print("DEBUG: originalIngredients contains the following pixel groups: ")
+    print([pg.focusGroup.name for pg in originalIngredients])
+    print("here is the complete original ingredients:")
+    for pg in originalIngredients:
+        print(pg)
+
     for pg in originalIngredients:
         if pg.focusGroup.name.lower() == pgName:
             dMins = []
@@ -1644,6 +1658,7 @@ class HookCollection:
         context.mantidSnapper.executeQueue()
 
 
+
 def reduce(runNumber,
                sampleEnv='none',
                pixelMaskIndex='none',
@@ -1705,7 +1720,7 @@ def reduce(runNumber,
     # load reduction params from default yml with option to override 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    #TODO: update default to final shared repo path
+    #TODO: REMOVE YML REFERENCES
 
     if YMLOverride == 'none':
         defaultYML = os.path.join(os.path.dirname(__file__), "defaultRedConfig.yml") #this will live in repo
@@ -1724,9 +1739,15 @@ def reduce(runNumber,
     # process calibration status and continue flags
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+    print("Processing calibration status and continue flags...")
+
     #first catch dead ends, abort and return useful information
+
     #difcal
     calibrationStatus = ssm.isCalibrated(runNumber=runNumber,silent=True)
+    print(f"Difcal status: {calibrationStatus[0]}")
+    print(f"Normcal status: {calibrationStatus[1]}")
+
     if not any([calibrationStatus[0],continueNoDifcal]):  # difcal is absent and fallback not requested
         printWarning('noDifcal',runNumber)
         return _abort(
@@ -1743,6 +1764,7 @@ def reduce(runNumber,
     continueFlags = ContinueWarning.Type.UNSET  # by default do not continue
 
     if continueNoVan and not noNorm:
+        print("artificial normalisation requested in lieu of no normcal")
         artificialNormalizationIngredients = ArtificialNormalizationIngredients(
         peakWindowClippingSize = Config["constants.ArtificialNormalization.peakWindowClippingSize"],
         smoothingParameter=snapwrapGlob.AN_smoothingParameter,
@@ -1752,7 +1774,8 @@ def reduce(runNumber,
     else:
         artificialNormalizationIngredients = None
 
-    if continueNoDifcal and not continueNoVan:
+
+    if continueNoDifcal and not (continueNoVan or noNorm):
         continueFlags = ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
 
     elif (continueNoVan or noNorm) and not continueNoDifcal:
@@ -1761,6 +1784,9 @@ def reduce(runNumber,
     elif (continueNoVan or noNorm) and continueNoDifcal:
         continueFlags = ContinueWarning.Type.MISSING_NORMALIZATION
         continueFlags |= ContinueWarning.Type.MISSING_DIFFRACTION_CALIBRATION
+
+    print("ContinueFlags")
+    print(continueFlags)
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # process input arguments
@@ -1797,7 +1823,6 @@ def reduce(runNumber,
     print("Calling reduction service")
     reductionService = ReductionService()
     interfaceController = InterfaceController()
-
     timestamp = reductionService.getUniqueTimestamp()
 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1837,6 +1862,16 @@ def reduce(runNumber,
     else:
         hooks = None
 
+    # pre-process option to specify focusGroupAllowList
+
+    if focusGroupAllowList is not None:
+        print("focusGroupAllowList not currently supported")
+        focusGroupAllowList = [s.capitalize() for s in focusGroupAllowList] # ensure capitilized strings
+        # ensure requested allow list is a subset of available names
+        missing = [s for s in focusGroupAllowList if s not in pgsNames]
+        assert not missing,f"Reduce Error: requested focus group(s) available. Requested: {missing}, available: {pgsNames} "
+
+
     reductionRequest = ReductionRequest(
             runNumber=runNumber,
             useLiteMode=useLiteMode,
@@ -1844,54 +1879,43 @@ def reduce(runNumber,
             continueFlags=continueFlags,
             pixelMasks=pixelMasks,
             keepUnfocused=keepUnfocussed,
+            focusGroupAllowList=focusGroupAllowList, #TEMPORARILY DISABLE TO TEST V2.1.0
             convertUnitsTo=convertUnitsTo,
             artificialNormalizationIngredients=artificialNormalizationIngredients,
             hooks = hooks,
         )
+    
+    # 1. load default grouping workspaces from the state folder 
+    groupings = reductionService.fetchReductionGroupings(reductionRequest)
+
+    # manually add focus groups to the request.
+    reductionRequest.focusGroups = groupings["focusGroups"]
+
+    # print("groupings are: ")
+    # print(groupings)
+    # print("should be a valid list [type=list_type, input_value={'focusGroups': [FocusGro...rouping__Column_64413']}, input_type=dict]")
+    # assert False
+
+    # print("Debug 1866, pixel group allow list = ",reductionRequest.focusGroupAllowList)
 
     snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
     reductionService.validateReduction(reductionRequest)
 
-    # 1. load default grouping workspaces from the state folder 
-    groupings = reductionService.fetchReductionGroupings(reductionRequest)
-    pgs = groupings["focusGroups"]
-    print(f"pgs: {pgs}")
+    print("snapRequest:")
+    print(snapRequest)
 
-    pgsNames = []
-    for p in pgs:
-        pgsNames.append(p.name)
 
-    # focusGroupAllowList is only available with red version 2.2.0
-    if focusGroupAllowList is not None:
-        if versionAtLeast(redVersion,"2.2.0"):
-            pass
-        else:
-            print("Warning: focusGroupAllowList not supported, reseting to None")
-            focusGroupAllowList = None 
+    # pgs = groupings["focusGroups"]
+    # print(f"pgs: {pgs}")
+
+    # print("checking reductionService.fetchReductionGroupings(reductionRequest):")
+    # pgsNames = []
+    # for p in pgs:
+    #     pgsNames.append(p.name)
+    # print("Available pixel grouping schemes are: ",pgsNames)
+
     
-    if focusGroupAllowList is not None:
-        print("focusGroupAllowList not currently supported")
-        focusGroupAllowList = [s.capitalize() for s in focusGroupAllowList] # ensure capitilized strings
-        # ensure requested allow list is a subset of available names
-        missing = [s for s in focusGroupAllowList if s not in pgsNames]
-        assert not missing,f"Reduce Error: requested focus group(s) available. Requested: {missing}, available: {pgsNames} "
-        #reinstantiate reductionRequest with requested allow List
-        reductionRequest = ReductionRequest(
-            runNumber=runNumber,
-            useLiteMode=useLiteMode,
-            timestamp=timestamp,
-            continueFlags=continueFlags,
-            pixelMasks=pixelMasks,
-            focusGroupAllowList=focusGroupAllowList,
-            keepUnfocused=keepUnfocussed,
-            convertUnitsTo=convertUnitsTo,
-            artificialNormalizationIngredients=artificialNormalizationIngredients,
-            hooks = hooks,
-        )
-        snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
-        reductionService.validateReduction(reductionRequest)
-        groupings = reductionService.fetchReductionGroupings(reductionRequest)
-        pgs = groupings["focusGroups"]
+
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # "fetchReductionGroceries" Loads necessary data (e.g. sample neutron data,
@@ -1904,15 +1928,19 @@ def reduce(runNumber,
     groceries["groupingWorkspaces"] = groupings["groupingWorkspaces"]
 
     # print(groceries["inputWorkspace"])
-    print("groceries")
+    print("checking groceries")
     print(groceries)
-    
+
+
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #  Load the metadata i.e. ingredients
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     # 1. load reduction ingredients
-    ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))    
+    # ingredients = reductionService.prepReductionIngredients(reductionRequest, groceries.get("combinedPixelMask",""))
+    # print("DEBUG: modifying ingredients definition")
+
+    ingredients = reductionService.prepReductionIngredients(reductionRequest)
     ingredients.artificialNormalizationIngredients = artificialNormalizationIngredients
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1981,12 +2009,14 @@ def reduce(runNumber,
         "binMaskList": binMaskList,
         "continueNoDifcal": continueNoDifcal,
         "continueNoVan": continueNoVan,
+        "noNorm": noNorm,
     }
     printStatus(status)
 
     time.sleep(5) #pause to allow user to read status info
 
-    #obtain useful values from instrument state
+    #TODO: move to statusPrinter? 
+    # obtain useful values from instrument state
     farmFresh = FarmFreshIngredients(
         runNumber=runNumber,
         useLiteMode=useLiteMode,

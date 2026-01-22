@@ -1,6 +1,7 @@
 # to tidy up the code in utils.reduce I've pulled out some print statements into functions here
 from mantid.kernel import PhysicalConstants
 import snapwrap.snapStateMgr as ssm
+import numpy as np
 
 def printWarning(warningType,runNumber):
 
@@ -64,6 +65,7 @@ def printStatus(status):
     binMaskList = status["binMaskList"]
     continueNoDifcal = status["continueNoDifcal"]
     continueNoVan = status["continueNoVan"]
+    noNorm = status["noNorm"]
 
     snapHome = ssm.SNAPHome()
 
@@ -85,6 +87,11 @@ SNAPRed reduction status:
         print("""                         
     WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
     DATA WILL BE ARTIFICIALLY NORMALISED BY DIVISION BY BACKGROUND.
+            """)
+    elif noNorm:
+        print("""                         
+    WARNING: DIAGNOSTIC MODE! VANADIUM CORRECTION NOT USED
+    DATA WILL BE UNNORMALISED.
             """)
     else:
         print(f"""- normCal version: {normalizationRecord.version} runNumber: {normalizationRecord.runNumber}
