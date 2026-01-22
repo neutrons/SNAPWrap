@@ -45,7 +45,7 @@ def excludeROI(wsName, wsIndex, roiList, createExcludedWS=False):
         excluded_ws.setPlotType("marker")
         excluded_ws.setMarkerStyle("circle")
 
-    print(f"Debug: excluded {excludedPoints} points in total from spectrum {wsIndex} of workspace {wsName}")
+    # print(f"Debug: excluded {excludedPoints} points in total from spectrum {wsIndex} of workspace {wsName}")
 
 def replacePrefix(wsName,newPrefix):
     #update SNAPRed style ws name
