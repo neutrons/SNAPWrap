@@ -154,6 +154,13 @@ class Component:
     # Optional human-readable description
     comment: Optional[str] = None
     stlFile: Optional[str] = None
+    # User-visible categorisation and short name (same as Assembly)
+    primaryCategory: str = "None"
+    secondaryCategory: str = "None"
+    nickname: str = "None"
+    # Spatial positioning (same semantics as Assembly.orientation / Assembly.origin)
+    orientation: List[float] = field(default_factory=lambda: [0.0, 1.0, 0.0])
+    origin: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     # ---- Serialization ----
     def to_dict(self) -> Dict[str, Any]:
@@ -398,6 +405,78 @@ class toroidGasket(Gasket):
         self.stringDescriptor = f"gasket_toroid_{self.material}".replace(" ", "_")
         self.stlFile = f"{self.stringDescriptor}.stl"
 
+
+@register
+@dataclass(slots=True, kw_only=True)
+class Collimator(Component):
+    """Collimator component with aperture shape and dimensions.
+
+    - material: required, validated against SEE database.
+    - apertureShape: "circle" or "rectangle" (default "None" but must be set for valid use).
+    - apertureDimensions: list of exactly 2 numVal; for circle both must be equal (diameter),
+      for rectangle they are (width, height).
+    - length: numVal representing the collimator length.
+    - stringDescriptor and stlFile are computed in __post_init__.
+    """
+    kind: ClassVar[str] = "collimator"
+
+    material: str
+    apertureShape: str = "None"
+    apertureDimensions: List[numVal] = field(default_factory=list)
+    length: numVal = field(default_factory=lambda: numVal(0.0, "mm"))
+    stringDescriptor: Optional[str] = field(init=False, default=None)
+
+    _ALLOWED_SHAPES: ClassVar[set[str]] = {"circle", "rectangle", "None"}
+
+    def __post_init__(self):
+        # validate material
+        if not SEE.materialInDatabase(self.material):
+            raise ValueError(f"Material '{self.material}' not found in database.")
+
+        # validate apertureShape
+        if self.apertureShape not in self._ALLOWED_SHAPES:
+            raise ValueError(
+                f"Invalid apertureShape '{self.apertureShape}'. "
+                f"Allowed: {sorted(self._ALLOWED_SHAPES)}"
+            )
+
+        # validate apertureDimensions length
+        if len(self.apertureDimensions) != 2:
+            raise ValueError("Collimator: apertureDimensions must have exactly 2 elements")
+
+        dim0, dim1 = self.apertureDimensions
+        # ensure both are numVal
+        if not isinstance(dim0, numVal) or not isinstance(dim1, numVal):
+            raise TypeError("Collimator: apertureDimensions elements must be numVal instances")
+
+        # units should match between dimensions and length
+        if dim0.units != dim1.units:
+            raise ValueError("Collimator: apertureDimensions must share the same units")
+        if dim0.units != self.length.units:
+            raise ValueError("Collimator: apertureDimensions and length must share the same units")
+
+        # shape-specific validation
+        if self.apertureShape == "circle":
+            if dim0.value != dim1.value:
+                raise ValueError(
+                    "Collimator: for circular aperture, both apertureDimensions values must be equal (diameter)"
+                )
+
+        # build derived descriptors
+        self.stringDescriptor = self.buildStringDescriptor()
+        self.stlFile = f"{self.stringDescriptor}.stl"
+
+    def buildStringDescriptor(self) -> str:
+        dim0, dim1 = self.apertureDimensions
+        if self.apertureShape == "circle":
+            aperture_str = f"dia_{dim0.value:.3f}{dim0.units}"
+        else:
+            aperture_str = f"w_{dim0.value:.3f}_h_{dim1.value:.3f}{dim0.units}"
+        return (
+            f"collimator_{self.apertureShape}_{aperture_str}_len_{self.length.value:.3f}{self.length.units}_{self.material}"
+        ).replace(" ", "_")
+
+
 def makeDACGasket(anvil: "DACAnvil", *, indentThickness: numVal, holeDiameter: numVal, material: str = "W") -> DACGasket:
     """
     Build a DACGasket appropriate for the provided DACAnvil.
@@ -433,7 +512,7 @@ def makeDACGasket(anvil: "DACAnvil", *, indentThickness: numVal, holeDiameter: n
     g.stlFile = f"{g.stringDescriptor}.stl"
     return g
 
-def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> ToroidGasket:
+def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> toroidGasket:
     """
     Build a ToroidGasket appropriate for the provided toroidAnvil.
     material defaults to 'TiZr' if not provided.

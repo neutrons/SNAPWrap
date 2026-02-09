@@ -26,13 +26,13 @@ pace = pressureController(manufacturer="pace",
                          pvLogs=["BL3:SE:PACE1:PressSet",
                                  "BL3:SE:PACE1:Pressure"])
 
-cryo_12 = temperatureController(manufacturer="cryo-12", #TODO: need a nickname property
+lakeshore = temperatureController(manufacturer="Lakeshore", #TODO: need a nickname property
                                  model="", serialNumber="",
                                  pvLogs=["BL3:SE:Lakeshore:SETP4",
                                           "BL3:SE:Lakeshore:TempSet"])
 
 #save these as separate jsons
-for controller in [teledyne, pace, cryo_12]:
+for controller in [teledyne, pace, lakeshore]:
     print("Created component:")
     print(controller.stringDescriptor)
 
