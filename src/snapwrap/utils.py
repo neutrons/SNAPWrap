@@ -1045,7 +1045,7 @@ def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
     wsGroup = mtd[cabinetName]
     print(f"{cabinetName} has {wsGroup.getNumberOfEntries()} total workspaces")
 
-def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False):
+def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False, verbose=False):
     
     # finds files with timestamps, creates a clone of the latest workspace without a timestamp
     # if cleanMode = "hide" the older workspaces are hidden else
@@ -1059,7 +1059,8 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False):
 
         runDict = redGroup.objectDict
         for pgs in runDict.keys():
-            print(f"Found pixel group: {pgs}")
+            if verbose:
+                print(f"Found pixel group: {pgs}")
 
             # identify latest workspace in group and rename it.
             latest = runDict[pgs][0] #redObject for most recent workspace
@@ -1865,12 +1866,9 @@ def reduce(runNumber,
     # pre-process option to specify focusGroupAllowList
 
     if focusGroupAllowList is not None:
-        print("focusGroupAllowList not currently supported")
         focusGroupAllowList = [s.capitalize() for s in focusGroupAllowList] # ensure capitilized strings
-        # ensure requested allow list is a subset of available names
-        missing = [s for s in focusGroupAllowList if s not in pgsNames]
-        assert not missing,f"Reduce Error: requested focus group(s) available. Requested: {missing}, available: {pgsNames} "
 
+    # first create a request with focusGroupAllowList as None. This gives me all of the standard focus groups
 
     reductionRequest = ReductionRequest(
             runNumber=runNumber,
@@ -1879,24 +1877,51 @@ def reduce(runNumber,
             continueFlags=continueFlags,
             pixelMasks=pixelMasks,
             keepUnfocused=keepUnfocussed,
-            focusGroupAllowList=focusGroupAllowList, #TEMPORARILY DISABLE TO TEST V2.1.0
+            focusGroupAllowList=None,
             convertUnitsTo=convertUnitsTo,
             artificialNormalizationIngredients=artificialNormalizationIngredients,
             hooks = hooks,
         )
     
-    # 1. load default grouping workspaces from the state folder 
+    # Now fetch these available groupings
     groupings = reductionService.fetchReductionGroupings(reductionRequest)
+    pgs = groupings["focusGroups"]
+    pgsNames = []
+    for p in pgs:
+        pgsNames.append(p.name)
 
-    # manually add focus groups to the request.
-    reductionRequest.focusGroups = groupings["focusGroups"]
+    if focusGroupAllowList is not None:
+        # check that all requested focus groups actually exist
+        for fg in focusGroupAllowList:
+            if fg not in pgsNames:
+                print(f"ERROR: you requested focus group {fg} but this doesn\'t exist. Available groups are: {pgsNames}")
+                print("Reduction Failed")
+                return []
 
-    # print("groupings are: ")
-    # print(groupings)
-    # print("should be a valid list [type=list_type, input_value={'focusGroups': [FocusGro...rouping__Column_64413']}, input_type=dict]")
-    # assert False
+        # Now we can safely set the focus group allow list
+        reductionRequest = ReductionRequest(
+            runNumber=runNumber,
+            useLiteMode=useLiteMode,
+            timestamp=timestamp,
+            continueFlags=continueFlags,
+            pixelMasks=pixelMasks,
+            keepUnfocused=keepUnfocussed,
+            focusGroupAllowList=focusGroupAllowList,
+            convertUnitsTo=convertUnitsTo,
+            artificialNormalizationIngredients=artificialNormalizationIngredients,
+            hooks = hooks,
+        )
 
-    # print("Debug 1866, pixel group allow list = ",reductionRequest.focusGroupAllowList)
+
+    # # manually add focus groups to the request.
+    # reductionRequest.focusGroups = groupings["focusGroups"]
+
+    # # print("groupings are: ")
+    # # print(groupings)
+    # # print("should be a valid list [type=list_type, input_value={'focusGroups': [FocusGro...rouping__Column_64413']}, input_type=dict]")
+    # # assert False
+
+    # # print("Debug 1866, pixel group allow list = ",reductionRequest.focusGroupAllowList)
 
     snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
     reductionService.validateReduction(reductionRequest)
@@ -1905,14 +1930,7 @@ def reduce(runNumber,
     print(snapRequest)
 
 
-    # pgs = groupings["focusGroups"]
-    # print(f"pgs: {pgs}")
 
-    # print("checking reductionService.fetchReductionGroupings(reductionRequest):")
-    # pgsNames = []
-    # for p in pgs:
-    #     pgsNames.append(p.name)
-    # print("Available pixel grouping schemes are: ",pgsNames)
 
     
 
@@ -1965,7 +1983,7 @@ def reduce(runNumber,
     
     if calibrationRecord.version == 0 and not continueNoDifcal:
         printWarning('noDifcal')
-        _abort("")#No diffraction calibration found. Provide calibration or set continueNoDifcal=True to proceed in diagnostic mode.")
+        return _abort("")#No diffraction calibration found. Provide calibration or set continueNoDifcal=True to proceed in diagnostic mode.")
 
     # print(calibrationRecord.version)
     normalizationPath = dataFactoryService.getNormalizationDataPath(
@@ -1983,7 +2001,7 @@ def reduce(runNumber,
     
     if normalizationRecord is None and not (continueNoVan or noNorm):
         printWarning('noNormcal')
-        _abort("No normalization (vanadium) calibration found. Provide normalization or set continueNoVan=True / noNorm=True to bypass.")
+        return _abort("No normalization (vanadium) calibration found. Provide normalization or set continueNoVan=True / noNorm=True to bypass.")
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Pretty print useful information regarding reduction status
@@ -2050,13 +2068,12 @@ def reduce(runNumber,
 
         try:
             data = interfaceController.executeRequest(snapRequest).data
-            assert False
         except Exception as e:
-            _abort(f"Reduction execution failed: {e}")
+            return _abort(f"Reduction execution failed: {type(e).__name__}: {e!r}")
         try:
             record = data.record
         except AttributeError:
-            _abort("Reduction failed: response missing record attribute.")
+            return _abort("Reduction failed: response missing reduction record attribute.")
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         #  Save the data
