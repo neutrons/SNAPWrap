@@ -1380,11 +1380,12 @@ def restoreDBins(redObj,originalIngredients):
     for pg in originalIngredients:
         print(pg)
 
+    dMins = []
+    dMaxs = []
+    dBins = []
+    
     for pg in originalIngredients:
         if pg.focusGroup.name.lower() == pgName:
-            dMins = []
-            dMaxs = []
-            dBins = []
             for subgroup in pg.pixelGroupingParameters:
                 params = pg.pixelGroupingParameters[subgroup]
                 dMin = params.dResolution.minimum + Config["constants.CropFactors.lowdSpacingCrop"]
@@ -1393,6 +1394,7 @@ def restoreDBins(redObj,originalIngredients):
                 dMins.append(dMin)
                 dMaxs.append(dMax)
                 dBins.append(-1*dBin) #ugh...
+            break  # Found matching pixel group, no need to continue
 
     if len(dMins) == 0:
         print(f"ERROR: could not match pixelGroupingScheme {pgName} with reduction ingredients")
