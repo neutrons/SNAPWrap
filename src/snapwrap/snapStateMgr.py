@@ -22,6 +22,8 @@ from snapred.backend.data import LocalDataService as lds
 from snapred.backend.data.LocalDataService import LocalDataService
 from snapred.backend.dao.indexing.IndexEntry import IndexEntry
 
+from snapwrap.cycleDates import get_cycle_for_run, build_cycle_json, load_cycle_data
+
 
 class SNAPHome():
    # main definition of calibration directory
@@ -735,3 +737,33 @@ def frankenRecord(donorRun,
         print(franken.workspaces)
 
     return franken
+
+
+# ---------------------------------------------------------------------------
+# Cycle-date helpers
+# ---------------------------------------------------------------------------
+
+def cycleForRun(runNumber):
+    """Return the facility operating-cycle ID for a given SNAP run number.
+
+    Parameters
+    ----------
+    runNumber : int or str
+        The run number to look up.
+
+    Returns
+    -------
+    str or None
+        The cycleID (e.g. ``'2025-A'``), or ``None`` if the run
+        predates all recorded cycles.
+
+    Notes
+    -----
+    On first call the module reads (or builds) a JSON index from the
+    ``cycleDates.ods`` spreadsheet in the calibration directory.
+    Subsequent calls use the in-memory cache.
+    """
+    cycle = get_cycle_for_run(runNumber)
+    if cycle is None:
+        print(f"cycleDates: no cycle found for run {runNumber}")
+    return cycle

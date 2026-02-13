@@ -427,22 +427,28 @@ def indexStates(isLite=True):
 
         if difcal['latestCalibrationDate'] != "never":
             latestDifcalRun = difcal['latestCalibrationDict']['runNumber']
+            latestDifcalCycle = ssm.cycleForRun(latestDifcalRun) or ""
         else:
             latestDifcalRun = ""
+            latestDifcalCycle = ""
 
         nNrmcal = nrmcal['numberCalibrations']
 
         if nrmcal['latestCalibrationDate'] != "never":
             latestNrmcalRun = nrmcal['latestCalibrationDict']['runNumber']
             latestNrmcalBack = nrmcal['latestVBRunNumber']
+            latestNrmcalCycle = ssm.cycleForRun(latestNrmcalRun) or ""
+            latestNrmcalBackCycle = ssm.cycleForRun(latestNrmcalBack) or ""
         else:
             latestNrmcalRun = ""
             latestNrmcalBack = ""
+            latestNrmcalCycle = ""
+            latestNrmcalBackCycle = ""
 
         outputString = (f"{stateID}|{desc}|"
                         f" {calStatus} |"
-                        f"     {nDifcal}     | {latestDifcalRun.rjust(6)} |"
-                        f"     {nNrmcal}     | {latestNrmcalRun.rjust(6)} | {latestNrmcalBack.rjust(6)} |"
+                        f"     {nDifcal}     | {latestDifcalCycle.rjust(6)} |"
+                        f"     {nNrmcal}     | {latestNrmcalCycle.rjust(6)} | {latestNrmcalBackCycle.rjust(6)} |"
                             )
         statuses.append(calStatus) 
         outputStrings.append(outputString)
