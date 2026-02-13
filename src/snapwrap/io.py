@@ -286,7 +286,7 @@ class reductionGroup:
     # if a timestamp is present these are ordered with latest first. 
 
 
-    def __init__(self,runNumber,redObjectList,cleanTreeOverride = None):
+    def __init__(self,runNumber,redObjectList,cleanTreeOverride = None,verbose=False):
 
         self.runNumber = runNumber
         
@@ -302,7 +302,8 @@ class reductionGroup:
             pgsList.append(run.pixelGroup)
         
         allPixelGroups = set(pgsList)
-        print(f"run {runNumber} has {len(allPixelGroups)} pixel group(s)")
+        if verbose:
+            print(f"run {runNumber} has {len(allPixelGroups)} pixel group(s)")
 
         redObjects = {}
         #populate dictionaries with empty lists to hold contents
@@ -354,7 +355,8 @@ def reducedRuns(prefix='reduced',
                 iptsOverride=None,
                 exportFormats=[], 
                 fileTag=None,
-                cleanTreeOverride=None):#,latestOnly=True,gsaInstPrm=True):
+                cleanTreeOverride=None,
+                verbose=False):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a `runNumber` attribute
     #and contains a dictionary with keys for each pixel groups. The corresponding values
@@ -394,7 +396,8 @@ def reducedRuns(prefix='reduced',
     nReduced = len(redObjectList)
     uniqueRuns = set(redRuns)
     nUnique = len(uniqueRuns)
-    print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction group(s)")
+    if verbose:
+        print(f"Found total of {nReduced} reduced workspaces these were parsed into {nUnique} run reduction group(s)")
 
     #parse these creating "reductionGroup" for each run numbner
     reducedGroups = []
