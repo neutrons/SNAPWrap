@@ -123,6 +123,7 @@ def reloadRedConfig(path=None):
 
     if path is None:
         Config.reload() # reloads original config according to environment
+        Config.reload(os.environ.get("env")) # needed to correctly retain a user specified env
         print("Original SNAPRed config reloaded")
     else:
         # confirm file exists at path
@@ -132,6 +133,7 @@ def reloadRedConfig(path=None):
         else:
             Config.reload(path) # reloads specified override file
             print(f"SNAPRed config override applied")
+            Config.reload(os.environ.get("env")) # needed to correctly retain a user specified env
     return
 
 def filterLite(runNumber, boundaries, **reduce_kwargs):
