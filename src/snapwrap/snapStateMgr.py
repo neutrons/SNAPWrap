@@ -84,10 +84,14 @@ def checkStateExists(stateID):
 
   return os.path.exists(statePath)
 
-def matchingCalibrationIndex(calIndexList, runNumber):
+def matchingCalibrationIndex(calIndexList, runNumber, requiredCycleID=None):
 
     # accept a presorted list of calibration index entries and a run number. Find the most recent
-    # entry that has an "appliesTo" attribute that is consisten with runNumber
+    # entry that has an "appliesTo" attribute that is consistent with runNumber.
+    #
+    # If requiredCycleID is not None, additionally require that the entry's
+    # "cycleID" key matches requiredCycleID.  Entries without a "cycleID" key
+    # are treated as matching (backwards-compatible).
 
     # Define allowed operators
     ops = {
@@ -121,12 +125,15 @@ def matchingCalibrationIndex(calIndexList, runNumber):
             op_str, value_str = match_obj.groups()
             value = int(value_str)
 
-            # print("runNumber:",type(runNumber))
-            # print("value", type(value))
-
             if not ops[op_str](runNumber, value):
                 match = False
                 break
+
+        # If appliesTo matched, optionally enforce cycle restriction
+        if match and requiredCycleID is not None:
+            entryCycle = entry.get("cycleID")
+            if entryCycle is not None and entryCycle != requiredCycleID:
+                match = False
 
         if match:
             return original_index
@@ -186,7 +193,7 @@ def dateFromLinux(ts):
 
     return datetime.fromtimestamp(int(ts)).strftime('%Y-%m-%d %H:%M:%S')
     
-def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal"):
+def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",requireSameCycle=True):
 
     # checks either difcal or normcal calibrations for a given state and `isLite` setting. Returns dictionary of useful
     # properties regarding these.
@@ -199,7 +206,11 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
     # a stateID must be provided. If a runNumber is provided, it is not necessary to provide a stateID
 
     # To distinguish between most recent calibration versus most recent _valid_ calibration, additional keys are now added
-    # and their names made more explicit  
+    # and their names made more explicit
+
+    # If requireSameCycle is True (default), a calibration is only considered valid for a run if the calibration's
+    # run number belongs to the same facility operating cycle as the input run number. Set to False to allow
+    # out-of-cycle calibrations to be used (legacy behaviour).
 
     #try to fix incoming typos and case errors
     nrmAlt = ["nrmcal"]
@@ -261,7 +272,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["latestCalibrationDict"] = {}
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
-        # print(f"Run: {runNumber} corresponds to stateID: {stateID}. This state does not exist so run is uncalibrated")
+        calStatus["statusDetail"] = "state does not exist"
         
         return calStatus
 
@@ -275,7 +286,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["latestCalibrationDict"] = {}
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
-        # print(f"Run: {runNumber} corresponds to stateID: {stateID}. State exists but has no normcal")
+        calStatus["statusDetail"] = "state exists but has no normalization index"
         
         return calStatus
 
@@ -299,7 +310,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["latestCalibrationDict"] = calIndexList[0] # still need to have default index entry
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
-        # print(f"Run: {runNumber} corresponds to stateID: {stateID}. This state exists but only has default difcal")
+        calStatus["statusDetail"] = "state exists but only has default (geometric) difcal"
         
         return calStatus
 
@@ -328,7 +339,18 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
                       reverse=True
                       )
 
+    # Annotate every index entry with its cycleID (looked up from runNumber)
+    for entry in calIndexList:
+        if "cycleID" not in entry:
+            entry["cycleID"] = get_cycle_for_run(entry["runNumber"])
+
     calStatus["calibIndexList"] = calIndexList
+
+    # Determine the cycle for the input run number (None if runNumber is None)
+    runCycleID = None
+    if runNumber is not None:
+        runCycleID = get_cycle_for_run(runNumber)
+    calStatus["runCycleID"] = runCycleID
 
     # If no runnumber only obtainable information relates to general state calibrations so return
     # with this
@@ -341,6 +363,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
+        calStatus["statusDetail"] = "no run number provided; general state info only"
         if calType == "normcal":
             calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
             calStatus["latestValidVBRunNumber"] = None
@@ -348,9 +371,11 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         return calStatus
 
     # Now examine list of existing calibrations in order of date to find the most recent valid one considering the provided
-    # run number. 
+    # run number. The cycle of the calibration must also match the cycle of the input run (if known) unless
+    # requireSameCycle is False.
 
-    validIndex = matchingCalibrationIndex(calStatus["calibIndexList"], runNumber)
+    effectiveCycleID = runCycleID if requireSameCycle else None
+    validIndex = matchingCalibrationIndex(calStatus["calibIndexList"], runNumber, requiredCycleID=effectiveCycleID)
 
     if validIndex is None:
 
@@ -361,6 +386,22 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
         calStatus["latestValidCalibrationDate"] = "never"
         calStatus["latestValidCalibrationDict"] = {}
+
+        # Determine *why* no valid calibration was found
+        if requireSameCycle and runCycleID is not None:
+            # Re-check without the cycle filter to see if appliesTo alone would have matched
+            noCycleIndex = matchingCalibrationIndex(calStatus["calibIndexList"], runNumber, requiredCycleID=None)
+            if noCycleIndex is not None:
+                calStatus["statusDetail"] = (
+                    f"valid calibration exists but is out of cycle "
+                    f"(run cycle: {runCycleID}, "
+                    f"calibration cycle: {calStatus['calibIndexList'][noCycleIndex].get('cycleID', '?')})"
+                )
+            else:
+                calStatus["statusDetail"] = "calibrations exist but no matching run range in appliesTo"
+        else:
+            calStatus["statusDetail"] = "calibrations exist but no matching run range in appliesTo"
+
         if calType == "normcal":
             calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
             calStatus["latestValidVBRunNumber"] = None
@@ -377,6 +418,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal")
         calStatus["latestCalibrationDict"] = calStatus["calibIndexList"][0]
         calStatus["latestValidCalibrationDate"] = calStatus["calibIndexList"][validIndex]["timestamp"].split(".")[0]
         calStatus["latestValidCalibrationDict"] = calStatus["calibIndexList"][validIndex]
+        calStatus["statusDetail"] = "valid calibration found"
         if calType == "normcal":
             calStatus["latestVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestCalibrationDict"],calStatus["calFolder"])
             calStatus["latestValidVBRunNumber"] = VBRunNumberFromVersion(calStatus["latestValidCalibrationDict"],calStatus["calFolder"])
