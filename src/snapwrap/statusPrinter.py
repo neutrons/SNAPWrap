@@ -3,13 +3,16 @@ from mantid.kernel import PhysicalConstants
 import snapwrap.snapStateMgr as ssm
 import numpy as np
 
-def printWarning(warningType,runNumber):
+def printWarning(warningType,runNumber,details=None):
 
     snapHome = ssm.SNAPHome()
     if warningType == 'noDifcal':
 
         print(f"""        
-ERROR: NO DIFFRACTION CALIBRATION FOUND. To proceed either::
+ERROR: NO VALID DIFFRACTION CALIBRATION FOUND. 
+Reason: {details['statusDetail']}
+                            
+To proceed either::
     1. Run a diffraction calibration or
     2. Set "continueNoDifcal = True" to proceed with diagnostic reduction
               
@@ -26,7 +29,10 @@ INFO:
     elif warningType == 'noNormcal':
 
         print(f"""        
-ERROR: NO NORMALISATION CALIBRATION FOUND. To proceed either::
+ERROR: NO NORMALISATION CALIBRATION FOUND.
+Reason: {details['statusDetail']}
+                            
+To proceed either::
     1. Run a normalisation calibration or
     2. Set "continueNoVan = True" to proceed with diagnostic reduction using artificial normalisation
     3. Set "noNorm = True" to proceed without any normalisation
@@ -49,6 +55,8 @@ def citation():
     print("M. Guthrie, M. Walsh, K. Travis, R. Boston, D. Caballero, D. Dinger, G. ElsarBoukh, J. Hetrick, A.T. Savici and P. Peterson")
     print("Software X, 33, 102464 (2026)")
     print("https://doi-org.ornl.idm.oclc.org/10.1016/j.softx.2025.102464\n")
+    print("\nPlease report any bugs at https://github.com/neutrons/SNAPWrap/issues")
+    print("(or email Malcolm Guthrie at guthriem@ornl.gov)")
 
 def printStatus(status):
     

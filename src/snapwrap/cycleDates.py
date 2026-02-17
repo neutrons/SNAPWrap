@@ -197,21 +197,44 @@ def build_cycle_json(
     ods_path = ods_path or DEFAULT_ODS
     json_path = json_path or DEFAULT_JSON
 
-    if not os.path.isfile(ods_path):
+    have_ods = os.path.isfile(ods_path)
+    have_json = os.path.isfile(json_path)
+
+    # If the .ods is missing we can still proceed when a valid JSON exists —
+    # there is simply nothing new to compare against.
+    if not have_ods:
+        if have_json:
+            # Fall back to loading from the existing JSON.
+            return load_cycle_data(json_path=json_path)
+        # Neither source exists — nothing we can do.
         raise FileNotFoundError(f"Cycle-dates spreadsheet not found: {ods_path}")
 
     df = pd.read_excel(ods_path, engine="odf")
     records = _validate_dataframe(df)
 
-    # Determine version: bump if an existing JSON already exists
-    new_version = 1
-    if os.path.isfile(json_path):
+    # Compare against existing JSON — only write if the cycle data changed.
+    existing_version = 0
+    existing_cycles: Optional[List[Dict[str, Any]]] = None
+    if have_json:
         try:
             with open(json_path, "r", encoding="utf-8") as fh:
                 existing = json.load(fh)
-            new_version = int(existing.get("version", 0)) + 1
+            existing_version = int(existing.get("version", 0))
+            existing_cycles = existing.get("cycles", [])
         except Exception:
-            new_version = 1
+            existing_cycles = None  # force rewrite on corrupt/unreadable JSON
+
+    if existing_cycles == records:
+        # Nothing changed — keep current version, skip the write.
+        print(
+            f"cycleDates: {json_path} is already up-to-date "
+            f"({len(records)} cycle(s), version {existing_version})"
+        )
+        _CYCLE_CACHE = records
+        _CACHE_VERSION = existing_version
+        return records
+
+    new_version = existing_version + 1 if existing_version else 1
 
     payload = {
         "version": new_version,
