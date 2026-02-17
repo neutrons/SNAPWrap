@@ -123,6 +123,7 @@ def reloadRedConfig(path=None):
 
     if path is None:
         Config.reload() # reloads original config according to environment
+        Config.reload(os.environ.get("env")) # needed to correctly retain a user specified env
         print("Original SNAPRed config reloaded")
     else:
         # confirm file exists at path
@@ -132,6 +133,7 @@ def reloadRedConfig(path=None):
         else:
             Config.reload(path) # reloads specified override file
             print(f"SNAPRed config override applied")
+            Config.reload(os.environ.get("env")) # needed to correctly retain a user specified env
     return
 
 def filterLite(runNumber, boundaries, **reduce_kwargs):
@@ -427,22 +429,28 @@ def indexStates(isLite=True):
 
         if difcal['latestCalibrationDate'] != "never":
             latestDifcalRun = difcal['latestCalibrationDict']['runNumber']
+            latestDifcalCycle = ssm.cycleForRun(latestDifcalRun) or ""
         else:
             latestDifcalRun = ""
+            latestDifcalCycle = ""
 
         nNrmcal = nrmcal['numberCalibrations']
 
         if nrmcal['latestCalibrationDate'] != "never":
             latestNrmcalRun = nrmcal['latestCalibrationDict']['runNumber']
             latestNrmcalBack = nrmcal['latestVBRunNumber']
+            latestNrmcalCycle = ssm.cycleForRun(latestNrmcalRun) or ""
+            latestNrmcalBackCycle = ssm.cycleForRun(latestNrmcalBack) or ""
         else:
             latestNrmcalRun = ""
             latestNrmcalBack = ""
+            latestNrmcalCycle = ""
+            latestNrmcalBackCycle = ""
 
         outputString = (f"{stateID}|{desc}|"
                         f" {calStatus} |"
-                        f"     {nDifcal}     | {latestDifcalRun.rjust(6)} |"
-                        f"     {nNrmcal}     | {latestNrmcalRun.rjust(6)} | {latestNrmcalBack.rjust(6)} |"
+                        f"     {nDifcal}     | {latestDifcalCycle.rjust(6)} |"
+                        f"     {nNrmcal}     | {latestNrmcalCycle.rjust(6)} | {latestNrmcalBackCycle.rjust(6)} |"
                             )
         statuses.append(calStatus) 
         outputStrings.append(outputString)
@@ -1373,12 +1381,6 @@ def restoreDBins(redObj,originalIngredients):
     #extract ragged binning params from originalIngredients
 
     pgName = redObj.pixelGroup.lower()
-    # print(f"Debug: restoring dbinning for pixel group: {pgName}")
-    # print("DEBUG: originalIngredients contains the following pixel groups: ")
-    print([pg.focusGroup.name for pg in originalIngredients])
-    print("here is the complete original ingredients:")
-    for pg in originalIngredients:
-        print(pg)
 
     dMins = []
     dMaxs = []
@@ -1914,28 +1916,22 @@ def reduce(runNumber,
             hooks = hooks,
         )
 
-
-    # # manually add focus groups to the request.
-    # reductionRequest.focusGroups = groupings["focusGroups"]
-
-    # # print("groupings are: ")
-    # # print(groupings)
-    # # print("should be a valid list [type=list_type, input_value={'focusGroups': [FocusGro...rouping__Column_64413']}, input_type=dict]")
-    # # assert False
+    # manually add focus groups to the request.
+    groupings = reductionService.fetchReductionGroupings(reductionRequest)
+    pgs = groupings["focusGroups"]
+    reductionRequest.focusGroups = pgs
 
     # # print("Debug 1866, pixel group allow list = ",reductionRequest.focusGroupAllowList)
 
     snapRequest = SNAPRequest(path="/reduction",payload=reductionRequest,hooks=hooks)
     reductionService.validateReduction(reductionRequest)
+    # manually add focus groups to the request.
+    groupings = reductionService.fetchReductionGroupings(reductionRequest)
+    pgs = groupings["focusGroups"]
+    reductionRequest.focusGroups = pgs
 
     print("snapRequest:")
     print(snapRequest)
-
-
-
-
-    
-
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # "fetchReductionGroceries" Loads necessary data (e.g. sample neutron data,
@@ -1962,6 +1958,7 @@ def reduce(runNumber,
 
     ingredients = reductionService.prepReductionIngredients(reductionRequest)
     ingredients.artificialNormalizationIngredients = artificialNormalizationIngredients
+
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Determine calibration status and process this
@@ -2052,15 +2049,14 @@ def reduce(runNumber,
         originalIngredients,ingredients = updateBinForQ(ingredients,linBin)
 
         pgs = ingredients.pixelGroups
-        print("UPDATED")
+
         for pg in pgs:
-            print(f"pgs: {pg.focusGroup.name} with {len(pg.pixelGroupingParameters)} subgroups")
+
             for subgroup in pg.pixelGroupingParameters:
                 params = pg.pixelGroupingParameters[subgroup]
                 dMin = params.dResolution.minimum
                 dMax = params.dResolution.maximum
                 dBin = params.dRelativeResolution/pg.nBinsAcrossPeakWidth
-                print(f"{dMin:.4f} {dBin:.6f} {dMax:.4f}")
 
     if reduceData:
 
