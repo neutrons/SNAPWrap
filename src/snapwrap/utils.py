@@ -1673,6 +1673,7 @@ def reduce(runNumber,
                attenuationWSName = None,
                continueNoDifcal = False,
                continueNoVan = False,
+               requireSameCycle = True,
                verbose=False,
                reduceData=True,
                keepUnfocussed=False,
@@ -1706,8 +1707,8 @@ def reduce(runNumber,
             print(f"\nReduction aborted.\n")
         else:
             print(f"\nERROR: {msg}\nReduction aborted.\n")
-        # Use None as a simple "aborted" sentinel
-        return None
+        # Return empty list as no reduced workspacea were created. 
+        return []
 
     if verbose:
         config.setLogLevel(5, quiet=True)
@@ -1737,7 +1738,6 @@ def reduce(runNumber,
     #set global parameters
     useLiteMode=snapwrapGlob.useLiteMode
     pixelMasks = snapwrapGlob.pixelMasks
-    # keepUnfocussed = snapwrapGlob.keepUnfocussed
     convertUnitsTo = snapwrapGlob.convertUnitsTo
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1749,19 +1749,25 @@ def reduce(runNumber,
     #first catch dead ends, abort and return useful information
 
     #difcal
-    calibrationStatus = ssm.isCalibrated(runNumber=runNumber,silent=True)
+    calibrationStatus = ssm.isCalibrated(runNumber=runNumber,
+                                         silent=True ,
+                                         requireSameCycle=requireSameCycle, 
+                                         isLite=useLiteMode)
+    
     print(f"Difcal status: {calibrationStatus[0]}")
     print(f"Normcal status: {calibrationStatus[1]}")
+    difcal = calibrationStatus[2]
+    nrmcal = calibrationStatus[3]
 
     if not any([calibrationStatus[0],continueNoDifcal]):  # difcal is absent and fallback not requested
-        printWarning('noDifcal',runNumber)
+        printWarning('noDifcal',runNumber,difcal)
         return _abort(
             f""
         )
     
     #normcal
     if not any([calibrationStatus[1],continueNoVan,noNorm]):  # van is absent and fallback not requested
-        printWarning('noNormcal',runNumber)
+        printWarning('noNormcal',runNumber,nrmcal)
         return _abort(
             f""
         )

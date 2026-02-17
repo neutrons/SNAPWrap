@@ -194,7 +194,8 @@ class TestBuildAndLookup:
         assert "source" in payload
 
     @patch("snapwrap.cycleDates.pd.read_excel", side_effect=_mock_read_excel(_good_rows()))
-    def test_version_bumps_on_rebuild(self, _mock_read, tmp_path):
+    def test_version_stable_when_data_unchanged(self, _mock_read, tmp_path):
+        """Building twice with identical data should NOT bump the version."""
         ods = _ods_sentinel(tmp_path)
         json_path = str(tmp_path / "cycleDates.json")
 
@@ -203,7 +204,31 @@ class TestBuildAndLookup:
 
         with open(json_path) as fh:
             payload = json.load(fh)
+        assert payload["version"] == 1
+
+    def test_version_bumps_when_data_changes(self, tmp_path):
+        """Building with different data should bump the version."""
+        ods = _ods_sentinel(tmp_path)
+        json_path = str(tmp_path / "cycleDates.json")
+
+        # First build with original rows
+        with patch("snapwrap.cycleDates.pd.read_excel", side_effect=_mock_read_excel(_good_rows())):
+            cd.build_cycle_json(ods_path=ods, json_path=json_path)
+
+        with open(json_path) as fh:
+            assert json.load(fh)["version"] == 1
+
+        # Second build with an extra cycle added
+        updated_rows = _good_rows() + [
+            {"cycleID": "2025-B", "startDate": "2025-07-15", "stopDate": "2025-12-31", "firstRun": 58000},
+        ]
+        with patch("snapwrap.cycleDates.pd.read_excel", side_effect=_mock_read_excel(updated_rows)):
+            cd.build_cycle_json(ods_path=ods, json_path=json_path)
+
+        with open(json_path) as fh:
+            payload = json.load(fh)
         assert payload["version"] == 2
+        assert len(payload["cycles"]) == 4
 
     @patch("snapwrap.cycleDates.pd.read_excel", side_effect=_mock_read_excel(_good_rows()))
     def test_load_from_json(self, _mock_read, tmp_path):

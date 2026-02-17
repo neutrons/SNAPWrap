@@ -157,35 +157,39 @@ def VBRunNumberFromVersion(calDict,calFolder):
 
         return normRec["backgroundRunNumber"]
 
-def isCalibrated(runNumber,isLite=True,silent=False):
+def isCalibrated(runNumber,isLite=True,silent=False,requireSameCycle=True):
 
     # returns tuple of booleans for difcal and normcal status respectively
     # values will only be true if valid calibration exists
 
     difcal = checkCalibrationStatus(runNumber, stateID=None,
                                     isLite=isLite, 
-                                    calType="difcal")
+                                    calType="difcal",
+                                    requireSameCycle=requireSameCycle)
     
     nrmcal = checkCalibrationStatus(runNumber, stateID=None,
                                     isLite=isLite, 
-                                    calType="normcal")
+                                    calType="normcal",
+                                    requireSameCycle=requireSameCycle)
 
     if silent:
-        return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"])
+        return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"],difcal,nrmcal)
 
     #otherwise print calibration status
     if difcal['runIsCalibrated']:
         print(f"difcal: is calibrated: {difcal['runIsCalibrated']} with run {difcal['latestValidCalibrationDict']['runNumber']} ")
     else:
         print(f"difcal: is calibrated: {difcal['runIsCalibrated']}")
+        print(f"Reason: {difcal['statusDetail']}")
 
     if nrmcal['runIsCalibrated']:
         print(f"nrmcal: is calibrated: {nrmcal['runIsCalibrated']} with run {nrmcal['latestValidCalibrationDict']['runNumber']} (and background {nrmcal['latestValidVBRunNumber']})")
     else:
         print(f"nrmcal: is calibrated: {nrmcal['runIsCalibrated']}")
+        print(f"Reason: {nrmcal['statusDetail']}")
     
 
-    return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"])
+    return (difcal["runIsCalibrated"],nrmcal["runIsCalibrated"],difcal,nrmcal)
 
 def dateFromLinux(ts):
 
@@ -225,7 +229,6 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
         return
 
     #determine stateID corresponding to run number 
-
     if runNumber is None:
         pass
     else: 
@@ -240,7 +243,6 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     "calibrationType":calType,
     "isLite":isLite
     }
-
 
     #dictionaries to build paths for difference cases
     subFolder = {"difcal":'diffraction',
@@ -294,7 +296,6 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     f = open(indexPath)
     calIndexList = json.load(f) # a list of all calibrations
     f.close()
-
 
     ## case: difcal requested, state exists, but no difcal exists (only default)
     if len(calIndexList) == 1 and calType == "difcal":
