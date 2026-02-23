@@ -209,7 +209,18 @@ def build_cycle_json(
         # Neither source exists — nothing we can do.
         raise FileNotFoundError(f"Cycle-dates spreadsheet not found: {ods_path}")
 
-    df = pd.read_excel(ods_path, engine="odf")
+    try:
+        df = pd.read_excel(ods_path, engine="odf")
+    except PermissionError:
+        if have_json:
+            import warnings
+            warnings.warn(
+                f"cycleDates: no read permission for {ods_path}; "
+                "falling back to existing JSON.",
+                stacklevel=2,
+            )
+            return load_cycle_data(json_path=json_path)
+        raise
     records = _validate_dataframe(df)
 
     # Compare against existing JSON — only write if the cycle data changed.
@@ -243,11 +254,19 @@ def build_cycle_json(
         "cycles": records,
     }
 
-    Path(json_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(json_path, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, indent=2)
-
-    print(f"cycleDates: wrote {len(records)} cycle(s) to {json_path} (version {new_version})")
+    try:
+        Path(json_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        print(f"cycleDates: wrote {len(records)} cycle(s) to {json_path} (version {new_version})")
+    except PermissionError:
+        import warnings
+        warnings.warn(
+            f"cycleDates: no write permission for {json_path}; "
+            "using in-memory data parsed from .ods. "
+            "An instrument scientist can update the JSON by running snapwrap.",
+            stacklevel=2,
+        )
 
     # refresh module cache
     _CYCLE_CACHE = records

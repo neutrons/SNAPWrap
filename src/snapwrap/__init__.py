@@ -35,6 +35,14 @@ except FileNotFoundError as _e:
         "Cycle-aware calibration checks will be disabled.",
         stacklevel=1,
     )
+except PermissionError as _e:
+    import warnings as _w
+    _w.warn(
+        f"Cycle-date data could not be written ({_e}). "
+        "This is expected for non-instrument-scientist users. "
+        "Cycle data from the existing JSON (if any) will be used.",
+        stacklevel=1,
+    )
 
 
 try:

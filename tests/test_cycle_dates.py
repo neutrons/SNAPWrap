@@ -230,6 +230,52 @@ class TestBuildAndLookup:
         assert payload["version"] == 2
         assert len(payload["cycles"]) == 4
 
+    def test_build_no_write_permission_uses_in_memory_data(self, tmp_path):
+        """When the user lacks write permission, build should still populate
+        the in-memory cache from the .ods and emit a warning instead of raising."""
+        ods = _ods_sentinel(tmp_path)
+        json_path = str(tmp_path / "cycleDates.json")
+
+        # Make the JSON file exist and be read-only, then change the data so a
+        # write is attempted.
+        rows_v1 = _good_rows()
+        validated_v1 = cd._validate_dataframe(pd.DataFrame(rows_v1))
+        _write_json(tmp_path, validated_v1, version=1)
+
+        rows_v2 = rows_v1 + [
+            {"cycleID": "2025-B", "startDate": "2025-07-15", "stopDate": "2025-12-31", "firstRun": 58000},
+        ]
+
+        # Patch open() to raise PermissionError only for the JSON write
+        import builtins
+        _real_open = builtins.open
+
+        def _guarded_open(path, mode="r", **kwargs):
+            if str(path) == json_path and "w" in mode:
+                raise PermissionError(f"[Errno 13] Permission denied: '{path}'")
+            return _real_open(path, mode, **kwargs)
+
+        import warnings
+        with patch("snapwrap.cycleDates.pd.read_excel", side_effect=_mock_read_excel(rows_v2)):
+            with patch("builtins.open", side_effect=_guarded_open):
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    records = cd.build_cycle_json(ods_path=ods, json_path=json_path)
+
+        # The in-memory cache should have the new data
+        assert len(records) == 4
+        assert records[-1]["cycleID"] == "2025-B"
+
+        # A warning should have been emitted
+        perm_warnings = [w for w in caught if "no write permission" in str(w.message)]
+        assert len(perm_warnings) == 1
+
+        # The on-disk JSON should be unchanged (still version 1 with 3 cycles)
+        with open(json_path) as fh:
+            payload = json.load(fh)
+        assert payload["version"] == 1
+        assert len(payload["cycles"]) == 3
+
     @patch("snapwrap.cycleDates.pd.read_excel", side_effect=_mock_read_excel(_good_rows()))
     def test_load_from_json(self, _mock_read, tmp_path):
         ods = _ods_sentinel(tmp_path)
