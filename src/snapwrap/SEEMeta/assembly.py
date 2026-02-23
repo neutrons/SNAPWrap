@@ -63,6 +63,10 @@ class Assembly:
     comment: Optional[str] = "None"
     model: Optional[str] = "None"
     serialNumber: Optional[str] = "None"
+    # user-visible categorisation and short name
+    primaryCategory: str = "None"
+    secondaryCategory: str = "None"
+    nickname: str = "None"
     orientation: List[float] = field(default_factory=lambda: [0.0, 1.0, 0.0])
     origin: List[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     stringDescriptor: str = field(init=False)

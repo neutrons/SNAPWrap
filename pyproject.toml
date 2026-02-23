@@ -12,6 +12,12 @@ dependencies = [
   "sqlalchemy >=2.0.0",
   "ruamel.yaml",
   "lmfit",
+  "odfpy >=1.4.1",
+  "h5py",
+  "scipy",
+  "python-dateutil",
+  "packaging",
+  "pyyaml",
 ]
     # PyPI dependencies
 
@@ -146,6 +152,12 @@ pytest = "*"
 pytest-cov = "*"
 pytest-xdist = "*"
 pip = "*"
+odfpy = ">=1.4.1"
+h5py = "*"
+scipy = "*"
+python-dateutil = "*"
+packaging = "*"
+pyyaml = "*"
 # NOTE: this dep SHOULD have been in snapred, but was missed
 "ruamel.yaml" = "*"
 
@@ -171,6 +183,13 @@ lmfit = "*"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
 snapred = ">2.0.0"
+odfpy = ">=1.4.1"
+h5py = "*"
+scipy = "*"
+python-dateutil = "*"
+packaging = "*"
+pyyaml = "*"
+pandas = "*"
 # NOTE: this dep SHOULD have been in snapred, but was missed
 "ruamel.yaml" = "*"
 

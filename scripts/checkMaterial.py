@@ -13,4 +13,4 @@ for material in ["Al", "BeCu"]:
         print(f"{material} does not exist in the database.")
 
     deets = utils.get_material_details(material)
-    print(f"{material} details:", deets)
+    print(f"{material} details:", deets) 
