@@ -292,10 +292,32 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
         
         return calStatus
 
-    #load calibration index     
-    f = open(indexPath)
-    calIndexList = json.load(f) # a list of all calibrations
-    f.close()
+    #load calibration index
+    try:
+        with open(indexPath, 'r') as fh:
+            calIndexList = json.load(fh)  # a list of all calibrations
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Failed to parse JSON in calibration index at {indexPath}: {e}")
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = 0
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = {}
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        calStatus["statusDetail"] = f"calibration index exists but contains invalid JSON: {indexPath}"
+        return calStatus
+    except Exception as e:
+        print(f"ERROR: Unexpected error reading calibration index at {indexPath}: {type(e).__name__}: {e}")
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = 0
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = {}
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        calStatus["statusDetail"] = f"unexpected error reading calibration index: {indexPath}"
+        return calStatus
 
     ## case: difcal requested, state exists, but no difcal exists (only default)
     if len(calIndexList) == 1 and calType == "difcal":
@@ -326,7 +348,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     tsTypes = {type(d["timestamp"]) for d in calIndexList}
 
     if len(tsTypes) != 1:
-        raise TypeError(f"Inconsistent timestamp types found in calibration index: {types}")
+        raise TypeError(f"Inconsistent timestamp types found in calibration index: {tsTypes}")
 
     t = tsTypes.pop()
     if t in (int, float):
@@ -494,13 +516,23 @@ def pullStateDict(stateIDString):
     # the plan is to create a script to  
 
     stateSeedDir = f"{Config['instrument.calibration.home']}/Powder/{stateIDString}/lite/diffraction/v_0000/"
-    stateParamsJson = stateSeedDir + "/CalibrationParameters.json"
+    stateParamsPath = os.path.join(stateSeedDir, "CalibrationParameters.json")
 
-    f = open(stateParamsJson)
-    stateParamsJson = json.load(f)
-    f.close()
+    # Read calibration parameters with robust error messages for common failure modes
+    try:
+        with open(stateParamsPath, 'r') as fh:
+            stateParams = json.load(fh)
+    except FileNotFoundError:
+        print(f"ERROR: CalibrationParameters.json not found at: {stateParamsPath}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Failed to parse JSON in CalibrationParameters.json at {stateParamsPath}: {e}")
+        return {}
+    except Exception as e:
+        print(f"ERROR: Unexpected error reading {stateParamsPath}: {type(e).__name__}: {e}")
+        return {}
 
-    detectorState = stateParamsJson["instrumentState"]["detectorState"]
+    detectorState = stateParams["instrumentState"]["detectorState"]
     if "PVs" in detectorState.keys():
         dict = detectorState["PVs"]
 
