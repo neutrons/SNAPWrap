@@ -631,10 +631,15 @@ def copyDifcal(donor,recipient,propagate=False): # donor and recipient are Calib
     print(f"\nDONOR STATE: {stateDef(donorRun)[0]} with {donor['numberCalibrations']} total calibrations")
     print(f"Most recent valid calibration is version {donorCal['version']} this will be copied:")
 
+    # Determine new version from the highest existing version number in the
+    # index (NOT from the timestamp-sorted "latest" entry, because propagated
+    # calibrations inherit the donor's timestamp which may predate the v0
+    # creation timestamp).
+    maxExistingVersion = max(entry["version"] for entry in recipient["calibIndexList"])
+    newVersion = maxExistingVersion + 1
 
     print(f"\nRECIPIENT STATE: {stateDef(recipientRun)[0]} with {recipient['numberCalibrations']} total calibrations")
-    newVersion = recipientCal['version']+1
-    print(f"Most recent calibration is version {recipientCal['version']} this will be updated to version {newVersion}")
+    print(f"Highest existing version is {maxExistingVersion}, this will be updated to version {newVersion}")
 
     newIE = IndexEntry(version=newVersion, #one more than most recent
         runNumber=recipientCal["runNumber"],
