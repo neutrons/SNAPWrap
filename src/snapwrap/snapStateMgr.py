@@ -926,6 +926,13 @@ def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requir
             report["issues"].append(msg)
         report["ok"] = False
 
+    def _note(msg, entry_report=None):
+        """Record a non-fatal note (don't change overall ok status)."""
+        if entry_report is not None:
+            entry_report["issues"].append(msg)
+        else:
+            report["issues"].append(msg)
+
     # ------------------------------------------------------------------
     # Load allowed pgs names from groupingMap.json (case-insensitive)
     # ------------------------------------------------------------------
@@ -1095,8 +1102,18 @@ def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requir
                     if not isinstance(rec, dict):
                         _flag(f"{rec_name} top-level value is not a dict", er)
                     else:
-                        if "version" not in rec or "indexEntry" not in rec:
+                        missing_version = "version" not in rec
+                        missing_index = "indexEntry" not in rec
+                        if missing_version and missing_index:
                             _flag(f"{rec_name} missing required keys 'version' and/or 'indexEntry'", er)
+                        elif missing_version:
+                            _flag(f"{rec_name} missing required key 'version'", er)
+                        elif missing_index:
+                            # Older SNAPRed-produced records (legacy format) may
+                            # omit the embedded indexEntry. Treat these as a
+                            # non-fatal note so they are tracked but don't make
+                            # the whole index fail the validation pass.
+                            _note(f"{rec_name} missing 'indexEntry' (legacy older record format) – treated as NOTE", er)
                         else:
                             if int(rec["version"]) != v:
                                 _flag(f"{rec_name}.version ({rec['version']}) != folder version {v}", er)
@@ -1149,8 +1166,14 @@ def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requir
                     if not isinstance(rec, dict):
                         _flag(f"{rec_name} top-level value is not a dict", er)
                     else:
-                        if "version" not in rec or "indexEntry" not in rec:
+                        missing_version = "version" not in rec
+                        missing_index = "indexEntry" not in rec
+                        if missing_version and missing_index:
                             _flag(f"{rec_name} missing required keys 'version' and/or 'indexEntry'", er)
+                        elif missing_version:
+                            _flag(f"{rec_name} missing required key 'version'", er)
+                        elif missing_index:
+                            _note(f"{rec_name} missing 'indexEntry' (legacy older record format) – treated as NOTE", er)
                         else:
                             if int(rec["version"]) != v:
                                 _flag(f"{rec_name}.version ({rec['version']}) != folder version {v}", er)
