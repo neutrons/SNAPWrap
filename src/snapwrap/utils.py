@@ -2134,7 +2134,7 @@ def reduce(runNumber,
 
     if qsp:
         # post reduction, need to convert d-space reduced data to Q-space
-        
+
         outputWSList_Q = [] #reset to hold q-space names
         if outputWSList is not None:
             for dspName in outputWSList:
@@ -2148,8 +2148,13 @@ def reduce(runNumber,
                             OutputWorkspace= qspName,
                             Delta = rebPrm) #ragged is needed as Qmin/max vary
                 
-                #lastly, downsample d-space data back to original request
-                handle = io.redObject(dspName)
+                # lastly, downsample d-space data back to original request. have to handle possiblity
+                # that we are in diagnostic mode.
+                if any("diagnostic" in s for s in outputWSList):
+                    handle = io.redObject(dspName, requiredPrefix='diagnostic')
+                else:
+                    handle = io.redObject(dspName)
+                
                 restoreDBins(handle,originalIngredients)
 
                 outputWSList_Q.append(qspName)
