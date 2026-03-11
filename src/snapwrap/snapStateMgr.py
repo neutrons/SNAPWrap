@@ -641,13 +641,31 @@ def copyDifcal(donor,recipient,propagate=False): # donor and recipient are Calib
     print(f"\nRECIPIENT STATE: {stateDef(recipientRun)[0]} with {recipient['numberCalibrations']} total calibrations")
     print(f"Highest existing version is {maxExistingVersion}, this will be updated to version {newVersion}")
 
+    # Use the current time as the timestamp for the propagated entry.
+    # matchingCalibrationIndex selects the most-recent valid calibration
+    # by timestamp, so inheriting the donor's (older) timestamp would
+    # cause the new entry to be hidden behind entries with newer
+    # timestamps.  Using "now" ensures the propagated calibration is
+    # picked up immediately.
+    #
+    # Format must include timezone offset (e.g. "-0400") because
+    # IndexEntry.parseTimestamp uses np.datetime64 which treats
+    # timezone-naive strings as offsets from epoch.  The 9-digit
+    # fractional seconds match SNAPRed's nanosecond-precision convention.
+    _now = datetime.now().astimezone()
+    propagationTimestamp = (
+        _now.strftime("%Y-%m-%dT%H:%M:%S")
+        + f".{_now.microsecond:06d}000"
+        + _now.strftime("%z")
+    )
+
     newIE = IndexEntry(version=newVersion, #one more than most recent
         runNumber=recipientCal["runNumber"],
         useLiteMode=donorCal["useLiteMode"],
         appliesTo = donorCal["appliesTo"],
         comments = f"(copied from run:{donorCal['runNumber']} version:{donorCal['version']})  original comments: {donorCal['comments']}",
         author = f"{donorCal['author']} (original author)",
-        timestamp = donorCal['timestamp']
+        timestamp = propagationTimestamp
         )
     
     #build directory name and create directory
@@ -870,6 +888,8 @@ def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requir
     6. All JSON files inside version folders are syntactically valid.
     7. The pixel-group string (pgs) inferred from filenames must correspond to
        one of the focus-group names defined in ``groupingMap.json``.
+    8. Workspace names embedded in the calibration/normalization record must
+       contain the correct ``_v####`` version tag matching the entry version.
 
     Returns
     -------
@@ -1124,6 +1144,20 @@ def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requir
                                 _flag(f"{rec_name}.version ({rec['version']}) != folder version {v}", er)
                             if rec["indexEntry"] != ie:
                                 _flag(f"{rec_name}.indexEntry does not exactly match the index entry", er)
+
+                        # 8. Workspace names must embed the correct version tag
+                        expected_vtag = f"_v{str(v).zfill(4)}"
+                        workspaces = rec.get("workspaces")
+                        if workspaces and isinstance(workspaces, dict) and v > 0:
+                            for ws_key, ws_names in workspaces.items():
+                                if isinstance(ws_names, list):
+                                    for ws_name in ws_names:
+                                        if isinstance(ws_name, str) and "_v" in ws_name and expected_vtag not in ws_name:
+                                            _flag(
+                                                f"{rec_name} workspace '{ws_name}' does not contain "
+                                                f"expected version tag '{expected_vtag}'",
+                                                er,
+                                            )
                 except json.JSONDecodeError:
                     pass  # already caught above
                 except Exception as e:
@@ -1184,10 +1218,25 @@ def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requir
                                 _flag(f"{rec_name}.version ({rec['version']}) != folder version {v}", er)
                             if rec["indexEntry"] != ie:
                                 _flag(f"{rec_name}.indexEntry does not exactly match the index entry", er)
+
+                        # 8. Workspace names must embed the correct version tag
+                        expected_vtag = f"_v{str(v).zfill(4)}"
+                        workspaces = rec.get("workspaces")
+                        if workspaces and isinstance(workspaces, dict) and v > 0:
+                            for ws_key, ws_names in workspaces.items():
+                                if isinstance(ws_names, list):
+                                    for ws_name in ws_names:
+                                        if isinstance(ws_name, str) and "_v" in ws_name and expected_vtag not in ws_name:
+                                            _flag(
+                                                f"{rec_name} workspace '{ws_name}' does not contain "
+                                                f"expected version tag '{expected_vtag}'",
+                                                er,
+                                            )
+
                 except json.JSONDecodeError:
                     pass  # already caught above
                 except Exception as e:
-                    _flag(f"Error reading {rec_name}: {e}", er)
+                    _flag(f"Error reading {rec_name}: {e}")
 
             # Parameters JSON
             if not os.path.isfile(param_fp):
@@ -1612,6 +1661,12 @@ def fixIndex(runNumber=None, stateID=None, isLite=True, calType="difcal",
         # Update records inside re-versioned folders
         if not dryRun:
             for new_v, ie in enumerate(indexEntries):
+                old_v_for_rec = None
+                for ov, nv in old_to_new.items():
+                    if nv == new_v:
+                        old_v_for_rec = ov
+                        break
+
                 folder_path = os.path.join(base_dir, f"v_{str(new_v).zfill(4)}")
                 rec_fp = os.path.join(folder_path, recName[calType])
                 if os.path.isfile(rec_fp):
@@ -1623,6 +1678,19 @@ def fixIndex(runNumber=None, stateID=None, isLite=True, calType="difcal",
                         if "calculationParameters" in rec and isinstance(rec["calculationParameters"], dict):
                             rec["calculationParameters"]["indexEntry"] = ie
                             rec["calculationParameters"]["version"] = new_v
+
+                        # Update workspace names: replace old version tag with new
+                        if old_v_for_rec is not None and "workspaces" in rec and isinstance(rec["workspaces"], dict):
+                            old_vtag = f"_v{str(old_v_for_rec).zfill(4)}"
+                            new_vtag = f"_v{str(new_v).zfill(4)}"
+                            for ws_key, ws_names in rec["workspaces"].items():
+                                if isinstance(ws_names, list):
+                                    rec["workspaces"][ws_key] = [
+                                        name.replace(old_vtag, new_vtag) if isinstance(name, str) else name
+                                        for name in ws_names
+                                    ]
+                            log(f"  updated workspace names in v_{str(new_v).zfill(4)}: {old_vtag} → {new_vtag}")
+
                         with open(rec_fp, "w") as fh:
                             json.dump(rec, fh, indent=4)
                         log(f"  updated record in v_{str(new_v).zfill(4)}")
