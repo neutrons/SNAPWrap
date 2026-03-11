@@ -428,8 +428,31 @@ def indexStates(isLite=True):
         nDifcal = difcal['numberCalibrations']
 
         if difcal['latestCalibrationDate'] != "never":
-            latestDifcalRun = difcal['latestCalibrationDict']['runNumber']
-            latestDifcalCycle = ssm.cycleForRun(latestDifcalRun) or ""
+            # We want the most recent *cycle* that has a calibration, not the most
+            # recent calibration by timestamp (which could be a re-calibration for
+            # an older cycle).  Iterate all index entries, resolve each to its
+            # effective run number (accounting for propagated calibrations whose
+            # true donor run is embedded in the comments field), map to cycle, and
+            # pick the latest.
+            import re
+            bestCycle = ""
+            bestRun = ""
+            for entry in difcal['calibIndexList']:
+                # skip the default geometric entry (version 0)
+                if entry.get('version', -1) == 0:
+                    continue
+                comment = entry.get('comments', '')
+                propagated = re.match(r"\(copied from run:(\S+)\s+version:", comment)
+                if propagated:
+                    effectiveRun = propagated.group(1)
+                else:
+                    effectiveRun = entry['runNumber']
+                cycle = ssm.cycleForRun(effectiveRun) or ""
+                if cycle > bestCycle:
+                    bestCycle = cycle
+                    bestRun = effectiveRun
+            latestDifcalRun = bestRun
+            latestDifcalCycle = bestCycle
         else:
             latestDifcalRun = ""
             latestDifcalCycle = ""

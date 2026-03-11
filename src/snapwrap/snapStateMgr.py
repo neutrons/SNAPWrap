@@ -292,10 +292,32 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
         
         return calStatus
 
-    #load calibration index     
-    f = open(indexPath)
-    calIndexList = json.load(f) # a list of all calibrations
-    f.close()
+    #load calibration index
+    try:
+        with open(indexPath, 'r') as fh:
+            calIndexList = json.load(fh)  # a list of all calibrations
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Failed to parse JSON in calibration index at {indexPath}: {e}")
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = 0
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = {}
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        calStatus["statusDetail"] = f"calibration index exists but contains invalid JSON: {indexPath}"
+        return calStatus
+    except Exception as e:
+        print(f"ERROR: Unexpected error reading calibration index at {indexPath}: {type(e).__name__}: {e}")
+        calStatus["stateIsCalibrated"] = False
+        calStatus["runIsCalibrated"] = False
+        calStatus["numberCalibrations"] = 0
+        calStatus["latestCalibrationDate"] = "never"
+        calStatus["latestCalibrationDict"] = {}
+        calStatus["latestValidCalibrationDate"] = "never"
+        calStatus["latestValidCalibrationDict"] = {}
+        calStatus["statusDetail"] = f"unexpected error reading calibration index: {indexPath}"
+        return calStatus
 
     ## case: difcal requested, state exists, but no difcal exists (only default)
     if len(calIndexList) == 1 and calType == "difcal":
@@ -326,7 +348,7 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     tsTypes = {type(d["timestamp"]) for d in calIndexList}
 
     if len(tsTypes) != 1:
-        raise TypeError(f"Inconsistent timestamp types found in calibration index: {types}")
+        raise TypeError(f"Inconsistent timestamp types found in calibration index: {tsTypes}")
 
     t = tsTypes.pop()
     if t in (int, float):
@@ -494,13 +516,23 @@ def pullStateDict(stateIDString):
     # the plan is to create a script to  
 
     stateSeedDir = f"{Config['instrument.calibration.home']}/Powder/{stateIDString}/lite/diffraction/v_0000/"
-    stateParamsJson = stateSeedDir + "/CalibrationParameters.json"
+    stateParamsPath = os.path.join(stateSeedDir, "CalibrationParameters.json")
 
-    f = open(stateParamsJson)
-    stateParamsJson = json.load(f)
-    f.close()
+    # Read calibration parameters with robust error messages for common failure modes
+    try:
+        with open(stateParamsPath, 'r') as fh:
+            stateParams = json.load(fh)
+    except FileNotFoundError:
+        print(f"ERROR: CalibrationParameters.json not found at: {stateParamsPath}")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Failed to parse JSON in CalibrationParameters.json at {stateParamsPath}: {e}")
+        return {}
+    except Exception as e:
+        print(f"ERROR: Unexpected error reading {stateParamsPath}: {type(e).__name__}: {e}")
+        return {}
 
-    detectorState = stateParamsJson["instrumentState"]["detectorState"]
+    detectorState = stateParams["instrumentState"]["detectorState"]
     if "PVs" in detectorState.keys():
         dict = detectorState["PVs"]
 
@@ -599,10 +631,15 @@ def copyDifcal(donor,recipient,propagate=False): # donor and recipient are Calib
     print(f"\nDONOR STATE: {stateDef(donorRun)[0]} with {donor['numberCalibrations']} total calibrations")
     print(f"Most recent valid calibration is version {donorCal['version']} this will be copied:")
 
+    # Determine new version from the highest existing version number in the
+    # index (NOT from the timestamp-sorted "latest" entry, because propagated
+    # calibrations inherit the donor's timestamp which may predate the v0
+    # creation timestamp).
+    maxExistingVersion = max(entry["version"] for entry in recipient["calibIndexList"])
+    newVersion = maxExistingVersion + 1
 
     print(f"\nRECIPIENT STATE: {stateDef(recipientRun)[0]} with {recipient['numberCalibrations']} total calibrations")
-    newVersion = recipientCal['version']+1
-    print(f"Most recent calibration is version {recipientCal['version']} this will be updated to version {newVersion}")
+    print(f"Highest existing version is {maxExistingVersion}, this will be updated to version {newVersion}")
 
     newIE = IndexEntry(version=newVersion, #one more than most recent
         runNumber=recipientCal["runNumber"],
@@ -702,8 +739,11 @@ def loadCalibrationRecord(runNum,isLite,version):
 
 def saveCalibrationRecord(calibrationRecord,indexEntry):
 
+    # Attach the indexEntry to the record; writeCalibrationRecord expects
+    # a single CalibrationRecord whose .indexEntry is already set.
+    calibrationRecord.indexEntry = indexEntry
     localDataService=LocalDataService()
-    localDataService.writeCalibrationRecord(calibrationRecord)#,indexEntry)
+    localDataService.writeCalibrationRecord(calibrationRecord)
 
     return
 
@@ -726,6 +766,7 @@ def frankenRecord(donorRun,
     recipientDefaultCR = loadCalibrationRecord(recipientRun,isLite,0)
     franken = copy.deepcopy(donorCR)
 
+    print("building franken record...")
     print("copied original calibration record")
 
     franken.version = recipientVersion
@@ -758,7 +799,7 @@ def frankenRecord(donorRun,
 
 
     if printRecord:
-        print("FRANKEN RECORD:")
+        print("\nFRANKEN RECORD:")
         print(franken.runNumber)
         print(franken.useLiteMode)
         print("version: ",franken.version)
@@ -810,3 +851,836 @@ def cycleForRun(runNumber):
     if cycle is None:
         print(f"cycleDates: no cycle found for run {runNumber}")
     return cycle
+
+def validateIndex(runNumber, stateID=None, isLite=True, calType="difcal", requireSameCycle=True):
+    """Validate a calibration/normalization index and its version subfolders.
+
+    Parameters mirror :func:`checkCalibrationStatus` so callers can pass a runNumber
+    (or ``None`` with an explicit *stateID*) and the function will locate the
+    appropriate index path.
+
+    Checks performed
+    ----------------
+    1. Each index entry has exactly the 7 required keys.
+    2. Versions start at 0 and increment by 1 with no gaps.
+    3. A ``v_####`` subfolder exists for every index entry (and no extras).
+    4. Version-folder contents match the expected file set (difcal / normcal).
+    5. Record JSON (``CalibrationRecord.json`` or ``NormalizationRecord.json``)
+       contains ``version`` and ``indexEntry`` that exactly match the index.
+    6. All JSON files inside version folders are syntactically valid.
+    7. The pixel-group string (pgs) inferred from filenames must correspond to
+       one of the focus-group names defined in ``groupingMap.json``.
+
+    Returns
+    -------
+    dict
+        ``ok`` : bool – ``True`` only when every check passes.
+        ``stateID`` : str
+        ``calType`` : str
+        ``isLite`` : bool
+        ``indexPath`` : str
+        ``issues`` : list[str] – top-level problems.
+        ``entries`` : list[dict] – per-index-entry results, each with
+        ``index``, ``version`` and ``issues`` keys.
+    """
+
+    # ------------------------------------------------------------------
+    # Normalise calType (same logic as checkCalibrationStatus)
+    # ------------------------------------------------------------------
+    if calType.lower() in ("nrmcal",):
+        calType = "normcal"
+    if calType.lower() == "difcal":
+        calType = "difcal"
+    if calType not in ("difcal", "normcal"):
+        raise ValueError("unsupported calibration type selected. Options are 'difcal' or 'normcal'")
+
+    if runNumber is None and stateID is None:
+        raise ValueError("Either runNumber or stateID must be provided")
+
+    if runNumber is not None:
+        [stateID, _] = stateDef(runNumber)
+
+    # ------------------------------------------------------------------
+    # Build paths (mirrors checkCalibrationStatus exactly)
+    # ------------------------------------------------------------------
+    home = SNAPHome()
+    powderHome = home.powder
+
+    subFolder = {"difcal": "diffraction", "normcal": "normalization"}
+    jsonName  = {"difcal": "CalibrationIndex.json", "normcal": "NormalizationIndex.json"}
+
+    liteStr = "lite" if isLite else "native"
+    calFolder = f"{powderHome}{stateID}/{liteStr}/{subFolder[calType]}/"
+    indexPath = f"{calFolder}{jsonName[calType]}"
+
+    report = {
+        "ok": True,
+        "stateID": stateID,
+        "calType": calType,
+        "isLite": isLite,
+        "indexPath": indexPath,
+        "issues": [],
+        "entries": [],
+    }
+
+    def _flag(msg, entry_report=None):
+        """Record an issue and set ok = False."""
+        if entry_report is not None:
+            entry_report["issues"].append(msg)
+        else:
+            report["issues"].append(msg)
+        report["ok"] = False
+
+    def _note(msg, entry_report=None):
+        """Record a non-fatal note (don't change overall ok status)."""
+        if entry_report is not None:
+            entry_report["issues"].append(msg)
+        else:
+            report["issues"].append(msg)
+
+    # ------------------------------------------------------------------
+    # Load allowed pgs names from groupingMap.json (case-insensitive)
+    # ------------------------------------------------------------------
+    grouping_map_path = os.path.join(powderHome, stateID, "groupingMap.json")
+    allowed_pgs = set()  # lowercase names; empty if file missing
+    if os.path.isfile(grouping_map_path):
+        try:
+            with open(grouping_map_path, "r") as fh:
+                gmap = json.load(fh)
+            key = "liteFocusGroups" if isLite else "nativeFocusGroups"
+            for entry in gmap.get(key, []):
+                allowed_pgs.add(entry["name"].lower())
+        except Exception as e:
+            _flag(f"Unable to parse groupingMap.json ({grouping_map_path}): {e}")
+    else:
+        _flag(f"groupingMap.json not found at {grouping_map_path} – pgs validation will be skipped")
+
+    # ------------------------------------------------------------------
+    # Basic existence checks
+    # ------------------------------------------------------------------
+    if not checkStateExists(stateID):
+        _flag(f"State {stateID} does not exist at {powderHome}")
+        return report
+
+    if not os.path.isfile(indexPath):
+        if calType == "normcal":
+            # A missing normalization index is valid – it simply means the
+            # state has not been normalized yet.
+            report["issues"].append("No normalization index exists (state has not been normalized – this is OK)")
+            return report
+        _flag(f"Index file not found: {indexPath}")
+        return report
+
+    # ------------------------------------------------------------------
+    # Load index JSON
+    # ------------------------------------------------------------------
+    try:
+        with open(indexPath, "r") as fh:
+            indexEntries = json.load(fh)
+    except Exception as e:
+        _flag(f"Failed to load index JSON {indexPath}: {type(e).__name__}: {e}")
+        return report
+
+    if not isinstance(indexEntries, list):
+        _flag(f"Index content is not a list in {indexPath}")
+        return report
+
+    # ------------------------------------------------------------------
+    # 1. Validate keys & collect versions
+    # ------------------------------------------------------------------
+    required_keys = {"version", "runNumber", "useLiteMode",
+                     "appliesTo", "comments", "author", "timestamp"}
+
+    versions = []
+    for i, ie in enumerate(indexEntries):
+        er = {"index": i, "version": ie.get("version"), "issues": []}
+
+        if set(ie.keys()) != required_keys:
+            missing_k = sorted(required_keys - set(ie.keys()))
+            extra_k   = sorted(set(ie.keys()) - required_keys)
+            parts = []
+            if missing_k:
+                parts.append(f"missing keys {missing_k}")
+            if extra_k:
+                parts.append(f"extra keys {extra_k}")
+            _flag(f"Entry {i}: key mismatch – {', '.join(parts)}", er)
+
+        if "version" in ie:
+            try:
+                versions.append(int(ie["version"]))
+            except Exception:
+                _flag(f"Entry {i}: 'version' is not an integer", er)
+        else:
+            _flag(f"Entry {i}: missing 'version' key", er)
+
+        report["entries"].append(er)
+
+    # ------------------------------------------------------------------
+    # 2. Version stride check
+    # ------------------------------------------------------------------
+    if versions:
+        sv = sorted(versions)
+        if sv[0] != 0:
+            _flag(f"Versions must start at 0; lowest version found: {sv[0]}")
+        for a, b in zip(sv, sv[1:]):
+            if b - a != 1:
+                _flag(f"Non-consecutive versions: ...{a}, {b}... (gap of {b - a})")
+
+    # ------------------------------------------------------------------
+    # 3. Folder ↔ index correspondence
+    # ------------------------------------------------------------------
+    expected_folders = {f"v_{str(v).zfill(4)}" for v in versions}
+    base_dir = os.path.dirname(indexPath)
+    try:
+        actual_items = os.listdir(base_dir)
+    except Exception as e:
+        _flag(f"Unable to list directory {base_dir}: {e}")
+        return report
+
+    actual_folders = {
+        n for n in actual_items
+        if os.path.isdir(os.path.join(base_dir, n)) and n.startswith("v_")
+    }
+    missing_folders = expected_folders - actual_folders
+    extra_folders   = actual_folders - expected_folders
+    if missing_folders:
+        _flag(f"Missing version folders: {sorted(missing_folders)}")
+    if extra_folders:
+        _flag(f"Extra version folders with no index entry: {sorted(extra_folders)}")
+
+    # ------------------------------------------------------------------
+    # Helper: validate pgs against groupingMap
+    # ------------------------------------------------------------------
+    def _check_pgs(pgs, entry_report):
+        """Warn if *pgs* is not a recognised focus-group name."""
+        if allowed_pgs and pgs.lower() not in allowed_pgs:
+            _flag(
+                f"pgs '{pgs}' is not a recognised focus-group name "
+                f"(allowed: {sorted(allowed_pgs)})",
+                entry_report,
+            )
+
+    # ------------------------------------------------------------------
+    # 4 – 6. Per-entry folder validation
+    # ------------------------------------------------------------------
+    for i, ie in enumerate(indexEntries):
+        er = report["entries"][i]
+        v = int(ie["version"]) if "version" in ie and isinstance(ie.get("version"), (int, float)) else -1
+        if v == -1:
+            # version already flagged above – skip folder checks
+            continue
+
+        run = str(ie.get("runNumber", "")).zfill(6)
+        folder_name = f"v_{str(v).zfill(4)}"
+        folder_path = os.path.join(base_dir, folder_name)
+
+        if not os.path.isdir(folder_path):
+            _flag(f"Version folder missing: {folder_name}", er)
+            continue
+
+        folder_contents = os.listdir(folder_path)
+
+        # 5. Validate every JSON file found in the folder
+        for fname in folder_contents:
+            if fname.endswith(".json"):
+                fp = os.path.join(folder_path, fname)
+                try:
+                    with open(fp, "r") as fh:
+                        json.load(fh)
+                except Exception as e:
+                    _flag(f"Invalid JSON in {fname}: {e}", er)
+
+        # ---- difcal ----
+        if calType == "difcal":
+            rec_name   = "CalibrationRecord.json"
+            param_name = "CalibrationParameters.json"
+            rec_fp   = os.path.join(folder_path, rec_name)
+            param_fp = os.path.join(folder_path, param_name)
+
+            # Record JSON
+            if not os.path.isfile(rec_fp):
+                _flag(f"Missing {rec_name}", er)
+            else:
+                try:
+                    with open(rec_fp, "r") as fh:
+                        rec = json.load(fh)
+                    if not isinstance(rec, dict):
+                        _flag(f"{rec_name} top-level value is not a dict", er)
+                    else:
+                        missing_version = "version" not in rec
+                        missing_index = "indexEntry" not in rec
+                        if missing_version and missing_index:
+                            _flag(f"{rec_name} missing required keys 'version' and/or 'indexEntry'", er)
+                        elif missing_version:
+                            _flag(f"{rec_name} missing required key 'version'", er)
+                        elif missing_index:
+                            # Older SNAPRed-produced records (legacy format) may
+                            # omit the embedded indexEntry. Treat these as a
+                            # non-fatal note so they are tracked but don't make
+                            # the whole index fail the validation pass.
+                            _note(f"{rec_name} missing 'indexEntry' (legacy older record format) – treated as NOTE", er)
+                        else:
+                            if int(rec["version"]) != v:
+                                _flag(f"{rec_name}.version ({rec['version']}) != folder version {v}", er)
+                            if rec["indexEntry"] != ie:
+                                _flag(f"{rec_name}.indexEntry does not exactly match the index entry", er)
+                except json.JSONDecodeError:
+                    pass  # already caught above
+                except Exception as e:
+                    _flag(f"Error reading {rec_name}: {e}", er)
+
+            # Parameters JSON
+            if not os.path.isfile(param_fp):
+                _flag(f"Missing {param_name}", er)
+
+            # Data files
+            if v == 0:
+                if not os.path.isfile(os.path.join(folder_path, "diffract_consts_default_v0.h5")):
+                    _flag("Missing diffract_consts_default_v0.h5 for version 0", er)
+            else:
+                # Infer pgs from dsp_<pgs>_<run>_v<ver>.nxs.h5
+                dsp_re = re.compile(rf"dsp_(.+)_{run}_v{str(v).zfill(4)}\.nxs\.h5")
+                dsp_hits = [m for m in (dsp_re.fullmatch(f) for f in folder_contents) if m]
+                if not dsp_hits:
+                    _flag(f"No dsp_<pgs>_{run}_v{str(v).zfill(4)}.nxs.h5 found – cannot determine pgs", er)
+                else:
+                    pgs = dsp_hits[0].group(1)
+                    _check_pgs(pgs, er)
+                    for ef in (
+                        f"dsp_{pgs}_{run}_v{str(v).zfill(4)}.nxs.h5",
+                        f"diffract_consts_{run}_v{str(v).zfill(4)}.h5",
+                        f"diagnostic_{pgs}_{run}_v{str(v).zfill(4)}.nxs.h5",
+                    ):
+                        if ef not in folder_contents:
+                            _flag(f"Missing expected file: {ef}", er)
+
+        # ---- normcal ----
+        else:
+            rec_name   = "NormalizationRecord.json"
+            param_name = "NormalizationParameters.json"
+            rec_fp   = os.path.join(folder_path, rec_name)
+            param_fp = os.path.join(folder_path, param_name)
+
+            # Record JSON
+            if not os.path.isfile(rec_fp):
+                _flag(f"Missing {rec_name}", er)
+            else:
+                try:
+                    with open(rec_fp, "r") as fh:
+                        rec = json.load(fh)
+                    if not isinstance(rec, dict):
+                        _flag(f"{rec_name} top-level value is not a dict", er)
+                    else:
+                        missing_version = "version" not in rec
+                        missing_index = "indexEntry" not in rec
+                        if missing_version and missing_index:
+                            _flag(f"{rec_name} missing required keys 'version' and/or 'indexEntry'", er)
+                        elif missing_version:
+                            _flag(f"{rec_name} missing required key 'version'", er)
+                        elif missing_index:
+                            _note(f"{rec_name} missing 'indexEntry' (legacy older record format) – treated as NOTE", er)
+                        else:
+                            if int(rec["version"]) != v:
+                                _flag(f"{rec_name}.version ({rec['version']}) != folder version {v}", er)
+                            if rec["indexEntry"] != ie:
+                                _flag(f"{rec_name}.indexEntry does not exactly match the index entry", er)
+                except json.JSONDecodeError:
+                    pass  # already caught above
+                except Exception as e:
+                    _flag(f"Error reading {rec_name}: {e}", er)
+
+            # Parameters JSON
+            if not os.path.isfile(param_fp):
+                _flag(f"Missing {param_name}", er)
+
+            # Data files – infer pgs from dsp_<pgs>_<run>_fitted_van_corr_v<ver>.nxs
+            dsp_re = re.compile(rf"dsp_(.+)_{run}_fitted_van_corr_v{str(v).zfill(4)}\.nxs")
+            dsp_hits = [m for m in (dsp_re.fullmatch(f) for f in folder_contents) if m]
+            if not dsp_hits:
+                _flag(f"No dsp_<pgs>_{run}_fitted_van_corr_v{str(v).zfill(4)}.nxs found – cannot determine pgs", er)
+            else:
+                pgs = dsp_hits[0].group(1)
+                _check_pgs(pgs, er)
+                for ef in (
+                    f"tof_unfoc_{run}_raw_van_corr_v{str(v).zfill(4)}.nxs",
+                    f"tof_{pgs}_s+f-vanadium_{run}_v{str(v).zfill(4)}.nxs",
+                    f"dsp_{pgs}_{run}_fitted_van_corr_v{str(v).zfill(4)}.nxs",
+                ):
+                    if ef not in folder_contents:
+                        _flag(f"Missing expected file: {ef}", er)
+
+    return report
+
+
+def printValidationReport(report):
+    """Pretty-print a report dict returned by :func:`validateIndex`."""
+
+    header = (
+        f"{'PASS' if report['ok'] else 'FAIL'}  "
+        f"state={report['stateID']}  calType={report['calType']}  "
+        f"lite={report['isLite']}"
+    )
+    print(header)
+    print(f"  index: {report['indexPath']}")
+
+    if report["issues"]:
+        label = "Issues:" if not report["ok"] else "Notes:"
+        print(f"  {label}")
+        marker = "✗" if not report["ok"] else "ℹ"
+        for issue in report["issues"]:
+            print(f"    {marker} {issue}")
+
+    for er in report.get("entries", []):
+        if er["issues"]:
+            print(f"  Entry {er['index']} (version {er['version']}):")
+            for issue in er["issues"]:
+                print(f"    ✗ {issue}")
+
+    if report["ok"]:
+        n = len(report.get("entries", []))
+        print(f"  All {n} entries validated successfully.")
+
+    return
+
+
+# ---------------------------------------------------------------------------
+# Phase-2 repair utilities
+# ---------------------------------------------------------------------------
+
+def _backup_dir():
+    """Return (and create) the central backup directory under the calibration home."""
+    home = SNAPHome()
+    bk = os.path.join(home.calib, "Backup")
+    os.makedirs(bk, exist_ok=True)
+    return bk
+
+
+def _session_backup_dir(stateID, calType):
+    """Return (and create) a timestamped per-session backup folder.
+
+    Layout: ``{calib}/Backup/fix_{stateID}_{calType}_{YYYYMMDD_HHMMSS}/``
+    """
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    d = os.path.join(_backup_dir(), f"fix_{stateID}_{calType}_{stamp}")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _folder_stat_summary(folder_path):
+    """Return a human-readable summary of a folder's timestamps and contents."""
+    lines = []
+    try:
+        st = os.stat(folder_path)
+        lines.append(f"  path:  {folder_path}")
+        lines.append(f"  ctime: {datetime.fromtimestamp(st.st_ctime).isoformat()}")
+        lines.append(f"  mtime: {datetime.fromtimestamp(st.st_mtime).isoformat()}")
+        contents = sorted(os.listdir(folder_path))
+        lines.append(f"  contents ({len(contents)} items):")
+        for c in contents:
+            fp = os.path.join(folder_path, c)
+            sz = os.path.getsize(fp) if os.path.isfile(fp) else 0
+            lines.append(f"    {c}  ({sz} bytes)" if os.path.isfile(fp) else f"    {c}/")
+    except Exception as e:
+        lines.append(f"  (unable to stat: {e})")
+    return "\n".join(lines)
+
+
+def fixIndex(runNumber=None, stateID=None, isLite=True, calType="difcal",
+             dryRun=False, autoConfirm=False):
+    """Repair a calibration/normalization index so it passes :func:`validateIndex`.
+
+    This function performs the following repairs **in order**:
+
+    1. **Sync record ``indexEntry``** — for every version folder whose
+       ``CalibrationRecord.json`` (or ``NormalizationRecord.json``)
+       ``indexEntry`` or ``version`` disagrees with the calibration index,
+       overwrite the record to match the index.  Also updates the nested
+       ``calculationParameters.indexEntry`` and
+       ``calculationParameters.version`` copies.
+
+    2. **Remove orphaned folders** — version folders on disk that have no
+       matching index entry are deleted (after logging their contents and
+       timestamps).
+
+    3. **Remove orphaned index entries** — index entries whose version
+       folder is missing are removed from the index.
+
+    4. **Re-version** — after removals the remaining entries are
+       re-numbered starting at 0 with stride 1.  Folders are renamed and
+       all embedded version references (record JSON files, data-file
+       names) are updated accordingly.
+
+    A detailed log of every action is written to a session-specific
+    backup folder under ``{calibration_home}/Backup/``.
+
+    Parameters
+    ----------
+    runNumber, stateID, isLite, calType
+        Same semantics as :func:`validateIndex`.
+    dryRun : bool
+        If ``True``, report what *would* be done without modifying anything.
+    autoConfirm : bool
+        If ``True``, skip the interactive confirmation prompt.
+
+    Returns
+    -------
+    dict
+        ``actions`` : list[str] – description of each action taken (or planned).
+        ``logFile`` : str – path to the saved log file (``None`` in dry-run mode).
+        ``backupDir`` : str – path to the backup session folder.
+    """
+
+    # ------------------------------------------------------------------
+    # Resolve paths (identical to validateIndex)
+    # ------------------------------------------------------------------
+    if calType.lower() in ("nrmcal",):
+        calType = "normcal"
+    if calType.lower() == "difcal":
+        calType = "difcal"
+    if calType not in ("difcal", "normcal"):
+        raise ValueError("calType must be 'difcal' or 'normcal'")
+    if runNumber is None and stateID is None:
+        raise ValueError("Either runNumber or stateID must be provided")
+    if runNumber is not None:
+        [stateID, _] = stateDef(runNumber)
+
+    home = SNAPHome()
+    powderHome = home.powder
+    subFolder = {"difcal": "diffraction", "normcal": "normalization"}
+    jsonName  = {"difcal": "CalibrationIndex.json", "normcal": "NormalizationIndex.json"}
+    recName   = {"difcal": "CalibrationRecord.json", "normcal": "NormalizationRecord.json"}
+    liteStr   = "lite" if isLite else "native"
+    base_dir  = f"{powderHome}{stateID}/{liteStr}/{subFolder[calType]}"
+    indexPath = os.path.join(base_dir, jsonName[calType])
+
+    actions = []     # human-readable log lines
+    prefix = "[DRY RUN] " if dryRun else ""
+
+    def log(msg):
+        actions.append(f"{prefix}{msg}")
+
+    # ------------------------------------------------------------------
+    # Pre-flight: run validateIndex to see current state
+    # ------------------------------------------------------------------
+    pre_report = validateIndex(runNumber=runNumber, stateID=stateID,
+                               isLite=isLite, calType=calType)
+    if pre_report["ok"]:
+        log("Index already valid – nothing to fix.")
+        return {"actions": actions, "logFile": None, "backupDir": None}
+
+    # ------------------------------------------------------------------
+    # Load index
+    # ------------------------------------------------------------------
+    if not os.path.isfile(indexPath):
+        log(f"ERROR: Index file not found: {indexPath} – cannot repair.")
+        return {"actions": actions, "logFile": None, "backupDir": None}
+
+    with open(indexPath, "r") as fh:
+        indexEntries = json.load(fh)
+
+    # ------------------------------------------------------------------
+    # Create backup session
+    # ------------------------------------------------------------------
+    sessionDir = _session_backup_dir(stateID, calType)
+    log(f"Backup session: {sessionDir}")
+
+    # Back up the original index
+    bkIndex = os.path.join(sessionDir, jsonName[calType])
+    if not dryRun:
+        shutil.copy2(indexPath, bkIndex)
+    log(f"Backed up original index → {bkIndex}")
+
+    # ------------------------------------------------------------------
+    # Discover orphaned folders and orphaned index entries
+    # ------------------------------------------------------------------
+    indexed_versions = {}  # version -> index entry
+    for ie in indexEntries:
+        indexed_versions[int(ie["version"])] = ie
+
+    actual_folders = {
+        n for n in os.listdir(base_dir)
+        if os.path.isdir(os.path.join(base_dir, n)) and n.startswith("v_")
+    }
+    actual_versions = {}
+    for fn in actual_folders:
+        try:
+            actual_versions[int(fn.split("_")[1])] = fn
+        except (ValueError, IndexError):
+            pass
+
+    orphaned_folders = sorted(set(actual_versions.keys()) - set(indexed_versions.keys()))
+    orphaned_entries = sorted(set(indexed_versions.keys()) - set(actual_versions.keys()))
+
+    # ------------------------------------------------------------------
+    # Detect corrupt entries: folder exists but data files are wrong
+    # ------------------------------------------------------------------
+    # Use the per-entry issues from the validation report to identify
+    # entries whose version folder is present but whose contents are
+    # irrecoverably inconsistent (e.g. data files have the wrong run
+    # number).  These are treated the same as orphaned entries + orphaned
+    # folders: both the folder and the index entry are removed.
+    corrupt_versions = []
+    for er in pre_report.get("entries", []):
+        v = er.get("version")
+        if v is None or int(v) in set(orphaned_folders) | set(orphaned_entries):
+            continue
+        # Look for issues that indicate the folder data is unusable
+        for issue in er.get("issues", []):
+            if any(marker in issue for marker in [
+                "cannot determine pgs",
+                "Missing expected file:",
+                "Missing CalibrationRecord.json",
+                "Missing NormalizationRecord.json",
+                "Missing CalibrationParameters.json",
+                "Missing NormalizationParameters.json",
+            ]):
+                corrupt_versions.append(int(v))
+                break
+
+    # ------------------------------------------------------------------
+    # Build action plan summary for user confirmation
+    # ------------------------------------------------------------------
+    plan_lines = []
+
+    # Step 1: record syncs (only for entries not already marked corrupt)
+    corrupt_set = set(corrupt_versions)
+    sync_targets = []
+    for ie in indexEntries:
+        v = int(ie["version"])
+        if v in corrupt_set:
+            continue  # will be deleted, no point syncing
+        folder_path = os.path.join(base_dir, f"v_{str(v).zfill(4)}")
+        rec_fp = os.path.join(folder_path, recName[calType])
+        if not os.path.isfile(rec_fp):
+            continue
+        try:
+            with open(rec_fp, "r") as fh:
+                rec = json.load(fh)
+            needs_sync = False
+            if rec.get("indexEntry") != ie:
+                needs_sync = True
+            if int(rec.get("version", -1)) != v:
+                needs_sync = True
+            if needs_sync:
+                sync_targets.append((v, ie, rec_fp))
+        except Exception:
+            pass
+
+    if sync_targets:
+        plan_lines.append(f"  Sync indexEntry in {len(sync_targets)} record(s): versions {[t[0] for t in sync_targets]}")
+
+    if corrupt_versions:
+        for v in corrupt_versions:
+            fp = os.path.join(base_dir, f"v_{str(v).zfill(4)}")
+            ie = indexed_versions[v]
+            plan_lines.append(f"  DELETE corrupt entry v={v} (run {ie.get('runNumber')}) – folder & index entry: {fp}")
+
+    if orphaned_folders:
+        for v in orphaned_folders:
+            fp = os.path.join(base_dir, actual_versions[v])
+            plan_lines.append(f"  DELETE orphaned folder (no index entry): {fp}")
+
+    if orphaned_entries:
+        plan_lines.append(f"  Remove {len(orphaned_entries)} orphaned index entries (no folder): versions {orphaned_entries}")
+
+    # Check if re-versioning needed
+    all_removed = set(orphaned_entries) | corrupt_set
+    surviving = sorted(set(indexed_versions.keys()) - all_removed)
+    needs_reversion = surviving != list(range(len(surviving)))
+
+    if needs_reversion:
+        plan_lines.append(f"  Re-version {len(surviving)} entries: {surviving} → {list(range(len(surviving)))}")
+
+    if not plan_lines:
+        log("No actionable repairs identified (issues may require manual intervention).")
+        return {"actions": actions, "logFile": None, "backupDir": sessionDir}
+
+    # ------------------------------------------------------------------
+    # Confirm with user
+    # ------------------------------------------------------------------
+    print(f"\n{'[DRY RUN] ' if dryRun else ''}Repair plan for state={stateID}  calType={calType}  lite={isLite}:")
+    for line in plan_lines:
+        print(line)
+    print()
+
+    if not dryRun and not autoConfirm:
+        answer = input("Proceed with repairs? [y/N]: ").strip().lower()
+        if answer != "y":
+            log("User declined repairs.")
+            print("Aborted.")
+            return {"actions": actions, "logFile": None, "backupDir": sessionDir}
+
+    # ------------------------------------------------------------------
+    # Step 1: Sync record indexEntry to match index
+    # ------------------------------------------------------------------
+    for v, ie, rec_fp in sync_targets:
+        log(f"Syncing {recName[calType]} in v_{str(v).zfill(4)} to match index entry")
+        if not dryRun:
+            # Back up the original record
+            rec_bk = os.path.join(sessionDir, f"v_{str(v).zfill(4)}_{recName[calType]}")
+            shutil.copy2(rec_fp, rec_bk)
+
+            with open(rec_fp, "r") as fh:
+                rec = json.load(fh)
+
+            rec["version"] = int(ie["version"])
+            rec["indexEntry"] = ie
+            if "calculationParameters" in rec and isinstance(rec["calculationParameters"], dict):
+                rec["calculationParameters"]["indexEntry"] = ie
+                rec["calculationParameters"]["version"] = int(ie["version"])
+
+            with open(rec_fp, "w") as fh:
+                json.dump(rec, fh, indent=4)
+
+            log(f"  backed up original → {rec_bk}")
+            log(f"  updated {rec_fp}")
+
+    # ------------------------------------------------------------------
+    # Step 2: Delete orphaned folders (no index entry)
+    # ------------------------------------------------------------------
+    for v in orphaned_folders:
+        folder_path = os.path.join(base_dir, actual_versions[v])
+        log(f"Deleting orphaned folder: {folder_path}")
+        log(_folder_stat_summary(folder_path))
+        if not dryRun:
+            shutil.rmtree(folder_path)
+            log(f"  deleted.")
+
+    # ------------------------------------------------------------------
+    # Step 3: Delete corrupt entries (folder + index entry)
+    # ------------------------------------------------------------------
+    for v in corrupt_versions:
+        folder_path = os.path.join(base_dir, f"v_{str(v).zfill(4)}")
+        ie = indexed_versions[v]
+        log(f"Deleting corrupt entry v={v} (run {ie.get('runNumber')})")
+        log(_folder_stat_summary(folder_path))
+        if not dryRun:
+            if os.path.isdir(folder_path):
+                shutil.rmtree(folder_path)
+                log(f"  deleted folder.")
+            indexEntries = [e for e in indexEntries if int(e["version"]) != v]
+            log(f"  removed index entry for version {v}.")
+
+    # ------------------------------------------------------------------
+    # Step 4: Remove orphaned index entries (no folder)
+    # ------------------------------------------------------------------
+    if orphaned_entries:
+        log(f"Removing orphaned index entries for versions: {orphaned_entries}")
+        if not dryRun:
+            remove_set = set(orphaned_entries)
+            indexEntries = [ie for ie in indexEntries if int(ie["version"]) not in remove_set]
+
+    # ------------------------------------------------------------------
+    # Step 5: Re-version remaining entries and folders
+    # ------------------------------------------------------------------
+    # Sort by current version
+    indexEntries.sort(key=lambda ie: int(ie["version"]))
+
+    old_to_new = {}
+    for new_v, ie in enumerate(indexEntries):
+        old_v = int(ie["version"])
+        if old_v != new_v:
+            old_to_new[old_v] = new_v
+
+    if old_to_new:
+        log(f"Re-versioning: {old_to_new}")
+
+        if not dryRun:
+            # Rename folders: use a temporary name first to avoid collisions
+            # e.g. v_0003 -> v_0003_tmp -> v_0001
+            temp_names = {}
+            for old_v, new_v in old_to_new.items():
+                old_folder = os.path.join(base_dir, f"v_{str(old_v).zfill(4)}")
+                tmp_folder = os.path.join(base_dir, f"v_{str(old_v).zfill(4)}_tmp")
+                if os.path.isdir(old_folder):
+                    os.rename(old_folder, tmp_folder)
+                    temp_names[new_v] = tmp_folder
+                    log(f"  renamed v_{str(old_v).zfill(4)} → v_{str(old_v).zfill(4)}_tmp")
+
+            for new_v, tmp_folder in temp_names.items():
+                new_folder = os.path.join(base_dir, f"v_{str(new_v).zfill(4)}")
+                os.rename(tmp_folder, new_folder)
+                log(f"  renamed {os.path.basename(tmp_folder)} → v_{str(new_v).zfill(4)}")
+
+        # Update version in index entries
+        for new_v, ie in enumerate(indexEntries):
+            old_v = int(ie["version"])
+            if old_v != new_v:
+                log(f"  index entry version {old_v} → {new_v}")
+            ie["version"] = new_v
+
+        # Update records inside re-versioned folders
+        if not dryRun:
+            for new_v, ie in enumerate(indexEntries):
+                folder_path = os.path.join(base_dir, f"v_{str(new_v).zfill(4)}")
+                rec_fp = os.path.join(folder_path, recName[calType])
+                if os.path.isfile(rec_fp):
+                    try:
+                        with open(rec_fp, "r") as fh:
+                            rec = json.load(fh)
+                        rec["version"] = new_v
+                        rec["indexEntry"] = ie
+                        if "calculationParameters" in rec and isinstance(rec["calculationParameters"], dict):
+                            rec["calculationParameters"]["indexEntry"] = ie
+                            rec["calculationParameters"]["version"] = new_v
+                        with open(rec_fp, "w") as fh:
+                            json.dump(rec, fh, indent=4)
+                        log(f"  updated record in v_{str(new_v).zfill(4)}")
+                    except Exception as e:
+                        log(f"  WARNING: could not update record in v_{str(new_v).zfill(4)}: {e}")
+
+            # Rename data files inside re-versioned folders
+            for old_v, new_v in old_to_new.items():
+                folder_path = os.path.join(base_dir, f"v_{str(new_v).zfill(4)}")
+                if not os.path.isdir(folder_path):
+                    continue
+                for fname in os.listdir(folder_path):
+                    old_tag = f"_v{str(old_v).zfill(4)}"
+                    new_tag = f"_v{str(new_v).zfill(4)}"
+                    if old_tag in fname:
+                        new_fname = fname.replace(old_tag, new_tag)
+                        os.rename(os.path.join(folder_path, fname),
+                                  os.path.join(folder_path, new_fname))
+                        log(f"  renamed {fname} → {new_fname}")
+
+    # ------------------------------------------------------------------
+    # Write updated index
+    # ------------------------------------------------------------------
+    if not dryRun:
+        with open(indexPath, "w") as fh:
+            json.dump(indexEntries, fh, indent=4)
+        log(f"Saved updated index: {indexPath}")
+
+    # ------------------------------------------------------------------
+    # Post-flight validation
+    # ------------------------------------------------------------------
+    post_report = validateIndex(runNumber=None, stateID=stateID,
+                                isLite=isLite, calType=calType)
+    if post_report["ok"]:
+        log("Post-repair validation: PASS ✓")
+    else:
+        log("Post-repair validation: FAIL — some issues remain:")
+        for issue in post_report["issues"]:
+            log(f"  {issue}")
+        for er in post_report.get("entries", []):
+            for issue in er["issues"]:
+                log(f"  Entry {er['index']}: {issue}")
+
+    # ------------------------------------------------------------------
+    # Write log file
+    # ------------------------------------------------------------------
+    logPath = None
+    if not dryRun:
+        logPath = os.path.join(sessionDir, "fix_log.txt")
+        with open(logPath, "w") as fh:
+            fh.write(f"fixIndex log  {datetime.now().isoformat()}\n")
+            fh.write(f"stateID: {stateID}  calType: {calType}  isLite: {isLite}\n")
+            fh.write(f"indexPath: {indexPath}\n")
+            fh.write("=" * 72 + "\n")
+            for line in actions:
+                fh.write(line + "\n")
+        log(f"Log written to {logPath}")
+    else:
+        log("(dry run – no files modified)")
+
+    return {"actions": actions, "logFile": logPath, "backupDir": sessionDir}
