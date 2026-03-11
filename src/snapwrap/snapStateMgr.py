@@ -1340,6 +1340,12 @@ def fixIndex(runNumber=None, stateID=None, isLite=True, calType="difcal",
 
     This function performs the following repairs **in order**:
 
+    0. **Reconstruct empty/corrupt index** — if the index JSON file is
+       empty or unparseable, attempt to rebuild the index by scanning
+       version folders for ``CalibrationRecord.json`` (or
+       ``NormalizationRecord.json``) and extracting each ``indexEntry``.
+       Folders without a valid record are treated as orphans.
+
     1. **Sync record ``indexEntry``** — for every version folder whose
        ``CalibrationRecord.json`` (or ``NormalizationRecord.json``)
        ``indexEntry`` or ``version`` disagrees with the calibration index,
@@ -1424,8 +1430,54 @@ def fixIndex(runNumber=None, stateID=None, isLite=True, calType="difcal",
         log(f"ERROR: Index file not found: {indexPath} – cannot repair.")
         return {"actions": actions, "logFile": None, "backupDir": None}
 
-    with open(indexPath, "r") as fh:
-        indexEntries = json.load(fh)
+    index_was_reconstructed = False
+    try:
+        with open(indexPath, "r") as fh:
+            content = fh.read().strip()
+        if not content:
+            raise json.JSONDecodeError("Empty file", "", 0)
+        indexEntries = json.loads(content)
+        if not isinstance(indexEntries, list):
+            raise json.JSONDecodeError("Index is not a list", content, 0)
+    except (json.JSONDecodeError, ValueError) as e:
+        log(f"Index JSON is corrupt/empty: {e}")
+        log("Attempting to reconstruct index from version folders...")
+
+        # Scan version folders for record files that contain indexEntry
+        indexEntries = []
+        try:
+            folder_names = sorted(
+                n for n in os.listdir(base_dir)
+                if os.path.isdir(os.path.join(base_dir, n)) and n.startswith("v_")
+            )
+        except Exception:
+            folder_names = []
+
+        for fn in folder_names:
+            folder_path = os.path.join(base_dir, fn)
+            rec_fp = os.path.join(folder_path, recName[calType])
+            if os.path.isfile(rec_fp):
+                try:
+                    with open(rec_fp, "r") as rfh:
+                        rec = json.load(rfh)
+                    ie = rec.get("indexEntry")
+                    if ie and isinstance(ie, dict) and "version" in ie:
+                        indexEntries.append(ie)
+                        log(f"  recovered indexEntry from {fn}/{recName[calType]} (version {ie['version']})")
+                    else:
+                        log(f"  {fn}/{recName[calType]} has no usable indexEntry – folder will be orphaned")
+                except Exception as exc:
+                    log(f"  failed to read {fn}/{recName[calType]}: {exc} – folder will be orphaned")
+            else:
+                log(f"  {fn} has no {recName[calType]} – folder will be orphaned")
+
+        if not indexEntries:
+            log("ERROR: Could not recover any index entries from version folders.")
+            log("Manual intervention required (e.g. delete state and rebuild).")
+            return {"actions": actions, "logFile": None, "backupDir": None}
+
+        index_was_reconstructed = True
+        log(f"Reconstructed index with {len(indexEntries)} entries from version folders.")
 
     # ------------------------------------------------------------------
     # Create backup session
