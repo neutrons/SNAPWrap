@@ -244,6 +244,28 @@ payload = vanCan.to_dict()
 json = f"{jsonDir}/vanCan_3mm.json"
 utils.SEEMetaSaver(payload,json)
 
+###################################################################
+# quartz capillary can:
+###################################################################
+
+cyl = cylinder(material="SiO2",innerDiameter=numVal(2.0, "mm"), 
+                  outerDiameter=numVal(2.2, "mm"), 
+                  height=numVal(30, "mm"))
+
+quartzCap = assembly.CylinderCell(components=[cyl],
+                               comment="Quartz capillary",
+                               )
+quartzCap.primaryCategory = "quartzCapillary"
+quartzCap.nickname = "quartz cap"
+quartzCap.origin = [0.0, 0.0, 0.0]
+quartzCap.orientation = [0.0,1.0,0.0]
+
+# serialize and round-trip
+payload = quartzCap.to_dict()
+#save json
+json = f"{jsonDir}/quartzCap_2mm.json"
+utils.SEEMetaSaver(payload,json)
+
 
 ###################################################################
 # empty assembly:
