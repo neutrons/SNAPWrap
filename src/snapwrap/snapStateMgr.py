@@ -362,10 +362,20 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
                       reverse=True
                       )
 
-    # Annotate every index entry with its cycleID (looked up from runNumber)
+    # Annotate every index entry with its cycleID.
+    # For propagated calibrations the runNumber field still contains the
+    # *recipient* state's original run, not the donor run that was actually
+    # used to produce the calibration.  The donor run is recorded in the
+    # comments field as "(copied from run:<run> version:<ver>)".  We must
+    # use the donor (effective) run for the cycle lookup so that the cycle
+    # filter in matchingCalibrationIndex works correctly.
+    _propagation_re = re.compile(r"\(copied from run:(\S+)\s+version:")
     for entry in calIndexList:
         if "cycleID" not in entry:
-            entry["cycleID"] = get_cycle_for_run(entry["runNumber"])
+            comment = entry.get("comments", "")
+            m = _propagation_re.match(comment)
+            effectiveRun = m.group(1) if m else entry["runNumber"]
+            entry["cycleID"] = get_cycle_for_run(effectiveRun)
 
     calStatus["calibIndexList"] = calIndexList
 
