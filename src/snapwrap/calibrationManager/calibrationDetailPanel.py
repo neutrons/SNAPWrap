@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from dateutil import parser as dtparser
 
 from qtpy.QtCore import (  # type: ignore
     QAbstractTableModel,
@@ -69,6 +72,16 @@ class DetailTableModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             if value is None:
                 return ""
+            # Format timestamp to local time, truncated to the minute
+            if key == "timestamp" and isinstance(value, str) and value:
+                try:
+                    dt = dtparser.parse(value)
+                    # Convert to local time if timezone-aware
+                    if dt.tzinfo is not None:
+                        dt = dt.astimezone()
+                    return dt.strftime("%Y-%m-%d %H:%M")
+                except (ValueError, OverflowError):
+                    return str(value)
             return str(value)
 
         return None

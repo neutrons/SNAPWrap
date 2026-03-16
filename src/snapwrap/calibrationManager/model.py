@@ -18,7 +18,13 @@ from typing import Any, Dict, List, Optional
 
 import snapwrap.snapStateMgr as ssm
 from snapwrap.cycleDates import load_cycle_data
-from snapwrap.calibrationManager.constants import CalStatus
+from snapwrap.calibrationManager.constants import (
+    CalStatus,
+    CalTypeStatus,
+    caltype_status_for_cycle,
+    caltype_status_from_detail,
+    combine_caltype_statuses,
+)
 
 
 # ── PV key → short name mapping (mirrors autoStateName) ─────────────────
@@ -126,7 +132,12 @@ class CalibrationManagerModel:
                 bestCycle = cycle
         return bestCycle
 
-    def getAllStates(self, isLite: bool = True) -> List[Dict[str, Any]]:
+    def getAllStates(
+        self,
+        isLite: bool = True,
+        runNumber=None,
+        cycleID: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """Return a list of state summary dicts for every known state.
 
         Each dict contains the keys consumed by the State Overview table:
@@ -134,18 +145,57 @@ class CalibrationManagerModel:
         individual state params (``arc1``, …), calibration counts,
         latest cycle for difcal/normcal, and corruption flag.
 
-        This is the main data-fetch call for the top panel and may take
-        several seconds for 50+ states.
+        Parameters
+        ----------
+        runNumber : int or str, optional
+            If provided, status is scoped to this run (including
+            appliesTo and cycle matching).  This enables the
+            OUT_OF_CYCLE and UNMATCHED classifications.
+        cycleID : str, optional
+            If provided (and *runNumber* is ``None``), status reflects
+            whether the state has a calibration *from* this cycle.
+            The ``appliesTo`` range is not checked — only the
+            calibration's own cycle membership matters.
         """
         rows: List[Dict[str, Any]] = []
 
         for stateID in ssm.availableStates():
-            rows.append(self.getStateSummary(stateID, isLite=isLite))
+            rows.append(self.getStateSummary(
+                stateID, isLite=isLite, runNumber=runNumber, cycleID=cycleID,
+            ))
 
         return rows
 
-    def getStateSummary(self, stateID: str, isLite: bool = True) -> Dict[str, Any]:
+    def getStateSummary(
+        self,
+        stateID: str,
+        isLite: bool = True,
+        runNumber=None,
+        cycleID: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Build a single state-summary dict.
+
+        Parameters
+        ----------
+        stateID : str
+            The 16-character state hash.
+        isLite : bool
+            Whether to query lite-mode calibrations.
+        runNumber : int or str, optional
+            If provided, status is evaluated *for this run* (including
+            cycle matching via ``requireSameCycle=True``).  If ``None``,
+            status reflects whether the state has *any* calibrations.
+        cycleID : str, optional
+            If provided (and *runNumber* is ``None``), status reflects
+            whether the state has a calibration *from* this cycle.
+            The ``appliesTo`` range is not checked.
+
+        Returns
+        -------
+        dict
+            Keys consumed by the State Overview table, plus
+            ``difcalTypeStatus`` and ``normcalTypeStatus`` for the
+            detail panel.
 
         Separated from :meth:`getAllStates` so a single row can be
         refreshed after a repair without re-scanning everything.
@@ -154,44 +204,50 @@ class CalibrationManagerModel:
         params = self._parseStateParams(stateDict)
         desc = ssm.autoStateName(stateDict)
 
+        # When a cycleID is selected (without a specific run), we only
+        # need the unscoped index — appliesTo is irrelevant.
+        effectiveRun = runNumber if cycleID is None else None
+
         difcal = ssm.checkCalibrationStatus(
-            runNumber=None, stateID=stateID, isLite=isLite, calType="difcal",
+            runNumber=effectiveRun, stateID=stateID, isLite=isLite, calType="difcal",
         )
         nrmcal = ssm.checkCalibrationStatus(
-            runNumber=None, stateID=stateID, isLite=isLite, calType="normcal",
+            runNumber=effectiveRun, stateID=stateID, isLite=isLite, calType="normcal",
         )
 
-        # ── classify status ──────────────────────────────────────
-        hasDif = difcal["stateIsCalibrated"]
-        hasNrm = nrmcal["stateIsCalibrated"]
-        if hasDif and hasNrm:
-            status = CalStatus.FULL
-        elif hasDif or hasNrm:
-            status = CalStatus.PARTIAL
+        # ── per-calType classification ───────────────────────────
+        if cycleID is not None and runNumber is None:
+            difTypeStatus = caltype_status_for_cycle(difcal, cycleID)
+            nrmTypeStatus = caltype_status_for_cycle(nrmcal, cycleID)
         else:
-            status = CalStatus.UNCALIBRATED
+            difTypeStatus = caltype_status_from_detail(difcal)
+            nrmTypeStatus = caltype_status_from_detail(nrmcal)
 
         # ── corruption check ─────────────────────────────────────
-        isCorrupt = False
+        difCorrupt = False
+        nrmCorrupt = False
         try:
             difReport = ssm.validateIndex(
                 runNumber=None, stateID=stateID, isLite=isLite, calType="difcal",
             )
             if not difReport["ok"]:
-                isCorrupt = True
+                difCorrupt = True
         except Exception:
-            isCorrupt = True
+            difCorrupt = True
         try:
             nrmReport = ssm.validateIndex(
                 runNumber=None, stateID=stateID, isLite=isLite, calType="normcal",
             )
             if not nrmReport["ok"]:
-                isCorrupt = True
+                nrmCorrupt = True
         except Exception:
-            isCorrupt = True
+            nrmCorrupt = True
 
-        if isCorrupt:
-            status = CalStatus.CORRUPT
+        # ── combine into overall status ──────────────────────────
+        status = combine_caltype_statuses(
+            difTypeStatus, nrmTypeStatus,
+            difCorrupt=difCorrupt, nrmCorrupt=nrmCorrupt,
+        )
 
         # ── latest difcal cycle ──────────────────────────────────
         nDifcal = difcal["numberCalibrations"]
@@ -215,12 +271,16 @@ class CalibrationManagerModel:
             "stateID": stateID,
             "description": desc,
             "status": status,
+            "difcalTypeStatus": difTypeStatus,
+            "normcalTypeStatus": nrmTypeStatus,
+            "difcalDetail": difcal.get("statusDetail", ""),
+            "normcalDetail": nrmcal.get("statusDetail", ""),
             **params,
             "nDifcal": nDifcal,
             "latestDifcalCycle": latestDifcalCycle,
             "nNormcal": nNormcal,
             "latestNormcalCycle": latestNormcalCycle,
-            "isCorrupt": isCorrupt,
+            "isCorrupt": difCorrupt or nrmCorrupt,
         }
 
     # ── Calibration detail queries ───────────────────────────────────

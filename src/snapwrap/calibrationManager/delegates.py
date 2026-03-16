@@ -3,8 +3,10 @@
 Delegates
 ---------
 StatusLEDDelegate
-    Paints a coloured circle (red/amber/green/orange) in the Status column
-    based on the :class:`~constants.CalStatus` value.
+    Paints a coloured circle in the Status column based on the
+    :class:`~constants.CalStatus` value.  Supports both Mode A (existence)
+    and Mode B (validity) — the tooltip changes depending on whether per-
+    calType detail strings are present in the model data.
 
 RepairButtonDelegate
     Shows a "Repair" push-button in rows where corruption is detected.
@@ -13,7 +15,7 @@ RepairButtonDelegate
 from __future__ import annotations
 
 from qtpy.QtCore import QModelIndex, QRect, QSize, Qt, Signal  # type: ignore
-from qtpy.QtGui import QColor, QPainter  # type: ignore
+from qtpy.QtGui import QColor, QPainter, QPen  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QStyle,
     QStyleOptionButton,
@@ -22,7 +24,13 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from snapwrap.calibrationManager.constants import CalStatus, STATUS_COLOUR
+from snapwrap.calibrationManager.constants import (
+    CalStatus,
+    MODE_A_TOOLTIP,
+    STATUS_COLOUR,
+    STATUS_LABEL,
+    STATUS_TOOLTIP,
+)
 
 # Colour map  → QColor
 _QCOLOURS = {
@@ -30,13 +38,23 @@ _QCOLOURS = {
     "amber": QColor(0xFF, 0xA5, 0x00),
     "red": QColor(0xFF, 0x41, 0x36),
     "orange": QColor(0xFF, 0x85, 0x1B),
+    "blue": QColor(0x00, 0x74, 0xD9),
+    "grey": QColor(0xAA, 0xAA, 0xAA),
 }
 
 _LED_RADIUS = 8
 
 
 class StatusLEDDelegate(QStyledItemDelegate):
-    """Paints a solid coloured circle representing calibration status."""
+    """Paints a solid coloured circle representing calibration status.
+
+    Tooltip behaviour
+    -----------------
+    The delegate reads ``Qt.UserRole + 1`` for an optional rich tooltip
+    string.  When that role returns a non-empty string the delegate uses
+    it (Mode B — per-calType detail).  Otherwise it falls back to the
+    generic ``STATUS_TOOLTIP`` for Mode A.
+    """
 
     def paint(self, painter: QPainter, option, index: QModelIndex) -> None:
         # Let the default draw the background / selection highlight
@@ -48,14 +66,30 @@ class StatusLEDDelegate(QStyledItemDelegate):
             return
 
         colour = _QCOLOURS.get(STATUS_COLOUR.get(value, ""), QColor(Qt.gray))
+        centre = option.rect.center()
 
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(colour)
-        painter.setPen(Qt.NoPen)
 
-        centre = option.rect.center()
-        painter.drawEllipse(centre, _LED_RADIUS, _LED_RADIUS)
+        if value is CalStatus.CORRUPT:
+            # Draw a red ✕ instead of the LED circle
+            pen = QPen(colour, 3)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            d = _LED_RADIUS  # half-extent of the cross
+            painter.drawLine(
+                centre.x() - d, centre.y() - d,
+                centre.x() + d, centre.y() + d,
+            )
+            painter.drawLine(
+                centre.x() + d, centre.y() - d,
+                centre.x() - d, centre.y() + d,
+            )
+        else:
+            painter.setBrush(colour)
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(centre, _LED_RADIUS, _LED_RADIUS)
+
         painter.restore()
 
     def sizeHint(self, option, index: QModelIndex) -> QSize:
