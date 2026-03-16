@@ -231,8 +231,10 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     #determine stateID corresponding to run number 
     if runNumber is None:
         pass
-    else: 
+    elif stateID is None:
         [stateID, stateDict] = stateDef(runNumber)
+    # else: both runNumber and stateID provided — use the explicit stateID
+    # but keep runNumber for appliesTo / cycle matching
 
 
     home = SNAPHome()
