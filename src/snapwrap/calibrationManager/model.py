@@ -226,22 +226,35 @@ class CalibrationManagerModel:
         # ── corruption check ─────────────────────────────────────
         difCorrupt = False
         nrmCorrupt = False
+        corruptIssues: List[str] = []
         try:
             difReport = ssm.validateIndex(
                 runNumber=None, stateID=stateID, isLite=isLite, calType="difcal",
             )
             if not difReport["ok"]:
                 difCorrupt = True
-        except Exception:
+                for issue in difReport.get("issues", []):
+                    corruptIssues.append(f"difcal: {issue}")
+                for er in difReport.get("entries", []):
+                    for issue in er.get("issues", []):
+                        corruptIssues.append(f"difcal v{er.get('version', '?')}: {issue}")
+        except Exception as exc:
             difCorrupt = True
+            corruptIssues.append(f"difcal: validation error: {exc}")
         try:
             nrmReport = ssm.validateIndex(
                 runNumber=None, stateID=stateID, isLite=isLite, calType="normcal",
             )
             if not nrmReport["ok"]:
                 nrmCorrupt = True
-        except Exception:
+                for issue in nrmReport.get("issues", []):
+                    corruptIssues.append(f"normcal: {issue}")
+                for er in nrmReport.get("entries", []):
+                    for issue in er.get("issues", []):
+                        corruptIssues.append(f"normcal v{er.get('version', '?')}: {issue}")
+        except Exception as exc:
             nrmCorrupt = True
+            corruptIssues.append(f"normcal: validation error: {exc}")
 
         # ── combine into overall status ──────────────────────────
         status = combine_caltype_statuses(
@@ -281,6 +294,7 @@ class CalibrationManagerModel:
             "nNormcal": nNormcal,
             "latestNormcalCycle": latestNormcalCycle,
             "isCorrupt": difCorrupt or nrmCorrupt,
+            "corruptDetails": "\n".join(corruptIssues) if corruptIssues else "",
         }
 
     # ── Calibration detail queries ───────────────────────────────────
@@ -431,7 +445,16 @@ class CalibrationManagerModel:
             shutil.rmtree(vFolderPath)
 
         # 3. Remove the entry from the index and rewrite
-        updatedEntries = [e for e in indexEntries if int(e.get("version", -1)) != version]
+        #    Strip the 'cycleID' annotation that checkCalibrationStatus
+        #    added — it's not part of the on-disk schema and validateIndex
+        #    will flag it as an extra key.
+        _INDEX_KEYS = {"version", "runNumber", "useLiteMode",
+                       "appliesTo", "comments", "author", "timestamp"}
+        updatedEntries = [
+            {k: v for k, v in e.items() if k in _INDEX_KEYS}
+            for e in indexEntries
+            if int(e.get("version", -1)) != version
+        ]
         with open(indexPath, "w") as fh:
             json.dump(updatedEntries, fh, indent=2)
 

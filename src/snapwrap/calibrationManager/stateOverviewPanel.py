@@ -184,6 +184,9 @@ class StateTableModel(QAbstractTableModel):
                 return bool(value)
             if role == Qt.DisplayRole:
                 return "Yes" if value else ""
+            if role == Qt.ToolTipRole and value:
+                details = row_dict.get("corruptDetails", "")
+                return details if details else "Index validation failed"
             return None
 
         # Everything else
