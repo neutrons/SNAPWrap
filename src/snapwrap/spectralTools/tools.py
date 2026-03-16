@@ -139,6 +139,7 @@ def compatibleWorkspaces(handles):
 def compositeBackground(handles,dMin=0.65,
                         dMax=10.0,
                         minFractionOfMaxIntensity=0.00,
+                        extentScale=1.0,
                         createExcludedWS=False):
 
     #calculate exclusion ROI's using crystalSpecies
@@ -193,7 +194,7 @@ def compositeBackground(handles,dMin=0.65,
                                         minFractionOfMaxIntensity=minFractionOfMaxIntensity)
                 
                 for d in creature.dSpacings:
-                    extent = d*creature.extentOverPosition
+                    extent = extentScale*d*creature.extentOverPosition
                     roi = [d-extent/2,d+extent/2]
                     excludeList.append(roi)      
 
