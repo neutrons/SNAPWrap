@@ -307,8 +307,14 @@ class CalibrationManagerModel:
     ) -> List[Dict[str, Any]]:
         """Return enriched index entries for a state+calType.
 
-        Each entry is a copy of the raw index dict augmented with
-        ``cycleID`` (already done by ``checkCalibrationStatus``).
+        Each entry is a copy of the raw index dict augmented with:
+
+        * ``cycleID`` – already annotated by ``checkCalibrationStatus``.
+        * ``isPropagated`` – ``True`` when the entry was copied from
+          another state (detected via the standardised comment prefix).
+        * ``effectiveRun`` – for propagated entries this is the *donor*
+          run extracted from the comment; for native entries it is the
+          same as ``runNumber``.
 
         Entries are sorted by version ascending.
         """
@@ -316,6 +322,17 @@ class CalibrationManagerModel:
             runNumber=None, stateID=stateID, isLite=isLite, calType=calType,
         )
         entries = calStatus.get("calibIndexList", [])
+
+        for entry in entries:
+            comment = entry.get("comments", "")
+            m = _PROPAGATION_RE.match(comment)
+            if m:
+                entry["isPropagated"] = True
+                entry["effectiveRun"] = m.group(1)
+            else:
+                entry["isPropagated"] = False
+                entry["effectiveRun"] = entry.get("runNumber", "")
+
         # checkCalibrationStatus sorts by timestamp desc; re-sort by version asc
         entries.sort(key=lambda e: int(e.get("version", 0)))
         return entries

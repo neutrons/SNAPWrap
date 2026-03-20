@@ -13,6 +13,7 @@ from qtpy.QtCore import (  # type: ignore
     Qt,
     Signal,
 )
+from qtpy.QtGui import QFont  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QHBoxLayout,
     QHeaderView,
@@ -68,6 +69,7 @@ class DetailTableModel(QAbstractTableModel):
         entry = self._data[index.row()]
         _, key, _ = DETAIL_COLUMNS[index.column()]
         value = entry.get(key)
+        isPropagated = entry.get("isPropagated", False)
 
         if role == Qt.DisplayRole:
             if value is None:
@@ -82,7 +84,23 @@ class DetailTableModel(QAbstractTableModel):
                     return dt.strftime("%Y-%m-%d %H:%M")
                 except (ValueError, OverflowError):
                     return str(value)
+            # Run column: prefix with arrow for propagated entries
+            if key == "effectiveRun" and isPropagated:
+                return f"⇐ {value}"
             return str(value)
+
+        # Italic font for entire row when propagated
+        if role == Qt.FontRole and isPropagated:
+            font = QFont()
+            font.setItalic(True)
+            return font
+
+        # Tooltip on the Run column explaining the propagation
+        if role == Qt.ToolTipRole and key == "effectiveRun" and isPropagated:
+            return (
+                f"Propagated from run {value} (donor).\n"
+                f"Index runNumber is {entry.get('runNumber', '?')} (seed run of this state)."
+            )
 
         return None
 

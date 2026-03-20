@@ -253,7 +253,7 @@ STATE_COLUMNS = [
 
 DETAIL_COLUMNS = [
     ("Version",    "version",          "C"),
-    ("Run",        "runNumber",        "R"),
+    ("Run",        "effectiveRun",     "R"),
     ("Cycle",      "cycleID",          "C"),
     ("appliesTo",  "appliesTo",        "L"),
     ("Author",     "author",           "L"),
