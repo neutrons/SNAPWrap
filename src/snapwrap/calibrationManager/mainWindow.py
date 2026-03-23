@@ -13,6 +13,7 @@ from typing import Optional
 from qtpy.QtCore import QObject, QThread, Qt, Signal  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QDialog,
+    QLabel,
     QMessageBox,
     QProgressBar,
     QSplitter,
@@ -106,6 +107,17 @@ class CalibrationManager(QDialog):
 
         # ── layout ────────────────────────────────────────────────
         outerLayout = QVBoxLayout(self)
+
+        # ── calibration home path indicator ───────────────────────
+        import snapwrap.snapStateMgr as ssm
+
+        home = ssm.SNAPHome()
+        self._homeLabel = QLabel(f"Calibration home: {home.calib}")
+        self._homeLabel.setStyleSheet(
+            "color: #666; font-size: 11px; padding: 2px 4px;"
+        )
+        self._homeLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        outerLayout.addWidget(self._homeLabel)
 
         splitter = QSplitter(Qt.Vertical)
 

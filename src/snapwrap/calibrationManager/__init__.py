@@ -6,6 +6,17 @@ Usage from Mantid Workbench script console::
     show()
 """
 
+import logging as _logging
+
+# Silence the flood of INFO messages from SNAPRed's MantidSnapper
+# (e.g. "CheckIPTS - get IPTS directory") that fire on every
+# DataFactoryService / LocalDataService call.  These use Python's
+# logging module, so Mantid's own ConfigService log level has no
+# effect on them.
+_logging.getLogger("snapred.backend.recipe.algorithm.MantidSnapper").setLevel(
+    _logging.WARNING
+)
+
 # Module-level reference keeps the dialog alive while it is open.
 _active_dialog = None
 
