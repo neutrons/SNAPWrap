@@ -2,57 +2,55 @@ import json
 import os
 import textwrap
 import pytest
+from unittest.mock import patch
 
 from snapwrap import snapStateMgr as ssm
-from snapred.meta import Config
 
 
-def test_pullStateDict_missing_file(tmp_path, capsys, monkeypatch):
+def test_pullStateDict_missing_file(tmp_path, capsys):
     # Point Config to a temp calibration home
-    monkeypatch.setitem(Config, 'instrument.calibration.home', str(tmp_path))
-
-    state_id = 'deadbeefdeadbeef'
-    # Ensure no file exists
-    out = ssm.pullStateDict(state_id)
+    with patch.dict(ssm.Config._config, {"instrument": {"calibration": {"home": str(tmp_path)}}}):
+        state_id = 'deadbeefdeadbeef'
+        out = ssm.pullStateDict(state_id)
     captured = capsys.readouterr()
     assert out == {}, "Expected empty dict when calibration file missing"
     assert 'CalibrationParameters.json not found' in captured.out
 
 
-def test_pullStateDict_invalid_json(tmp_path, capsys, monkeypatch):
-    monkeypatch.setitem(Config, 'instrument.calibration.home', str(tmp_path))
-    state_id = 'cafebabecafebabe'
-    state_dir = tmp_path / 'Powder' / state_id / 'lite' / 'diffraction' / 'v_0000'
-    state_dir.mkdir(parents=True)
-    bad_json_path = state_dir / 'CalibrationParameters.json'
-    bad_json_path.write_text('{ this is : not valid json }')
+def test_pullStateDict_invalid_json(tmp_path, capsys):
+    with patch.dict(ssm.Config._config, {"instrument": {"calibration": {"home": str(tmp_path)}}}):
+        state_id = 'cafebabecafebabe'
+        state_dir = tmp_path / 'Powder' / state_id / 'lite' / 'diffraction' / 'v_0000'
+        state_dir.mkdir(parents=True)
+        bad_json_path = state_dir / 'CalibrationParameters.json'
+        bad_json_path.write_text('{ this is : not valid json }')
 
-    out = ssm.pullStateDict(state_id)
+        out = ssm.pullStateDict(state_id)
     captured = capsys.readouterr()
     assert out == {}
     assert 'Failed to parse JSON' in captured.out
 
 
-def test_pullStateDict_valid_json(tmp_path, monkeypatch):
-    monkeypatch.setitem(Config, 'instrument.calibration.home', str(tmp_path))
-    state_id = '0123456789abcdef'
-    state_dir = tmp_path / 'Powder' / state_id / 'lite' / 'diffraction' / 'v_0000'
-    state_dir.mkdir(parents=True)
+def test_pullStateDict_valid_json(tmp_path):
+    with patch.dict(ssm.Config._config, {"instrument": {"calibration": {"home": str(tmp_path)}}}):
+        state_id = '0123456789abcdef'
+        state_dir = tmp_path / 'Powder' / state_id / 'lite' / 'diffraction' / 'v_0000'
+        state_dir.mkdir(parents=True)
 
-    payload = {
-        "instrumentState": {
-            "detectorState": {
-                "PVs": {
-                    "det_lin1": 1,
-                    "det_lin2": 2,
-                    "BL3:Det:TH:BL:Frequency": 60
+        payload = {
+            "instrumentState": {
+                "detectorState": {
+                    "PVs": {
+                        "det_lin1": 1,
+                        "det_lin2": 2,
+                        "BL3:Det:TH:BL:Frequency": 60
+                    }
                 }
             }
         }
-    }
-    (state_dir / 'CalibrationParameters.json').write_text(json.dumps(payload))
+        (state_dir / 'CalibrationParameters.json').write_text(json.dumps(payload))
 
-    out = ssm.pullStateDict(state_id)
+        out = ssm.pullStateDict(state_id)
     # det_lin1/det_lin2 should be removed and frequency converted to float
     assert "det_lin1" not in out
     assert "det_lin2" not in out

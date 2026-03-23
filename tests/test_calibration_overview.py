@@ -17,7 +17,14 @@ import pytest
 
 # ── Ensure the mock-free constants module is importable ─────────────
 # We mock qtpy before importing the panel so we don't need a real
-# display server.
+# display server.  We also mock the snapwrap backend modules that
+# chain into mantid.
+#
+# IMPORTANT: We must save any real modules that were already imported
+# and restore them after our imports are done, otherwise these mocks
+# leak into other test files (e.g. test_calibration_status.py) and
+# cause every ssm function call to return a MagicMock.
+
 _qt_core_mock = MagicMock()
 _qt_core_mock.Qt.DisplayRole = 0
 _qt_core_mock.Qt.UserRole = 256
@@ -27,14 +34,21 @@ _qt_core_mock.Qt.CaseInsensitive = 1
 _qt_core_mock.Qt.NoPen = 0
 _qt_core_mock.Qt.ItemIsEditable = 2
 
-sys.modules.setdefault("qtpy", MagicMock())
-sys.modules.setdefault("qtpy.QtCore", _qt_core_mock)
-sys.modules.setdefault("qtpy.QtGui", MagicMock())
-sys.modules.setdefault("qtpy.QtWidgets", MagicMock())
+_MOCK_MODULES = {
+    "qtpy": MagicMock(),
+    "qtpy.QtCore": _qt_core_mock,
+    "qtpy.QtGui": MagicMock(),
+    "qtpy.QtWidgets": MagicMock(),
+    "snapwrap.snapStateMgr": MagicMock(),
+    "snapwrap.cycleDates": MagicMock(),
+}
 
-# Mock out the snapwrap backend modules that chain into mantid
-sys.modules.setdefault("snapwrap.snapStateMgr", MagicMock())
-sys.modules.setdefault("snapwrap.cycleDates", MagicMock())
+# Save originals so we can restore after import
+_saved = {name: sys.modules.get(name) for name in _MOCK_MODULES}
+
+# Inject mocks for the imports below
+for name, mock in _MOCK_MODULES.items():
+    sys.modules.setdefault(name, mock)
 
 
 from snapwrap.calibrationManager.constants import (
@@ -47,6 +61,13 @@ from snapwrap.calibrationManager.constants import (
     caltype_status_from_detail,
     combine_caltype_statuses,
 )
+
+# ── Restore original modules so other test files are not affected ───
+for name, original in _saved.items():
+    if original is not None:
+        sys.modules[name] = original
+    else:
+        sys.modules.pop(name, None)
 
 
 # ═══════════════════════════════════════════════════════════════════════

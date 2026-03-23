@@ -182,6 +182,8 @@ class StateTableModel(QAbstractTableModel):
         if key == "isCorrupt":
             if role == Qt.UserRole:
                 return bool(value)
+            if role == Qt.UserRole + 2:
+                return bool(row_dict.get("deleteOnly", False))
             if role == Qt.DisplayRole:
                 return "Yes" if value else ""
             if role == Qt.ToolTipRole and value:
@@ -239,6 +241,9 @@ class StateOverviewPanel(QWidget):
         Emitted when the user selects a row, carrying the stateID.
     repairRequested(str)
         Emitted when the Repair button is clicked, carrying the stateID.
+    deleteStateRequested(str)
+        Emitted when the Delete button is clicked (cross-state contamination),
+        carrying the stateID.
     contextChanged(str)
         Emitted when the cycle/run context changes, carrying either
         a run number string (if the run field is filled) or an empty
@@ -248,6 +253,7 @@ class StateOverviewPanel(QWidget):
 
     stateSelected = Signal(str)
     repairRequested = Signal(str)
+    deleteStateRequested = Signal(str)
     contextChanged = Signal(str)  # run number or ""
 
     def __init__(self, parent=None):
@@ -323,6 +329,7 @@ class StateOverviewPanel(QWidget):
         )
         self._repairDelegate = RepairButtonDelegate(self)
         self._repairDelegate.repairRequested.connect(self.repairRequested)
+        self._repairDelegate.deleteStateRequested.connect(self.deleteStateRequested)
         self.tableView.setItemDelegateForColumn(corrupt_col, self._repairDelegate)
 
         layout.addWidget(self.tableView)

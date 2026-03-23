@@ -97,21 +97,33 @@ class StatusLEDDelegate(QStyledItemDelegate):
 
 
 class RepairButtonDelegate(QStyledItemDelegate):
-    """Renders a clickable "Repair" button when the row is flagged corrupt.
+    """Renders a clickable action button when the row is flagged corrupt.
+
+    The button label is context-dependent:
+
+    * **"Repair…"** — standard corruption that ``fixIndex`` can resolve.
+    * **"Delete…"** — cross-state contamination where the only safe
+      option is to delete the entire state folder.
+
+    ``Qt.UserRole`` carries the ``isCorrupt`` bool.
+    ``Qt.UserRole + 2`` carries the ``deleteOnly`` bool (True → "Delete…").
 
     Emits :pyqtSignal:`repairRequested(str)` with the stateID.
     """
 
     repairRequested = Signal(str)
+    deleteStateRequested = Signal(str)
 
     def paint(self, painter: QPainter, option, index: QModelIndex) -> None:
         is_corrupt = index.data(Qt.UserRole)
         if not is_corrupt:
             return
 
+        delete_only = index.data(Qt.UserRole + 2)
+
         btn = QStyleOptionButton()
         btn.rect = option.rect.adjusted(4, 4, -4, -4)
-        btn.text = "Repair…"
+        btn.text = "Delete…" if delete_only else "Repair…"
         btn.state = QStyle.State_Enabled
         QApplication.style().drawControl(QStyle.CE_PushButton, btn, painter)
 
@@ -127,7 +139,11 @@ class RepairButtonDelegate(QStyledItemDelegate):
             state_index = index.sibling(index.row(), 1)
             state_id = state_index.data(Qt.DisplayRole)
             if state_id:
-                self.repairRequested.emit(str(state_id))
+                delete_only = index.data(Qt.UserRole + 2)
+                if delete_only:
+                    self.deleteStateRequested.emit(str(state_id))
+                else:
+                    self.repairRequested.emit(str(state_id))
             return True
 
         return False

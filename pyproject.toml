@@ -140,9 +140,11 @@ pre-commit = "*"
 libmamba = "*"
 libarchive = "*"
 anaconda-client = "*"
-boa = "*"
-conda-build = "*"
+# conda-build 25+ drops the py-lief <0.15 constraint (CVE-2024-31636, CVE-2025-15504)
+conda-build = ">=25"
 python-build = "*"
+# httpcore 1.0.9+ depends on h11 >=0.16 which fixes CVE-2025-43859
+httpcore = ">=1.0.9"
 twine = "*"
 sphinx = "*"
 sphinx_rtd_theme = "*"
@@ -271,7 +273,9 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
 ] }
 
 # Misc
-audit-deps = { cmd = "pip-audit --local -s osv", description = "Audit the package dependencies for vulnerabilities" }
+# tornado 6.5.5 fixes CVE-2026-31958 / GHSA-78cv-mqj4-43f7 but is not yet on conda-forge (latest: 6.5.4)
+# Remove the --ignore-vuln flags once conda-forge packages tornado >=6.5.5
+audit-deps = { cmd = "pip-audit --local -s osv --ignore-vuln GHSA-78cv-mqj4-43f7 --ignore-vuln CVE-2026-31958", description = "Audit the package dependencies for vulnerabilities" }
 clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
 clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
 clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artifacts" }
