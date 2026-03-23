@@ -131,6 +131,7 @@ class CalibrationManager(QDialog):
         # ── signal wiring ─────────────────────────────────────────
         self._topPanel.stateSelected.connect(self._onStateSelected)
         self._topPanel.repairRequested.connect(self._onRepairRequested)
+        self._topPanel.deleteStateRequested.connect(self._onDeleteStateRequested)
         self._topPanel.refreshBtn.clicked.connect(self._refresh)
         self._topPanel.contextChanged.connect(self._onContextChanged)
         self._bottomPanel.deleteVersionRequested.connect(self._onDeleteVersion)
@@ -339,6 +340,43 @@ class CalibrationManager(QDialog):
             self._statusBar.showMessage(f"Repaired {stateID}.", 5000)
         except Exception as exc:
             QMessageBox.warning(self, "Repair", f"Repair failed: {exc}")
+
+    def _onDeleteStateRequested(self, stateID: str) -> None:
+        """Handle deletion of an unrepairable (cross-state contaminated) state."""
+        # Dry run first
+        try:
+            result = self._model.deleteStateFolder(stateID, dryRun=True)
+        except Exception as exc:
+            QMessageBox.warning(self, "Delete State", f"Pre-check failed: {exc}")
+            return
+
+        if not result["ok"]:
+            QMessageBox.warning(self, "Delete State", result["message"])
+            return
+
+        reply = QMessageBox.warning(
+            self,
+            "Confirm Delete State",
+            f"This state has cross-state contamination and cannot be repaired.\n\n"
+            f"{result['message']}\n\n"
+            f"The entire folder will be backed up before deletion.\n"
+            f"Proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            result = self._model.deleteStateFolder(stateID, dryRun=False)
+            if result["ok"]:
+                self._statusBar.showMessage(result["message"], 8000)
+                self._bottomPanel.clear()
+                self._refresh()
+            else:
+                QMessageBox.warning(self, "Delete State", result["message"])
+        except Exception as exc:
+            QMessageBox.warning(self, "Delete State", f"Deletion failed: {exc}")
 
     def _onDeleteVersion(self, stateID: str, calType: str, version: int) -> None:
         """Handle a version-deletion request from the detail panel."""

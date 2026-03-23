@@ -295,6 +295,9 @@ class CalibrationManagerModel:
             "latestNormcalCycle": latestNormcalCycle,
             "isCorrupt": difCorrupt or nrmCorrupt,
             "corruptDetails": "\n".join(corruptIssues) if corruptIssues else "",
+            # True when the corruption cannot be fixed by fixIndex and the
+            # only resolution is deleting the entire state folder.
+            "deleteOnly": any("cross-state contamination" in ci for ci in corruptIssues),
         }
 
     # ── Calibration detail queries ───────────────────────────────────
@@ -486,3 +489,57 @@ class CalibrationManagerModel:
             "message": f"Deleted version {version}. Backup at {backupDir}.",
             "fixReport": fixReport,
         }
+
+    @staticmethod
+    def deleteStateFolder(stateID: str, dryRun: bool = True) -> Dict[str, str]:
+        """Delete an entire state folder (use with extreme caution).
+
+        The function first creates a full backup of the state folder under
+        the calibration Backup directory. When *dryRun* is True the function
+        only reports what would be done.
+
+        Returns
+        -------
+        dict
+            ``ok`` : bool
+            ``message`` : human-readable summary
+            ``backupPath`` : path to the backup (or proposed backup) location
+        """
+        import os
+        import shutil
+        from datetime import datetime
+
+        home = ssm.SNAPHome()
+        statePath = os.path.join(home.powder, stateID)
+        if not os.path.exists(statePath):
+            return {"ok": False, "message": f"State folder not found: {statePath}", "backupPath": ""}
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_root = ssm._backup_dir()
+        backupName = f"deleteState_{stateID}_{stamp}"
+        backupPath = os.path.join(backup_root, backupName)
+
+        summary = ssm._folder_stat_summary(statePath)
+
+        if dryRun:
+            return {
+                "ok": True,
+                "message": (
+                    f"[DRY RUN] Would back up {statePath} → {backupPath} and then "
+                    "delete the original state folder.\n\nFolder summary:\n" + summary
+                ),
+                "backupPath": backupPath,
+            }
+
+        # Perform backup then delete
+        try:
+            shutil.copytree(statePath, backupPath)
+        except Exception as e:
+            return {"ok": False, "message": f"Failed to copy backup: {e}", "backupPath": ""}
+
+        try:
+            shutil.rmtree(statePath)
+        except Exception as e:
+            return {"ok": False, "message": f"Backup created at {backupPath} but failed to delete original: {e}", "backupPath": backupPath}
+
+        return {"ok": True, "message": f"State folder deleted. Backup at {backupPath}", "backupPath": backupPath}
