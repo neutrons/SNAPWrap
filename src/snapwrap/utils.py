@@ -228,8 +228,11 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
         print(f"Reducing run {runNumber} from {startTime}s to {stopTime}s")
         wsNames = reduce(runNumber=runNumber, **reduce_kwargs)
 
-        # rename output workspace to indicate sequencess
+        # rename output workspace to indicate sequences
+        print(f"Debug: reduced workspace names are: {wsNames}")
         for name in wsNames:
+            if "pixelmask" in name:
+                continue #if a pixel mask is used, SNAPRed returns its workspace name. Skip this as it's not a reduced workspace
             print("Original name: ",name)
             if qsp:
                 handle=io.redObject(name,requiredUnits="qsp")
