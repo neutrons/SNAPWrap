@@ -2,6 +2,7 @@
 # tools to manipulate workspaces.
 
 import numpy as np 
+import re
 import sys
 import glob
 import os
@@ -35,7 +36,9 @@ class redObject:
                  iptsOverride=None,
                  exportFormats=[],
                  fileTag=None,
-                 cleanTreeOverride=None):
+                 cleanTreeOverride=None,
+                 allowSuffix=False,
+                 requiredSuffix=None):
 
         if WrapConfig.get("cleanTree"): #new variable to ignore timestamps
             cleanTree = True
@@ -97,8 +100,10 @@ class redObject:
             twoFour = False
             indexShift = 0  
 
-        # filter on parsed length            
-        if len(parsed) != nElem:
+        # filter on parsed length
+        # Instead of demanding an exact element count, require _at least_
+        # nElem tokens.  Extra tokens are treated as a potential suffix.
+        if len(parsed) < nElem:
             self.isReducedDataWorkspace = False
             return
 
@@ -113,8 +118,95 @@ class redObject:
                 self.isReducedDataWorkspace = False
                 return
 
-        #process run number ensure it is an int retain original string
-        self.runNumberString = parsed[3+indexShift] # indexShift should handle 2_4 case. 
+        # ── Process run number and detect suffix ─────────────────
+        # The run-number token sits at parsed[3+indexShift].
+        # In the canonical case it is exactly 6 digits ("056056").
+        # A suffix may follow the run number in several ways:
+        #   - same token, no delimiter:   "056056mySuffix"
+        #   - same token, dash/dot:       "056056-bgd_sub" or "056056.v2"
+        #   - extra tokens after nElem:   "..._056056_made_a_change"
+        #
+        # Strategy: pull the first 6 digits as runNumber, then
+        # reconstruct everything after the canonical elements as
+        # the raw suffix string.
+
+        runToken = parsed[3 + indexShift]
+
+        # Extract the 6-digit run number from the front of the token
+        m = re.match(r'^(\d{6})(.*)', runToken)
+        if m is None:
+            self.isReducedDataWorkspace = False
+            return
+
+        self.runNumberString = m.group(1)
+        inlineRemainder = m.group(2)  # text after digits in same token
+
+        # Determine which tokens are "extra" beyond the canonical schema.
+        # When cleanTree is False the canonical layout includes a
+        # timestamp token at parsed[4+indexShift].  However, the token
+        # sitting there might actually be a suffix (e.g. the workspace
+        # was created in cleanTree mode, or the user appended a suffix
+        # with an underscore delimiter).  We therefore validate the
+        # candidate timestamp before accepting it.
+
+        _TIMESTAMP_RE = re.compile(
+            r'^\d{4}-\d{2}-\d{2}T\d{6}$'  # e.g. 2025-10-29T143056
+        )
+
+        if cleanTree:
+            # canonical: prefix_units_pgs_run  → 4 tokens (or 5 with 2_4)
+            extraStart = 4 + indexShift
+            self.timeStamp = None
+        else:
+            # canonical: prefix_units_pgs_run_timestamp  → 5 tokens (or 6 with 2_4)
+            # Validate that the candidate timestamp token is really a timestamp.
+            tsIndex = 4 + indexShift
+            if len(parsed) > tsIndex and _TIMESTAMP_RE.match(parsed[tsIndex]):
+                self.timeStamp = parsed[tsIndex]
+                extraStart = 5 + indexShift
+            else:
+                # No valid timestamp found — treat this workspace as
+                # if it were cleanTree (timestamp-less).
+                self.timeStamp = None
+                extraStart = 4 + indexShift
+
+        extraTokens = parsed[extraStart:]
+
+        # Build the suffix: inline remainder + any extra tokens,
+        # stripped of a single leading delimiter character.
+        suffixParts = []
+        if inlineRemainder:
+            # Strip a single leading delimiter [-._] from the inline part
+            stripped = re.sub(r'^[-._]', '', inlineRemainder)
+            if stripped:
+                suffixParts.append(stripped)
+        if extraTokens:
+            suffixParts.append('_'.join(extraTokens))
+
+        rawSuffix = '_'.join(suffixParts) if suffixParts else None
+        self.suffix = rawSuffix
+
+        # ── Suffix policy ────────────────────────────────────────
+        # By default (allowSuffix=False, requiredSuffix=None):
+        #   suffix detected → reject
+        # allowSuffix=True, requiredSuffix=None:
+        #   any suffix (or none) is accepted
+        # requiredSuffix=<string>:
+        #   implicitly allows suffixes, but only this exact one
+        if requiredSuffix is not None:
+            # requiredSuffix implies allowSuffix
+            if not allowSuffix:
+                mantid.kernel.Logger("redObject").warning(
+                    f"requiredSuffix='{requiredSuffix}' was set "
+                    "but allowSuffix=False — allowSuffix is being ignored."
+                )
+            if rawSuffix != requiredSuffix:
+                self.isReducedDataWorkspace = False
+                return
+        elif rawSuffix is not None and not allowSuffix:
+            self.isReducedDataWorkspace = False
+            return
+        
         self.runNumber=int(self.runNumberString)
 
         if requiredRunNumber is not None:
@@ -123,12 +215,6 @@ class redObject:
                 return  
 
         # At this point we have passed all available filters
-
-        # aquire timestamp only if it exists
-        if cleanTree:
-            self.timeStamp = None
-        else:       
-            self.timeStamp = parsed[4+indexShift]
 
         #get useful workspace spectral properties (e.g. number histograms, binning etc)
         self.wsProperties(wsName)
@@ -356,6 +442,8 @@ def reducedRuns(prefix='reduced',
                 exportFormats=[], 
                 fileTag=None,
                 cleanTreeOverride=None,
+                allowSuffix=False,
+                requiredSuffix=None,
                 verbose=False):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a `runNumber` attribute
@@ -387,7 +475,9 @@ def reducedRuns(prefix='reduced',
                         iptsOverride=iptsOverride,
                         exportFormats=exportFormats,
                         fileTag=fileTag,
-                        cleanTreeOverride=cleanTreeOverride) 
+                        cleanTreeOverride=cleanTreeOverride,
+                        allowSuffix=allowSuffix,
+                        requiredSuffix=requiredSuffix) 
 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
