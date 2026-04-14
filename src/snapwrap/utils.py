@@ -1062,8 +1062,11 @@ def file(nameKeys,operation="add",cabinetName="File_Cabinet"):
                 wsGroup.add(wsName)
 
         else:
+            if len(toBeFiled) == 0:
+                print(f"No workspaces found with name keys {nameKeys}, so no cabinet created")
+                return
             GroupWorkspaces(InputWorkspaces=toBeFiled,
-                        OutputWOrkspace=cabinetName)
+                        OutputWorkspace=cabinetName)
 
     if operation.lower() == "remove":
         if not mtd.doesExist(cabinetName):
@@ -1201,7 +1204,9 @@ def resample(sampleFactor=1,
              prefix='reduced',
              units='dsp',
              PGS = None,
-             runNumber=None):
+             runNumber=None,
+             allowSuffix=False,
+             requiredSuffix=None):
 
     # function to downsample reduced workspaces
 
@@ -1209,7 +1214,9 @@ def resample(sampleFactor=1,
                                    units=units,
                                    PGS = PGS,
                                    runNumber=runNumber,
-                                   exportFormats=[])
+                                   exportFormats=[],
+                                   allowSuffix=allowSuffix,
+                                   requiredSuffix=requiredSuffix)
 
     if sampleFactor > 1:
         print(f"Warning: sampleFactor is > 1. This will upsample data which is lossy!")
@@ -1261,6 +1268,8 @@ def exportData(prefix='reduced',
                fileTag=None,
                latestOnly=True,
                gsaInstPrm=True,
+               allowSuffix=False,
+               requiredSuffix=None,
                ):
     
     #creates a list of reducedGroups then export using the requested export formats
@@ -1270,8 +1279,14 @@ def exportData(prefix='reduced',
                                    runNumber = runNumber,
                                    iptsOverride = iptsOverride,
                                    exportFormats = exportFormats,
-                                   fileTag = fileTag)
+                                   fileTag = fileTag,
+                                   allowSuffix=allowSuffix,
+                                   requiredSuffix=requiredSuffix)
     
+    if len(reducedGroups) == 0:
+        print("No matching reduced workspaces found. Check filters.")
+        return
+
     io.exportReducedGroups(reducedGroups,latestOnly,gsaInstPrm)
 
 def workspaceHandles(prefix="reduced",
@@ -1279,7 +1294,9 @@ def workspaceHandles(prefix="reduced",
                      PGS=None,
                      runNumber=None,
                      latestOnly=True,
-                     cleanTreeOverride = None):
+                     cleanTreeOverride = None,
+                     allowSuffix=False,
+                     requiredSuffix=None):
 
     # returns a list of redObjects for the requested workspaces matching arguments
 
@@ -1287,7 +1304,9 @@ def workspaceHandles(prefix="reduced",
                                  units=units,
                                  PGS=PGS,
                                  runNumber=runNumber,
-                                 cleanTreeOverride=cleanTreeOverride)
+                                 cleanTreeOverride=cleanTreeOverride,
+                                 allowSuffix=allowSuffix,
+                                 requiredSuffix=requiredSuffix)
     if not reducedList:
         print("No matching workspaces found. Check filters")
         return

@@ -442,6 +442,8 @@ def reducedRuns(prefix='reduced',
                 exportFormats=[], 
                 fileTag=None,
                 cleanTreeOverride=None,
+                allowSuffix=False,
+                requiredSuffix=None,
                 verbose=False):#,latestOnly=True,gsaInstPrm=True):
 
     #generates a list of reductionGroups. Each of these has a `runNumber` attribute
@@ -473,7 +475,9 @@ def reducedRuns(prefix='reduced',
                         iptsOverride=iptsOverride,
                         exportFormats=exportFormats,
                         fileTag=fileTag,
-                        cleanTreeOverride=cleanTreeOverride) 
+                        cleanTreeOverride=cleanTreeOverride,
+                        allowSuffix=allowSuffix,
+                        requiredSuffix=requiredSuffix) 
 
         if red.isReducedDataWorkspace:
             redObjectList.append(red)
