@@ -1240,9 +1240,9 @@ def resample(sampleFactor=1,
 
                 cleanTree= WrapConfig.get("cleanTree")
                 if cleanTree:
-                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumber}"
+                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumberString}"
                 else:
-                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumber}_{redObj.timeStamp}"
+                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumberString}_{redObj.timeStamp}"
 
                 print(f"outputWorkspace is: {outWSName}")
                 RebinRagged(InputWorkspace=redObj.wsName,
