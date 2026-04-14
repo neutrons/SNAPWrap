@@ -141,13 +141,34 @@ class redObject:
         self.runNumberString = m.group(1)
         inlineRemainder = m.group(2)  # text after digits in same token
 
-        # Determine which tokens are "extra" beyond the canonical schema
+        # Determine which tokens are "extra" beyond the canonical schema.
+        # When cleanTree is False the canonical layout includes a
+        # timestamp token at parsed[4+indexShift].  However, the token
+        # sitting there might actually be a suffix (e.g. the workspace
+        # was created in cleanTree mode, or the user appended a suffix
+        # with an underscore delimiter).  We therefore validate the
+        # candidate timestamp before accepting it.
+
+        _TIMESTAMP_RE = re.compile(
+            r'^\d{4}-\d{2}-\d{2}T\d{6}$'  # e.g. 2025-10-29T143056
+        )
+
         if cleanTree:
             # canonical: prefix_units_pgs_run  → 4 tokens (or 5 with 2_4)
             extraStart = 4 + indexShift
+            self.timeStamp = None
         else:
             # canonical: prefix_units_pgs_run_timestamp  → 5 tokens (or 6 with 2_4)
-            extraStart = 5 + indexShift
+            # Validate that the candidate timestamp token is really a timestamp.
+            tsIndex = 4 + indexShift
+            if len(parsed) > tsIndex and _TIMESTAMP_RE.match(parsed[tsIndex]):
+                self.timeStamp = parsed[tsIndex]
+                extraStart = 5 + indexShift
+            else:
+                # No valid timestamp found — treat this workspace as
+                # if it were cleanTree (timestamp-less).
+                self.timeStamp = None
+                extraStart = 4 + indexShift
 
         extraTokens = parsed[extraStart:]
 
@@ -194,12 +215,6 @@ class redObject:
                 return  
 
         # At this point we have passed all available filters
-
-        # aquire timestamp only if it exists
-        if cleanTree:
-            self.timeStamp = None
-        else:       
-            self.timeStamp = parsed[4+indexShift]
 
         #get useful workspace spectral properties (e.g. number histograms, binning etc)
         self.wsProperties(wsName)
