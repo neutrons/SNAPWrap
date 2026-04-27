@@ -24,6 +24,7 @@ from snapwrap.calibrationManager.constants import (
     caltype_status_for_cycle,
     caltype_status_from_detail,
     combine_caltype_statuses,
+    is_double_propagated,
 )
 
 
@@ -257,9 +258,21 @@ class CalibrationManagerModel:
             corruptIssues.append(f"normcal: validation error: {exc}")
 
         # ── combine into overall status ──────────────────────────
+        # Check for double-propagated difcal entries (copy-of-copy).
+        # Only scan entries that are not version 0 (geometric default).
+        difcalEntries = difcal.get("calibIndexList", [])
+        doublePropVersions = [
+            int(e.get("version", -1))
+            for e in difcalEntries
+            if int(e.get("version", -1)) != 0
+            and is_double_propagated(e.get("comments", ""))
+        ]
+        hasDoublePropagated = bool(doublePropVersions)
+
         status = combine_caltype_statuses(
             difTypeStatus, nrmTypeStatus,
             difCorrupt=difCorrupt, nrmCorrupt=nrmCorrupt,
+            hasDoublePropagated=hasDoublePropagated,
         )
 
         # ── latest difcal cycle ──────────────────────────────────
@@ -298,6 +311,8 @@ class CalibrationManagerModel:
             # True when the corruption cannot be fixed by fixIndex and the
             # only resolution is deleting the entire state folder.
             "deleteOnly": any("cross-state contamination" in ci for ci in corruptIssues),
+            "hasDoublePropagated": hasDoublePropagated,
+            "doublePropagatedVersions": doublePropVersions,
         }
 
     # ── Calibration detail queries ───────────────────────────────────
@@ -335,6 +350,8 @@ class CalibrationManagerModel:
             else:
                 entry["isPropagated"] = False
                 entry["effectiveRun"] = entry.get("runNumber", "")
+            # Flag copy-of-copy entries for the UI to highlight
+            entry["isDoublePropagated"] = is_double_propagated(comment)
 
         # checkCalibrationStatus sorts by timestamp desc; re-sort by version asc
         entries.sort(key=lambda e: int(e.get("version", 0)))

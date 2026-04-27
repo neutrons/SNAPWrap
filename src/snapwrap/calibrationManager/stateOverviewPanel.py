@@ -200,9 +200,12 @@ class StateTableModel(QAbstractTableModel):
             return str(value)
 
         # Red text for corrupt rows (all columns)
+        # Yellow text for double-propagated rows (all columns)
         if role == Qt.ForegroundRole:
             if row_dict.get("isCorrupt"):
                 return QColor(0xFF, 0x41, 0x36)
+            if row_dict.get("hasDoublePropagated"):
+                return QColor(0xFF, 0xDD, 0x00)
 
         return None
 

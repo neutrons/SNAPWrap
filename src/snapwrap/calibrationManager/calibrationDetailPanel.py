@@ -70,6 +70,7 @@ class DetailTableModel(QAbstractTableModel):
         _, key, _ = DETAIL_COLUMNS[index.column()]
         value = entry.get(key)
         isPropagated = entry.get("isPropagated", False)
+        isDoublePropagated = entry.get("isDoublePropagated", False)
 
         if role == Qt.DisplayRole:
             if value is None:
@@ -89,14 +90,29 @@ class DetailTableModel(QAbstractTableModel):
                 return f"⇐ {value}"
             return str(value)
 
-        # Italic font for entire row when propagated
-        if role == Qt.FontRole and isPropagated:
+        # Italic font for entire row when propagated;
+        # bold-italic for double-propagated rows
+        if role == Qt.FontRole and (isPropagated or isDoublePropagated):
             font = QFont()
             font.setItalic(True)
+            if isDoublePropagated:
+                font.setBold(True)
             return font
+
+        # Yellow foreground for double-propagated rows
+        if role == Qt.ForegroundRole and isDoublePropagated:
+            from qtpy.QtGui import QColor  # type: ignore
+            return QColor(0xCC, 0xAA, 0x00)  # darker yellow for readability on white
 
         # Tooltip on the Run column explaining the propagation
         if role == Qt.ToolTipRole and key == "effectiveRun" and isPropagated:
+            if isDoublePropagated:
+                return (
+                    f"⚠ Double-propagated: this entry was copied from run {value}, "
+                    f"which was itself a propagated calibration.\n"
+                    f"This entry should be removed and re-propagated from the original "
+                    f"measured calibration."
+                )
             return (
                 f"Propagated from run {value} (donor).\n"
                 f"Index runNumber is {entry.get('runNumber', '?')} (seed run of this state)."

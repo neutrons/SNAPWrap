@@ -1,6 +1,34 @@
 """Enumerations and column definitions for the Calibration Manager UI."""
 
+import re
 from enum import Enum, auto
+
+
+# ── Double-propagation detection ─────────────────────────────────────────
+
+_DOUBLE_PROP_RE = re.compile(
+    r"^\(copied from run:\S+\s+version:\d+\)\s+original comments:\s+\(copied from run:"
+)
+
+
+def is_double_propagated(comment: str) -> bool:
+    """Return True if *comment* indicates a propagation-of-a-propagation.
+
+    A normal propagated calibration has the form::
+
+        (copied from run:68979 version:2) original comments: <original>
+
+    A double-propagated one is detected when ``<original>`` itself starts
+    with the same ``(copied from run:…)`` prefix::
+
+        (copied from run:68979 version:2) original comments: (copied from run:12345 …
+
+    Parameters
+    ----------
+    comment : str
+        The ``comments`` field of a calibration index entry.
+    """
+    return bool(_DOUBLE_PROP_RE.match(comment))
 
 
 class CalStatus(Enum):
@@ -39,6 +67,11 @@ class CalStatus(Enum):
                             # falls outside every entry's appliesTo
                             # range.  Operationally: "needs a calibration
                             # whose appliesTo covers this run"
+
+    # ── Data-quality statuses ────────────────────────────────────
+    DOUBLE_PROPAGATED = auto()  # one or more difcal entries are propagations
+                                # of propagations (copy-of-copy).  The index
+                                # is structurally valid but semantically wrong.
 
 
 class CalTypeStatus(Enum):
@@ -149,6 +182,7 @@ def combine_caltype_statuses(
     nrm: CalTypeStatus,
     difCorrupt: bool = False,
     nrmCorrupt: bool = False,
+    hasDoublePropagated: bool = False,
 ) -> CalStatus:
     """Combine per-calType statuses into a single overall :class:`CalStatus`.
 
@@ -158,6 +192,10 @@ def combine_caltype_statuses(
         Individual caltype statuses.
     difCorrupt, nrmCorrupt
         Whether ``validateIndex`` flagged corruption for each type.
+    hasDoublePropagated : bool
+        Whether any difcal entry was identified as a propagation of a
+        propagation.  Only raises to ``DOUBLE_PROPAGATED`` when the
+        index is otherwise structurally valid (not corrupt).
 
     Returns
     -------
@@ -168,6 +206,10 @@ def combine_caltype_statuses(
         return CalStatus.CORRUPT
     if dif is CalTypeStatus.CORRUPT_INDEX or nrm is CalTypeStatus.CORRUPT_INDEX:
         return CalStatus.CORRUPT
+
+    # Double-propagation: structurally OK, but semantically invalid
+    if hasDoublePropagated:
+        return CalStatus.DOUBLE_PROPAGATED
 
     # Out-of-cycle: calibrations exist for both, but at least one
     # doesn't cover the selected cycle
@@ -197,6 +239,7 @@ STATUS_LABEL = {
     CalStatus.CORRUPT: "Corrupt",
     CalStatus.OUT_OF_CYCLE: "Out of Cycle",
     CalStatus.UNMATCHED: "Unmatched",
+    CalStatus.DOUBLE_PROPAGATED: "Double-Propagated",
 }
 
 STATUS_COLOUR = {
@@ -206,6 +249,7 @@ STATUS_COLOUR = {
     CalStatus.CORRUPT: "orange",
     CalStatus.OUT_OF_CYCLE: "blue",
     CalStatus.UNMATCHED: "grey",
+    CalStatus.DOUBLE_PROPAGATED: "yellow",
 }
 
 STATUS_TOOLTIP = {
@@ -221,6 +265,11 @@ STATUS_TOOLTIP = {
     CalStatus.UNMATCHED: (
         "Calibrations exist but none have an appliesTo range that "
         "covers the selected run number."
+    ),
+    CalStatus.DOUBLE_PROPAGATED: (
+        "One or more difcal entries are propagations of propagations "
+        "(copy-of-copy).  These should be removed using the repair "
+        "function and the correct donor re-propagated."
     ),
 }
 
