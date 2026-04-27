@@ -174,3 +174,4 @@ cython_debug/
 *.egg-info
 src/packagenamepy/_version.py
 
+pyproject.toml.pre-inspectrum
