@@ -2159,7 +2159,7 @@ def reduce(runNumber,
 
         outputWSList_Q = [] #reset to hold q-space names
         if outputWSList is not None:
-            for dspName in outputWSList:
+            for dspName in [ws for ws in outputWSList if "pixelmask" not in ws]: #SNAPRed returns a pixel mask if there's a calib mask
                 qspName = dspName.replace("_dsp_","_qsp_")
                 ConvertUnits(InputWorkspace=dspName,
                             OutputWorkspace=qspName,
