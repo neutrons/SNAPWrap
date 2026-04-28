@@ -664,3 +664,140 @@ class TestRemoveDoublePropagatedEntries:
             result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
         assert result["versions"] == []
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 5 — propagation preview/execute wrappers
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestPropagationPreviewExecute:
+    """Unit tests for model.previewPropagation() / executePropagation()."""
+
+    @staticmethod
+    def _model():
+        import sys
+        from unittest.mock import MagicMock
+        for mod in (
+            "qtpy", "qtpy.QtCore", "qtpy.QtGui", "qtpy.QtWidgets",
+            "snapwrap.cycleDates",
+        ):
+            sys.modules.setdefault(mod, MagicMock())
+        from snapwrap.calibrationManager.model import CalibrationManagerModel
+        return CalibrationManagerModel()
+
+    def test_preview_blocked_no_donor_calibration(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.checkCalibrationStatus.return_value = {
+            "runIsCalibrated": False,
+            "latestValidCalibrationDict": {},
+        }
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            preview = model.previewPropagation("68926", isLite=True)
+
+        assert preview["blocked"] is True
+        assert preview["blockReason"] == "no_donor_calibration"
+        assert preview["recipients"] == []
+
+    def test_preview_blocked_when_donor_is_propagated(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        donor_status = {
+            "runIsCalibrated": True,
+            "latestValidCalibrationDict": {
+                "version": 3,
+                "cycleID": "2026-A",
+                "comments": "(copied from run:68922 version:1) original comments: measured",
+            },
+        }
+
+        def _check(runNumber, stateID, isLite, calType):
+            if runNumber is not None:
+                return donor_status
+            return {
+                "stateID": "recipient-state",
+                "numberCalibrations": 1,
+                "calibIndexList": [{"version": 0}, {"version": 1}],
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.availableStates.return_value = ["donor-state", "recipient-state"]
+        mock_ssm.pullStateDict.return_value = {"det_arc1": 10, "det_arc2": 20}
+        mock_ssm.checkCalibrationStatus.side_effect = _check
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            preview = model.previewPropagation("68926", isLite=True)
+
+        assert preview["blocked"] is True
+        assert preview["blockReason"] == "donor_is_propagated"
+        assert preview["selectedDonorVersion"] == 3
+        assert preview["recipients"][0]["newVersion"] == 2
+
+    def test_execute_calls_propagate_when_not_blocked(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        donor_status = {
+            "runIsCalibrated": True,
+            "latestValidCalibrationDict": {
+                "version": 2,
+                "cycleID": "2026-A",
+                "comments": "measured directly",
+            },
+        }
+
+        def _check(runNumber, stateID, isLite, calType):
+            if runNumber is not None:
+                return donor_status
+            return {
+                "stateID": "recipient-state",
+                "numberCalibrations": 1,
+                "calibIndexList": [{"version": 0}, {"version": 1}],
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.availableStates.return_value = ["donor-state", "recipient-state"]
+        mock_ssm.pullStateDict.return_value = {"det_arc1": 10, "det_arc2": 20}
+        mock_ssm.checkCalibrationStatus.side_effect = _check
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            with patch("snapwrap.utils.propagateDifcal") as mock_propagate:
+                result = model.executePropagation("68926", isLite=True)
+
+        assert result["ok"] is True
+        assert result["executed"] is True
+        mock_propagate.assert_called_once_with(
+            "68926", isLite=True, propagate=True, includeGuideStatus=False,
+        )
+
+    def test_execute_does_not_call_propagate_when_blocked(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.checkCalibrationStatus.return_value = {
+            "runIsCalibrated": False,
+            "latestValidCalibrationDict": {},
+        }
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            with patch("snapwrap.utils.propagateDifcal") as mock_propagate:
+                result = model.executePropagation("68926", isLite=True)
+
+        assert result["ok"] is False
+        assert result["executed"] is False
+        assert result["summary"] == "Propagation blocked by donor validation."
+        mock_propagate.assert_not_called()
+

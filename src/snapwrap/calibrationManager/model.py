@@ -404,6 +404,131 @@ class CalibrationManagerModel:
             dryRun=dryRun,
         )
 
+    # ── Phase 5: propagation preview/execute wrappers ─────────────
+
+    def previewPropagation(
+        self,
+        donorRunNumber,
+        isLite: bool = True,
+        includeGuideStatus: bool = False,
+    ) -> Dict[str, Any]:
+        """Preview donor/recipient details for propagation without writing files.
+
+        Returns a UI-friendly payload that explains which donor calibration
+        would be used and which states would be targeted.
+        """
+
+        donorRunNumber = str(donorRunNumber)
+        donorStateID, donorStateDict = ssm.stateDef(donorRunNumber)
+        donorDetConfig = ssm.detectorConfig(donorStateDict, includeGuideStatus)
+
+        donorCalStatus = ssm.checkCalibrationStatus(
+            runNumber=donorRunNumber,
+            stateID=None,
+            isLite=isLite,
+            calType="difcal",
+        )
+
+        donorLatest = donorCalStatus.get("latestValidCalibrationDict", {})
+        preview: Dict[str, Any] = {
+            "ok": True,
+            "donorRunNumber": donorRunNumber,
+            "donorStateID": donorStateID,
+            "selectedDonorVersion": donorLatest.get("version"),
+            "selectedDonorCycleID": donorLatest.get("cycleID"),
+            "selectedDonorComment": donorLatest.get("comments", ""),
+            "blocked": False,
+            "blockReason": None,
+            "recipients": [],
+        }
+
+        if not donorCalStatus.get("runIsCalibrated", False):
+            preview["blocked"] = True
+            preview["blockReason"] = "no_donor_calibration"
+            return preview
+
+        from snapwrap import utils as wrap
+
+        if wrap._is_propagated_entry(donorLatest):
+            preview["blocked"] = True
+            preview["blockReason"] = "donor_is_propagated"
+
+        recipients: List[Dict[str, Any]] = []
+        for stateID in ssm.availableStates():
+            if stateID == donorStateID:
+                continue
+            stateDict = ssm.pullStateDict(stateID)
+            detConfig = ssm.detectorConfig(stateDict, includeGuideStatus)
+            if detConfig != donorDetConfig:
+                continue
+
+            calStatus = ssm.checkCalibrationStatus(
+                runNumber=None,
+                stateID=stateID,
+                isLite=isLite,
+                calType="difcal",
+            )
+            existingVersions = [
+                int(entry.get("version", 0))
+                for entry in calStatus.get("calibIndexList", [])
+            ]
+            maxVersion = max(existingVersions) if existingVersions else None
+            recipients.append({
+                "stateID": stateID,
+                "recipientPreviousVersions": calStatus.get("numberCalibrations", 0),
+                "newVersion": (maxVersion + 1) if maxVersion is not None else None,
+            })
+
+        preview["recipients"] = recipients
+        return preview
+
+    def executePropagation(
+        self,
+        donorRunNumber,
+        isLite: bool = True,
+        includeGuideStatus: bool = False,
+    ) -> Dict[str, Any]:
+        """Execute propagation from UI after preview/confirmation."""
+
+        preview = self.previewPropagation(
+            donorRunNumber,
+            isLite=isLite,
+            includeGuideStatus=includeGuideStatus,
+        )
+
+        if preview.get("blocked"):
+            return {
+                **preview,
+                "ok": False,
+                "executed": False,
+                "summary": "Propagation blocked by donor validation.",
+            }
+
+        try:
+            from snapwrap import utils as wrap
+
+            wrap.propagateDifcal(
+                donorRunNumber,
+                isLite=isLite,
+                propagate=True,
+                includeGuideStatus=includeGuideStatus,
+            )
+        except Exception as exc:
+            return {
+                **preview,
+                "ok": False,
+                "executed": False,
+                "summary": f"Propagation failed: {exc}",
+                "error": str(exc),
+            }
+
+        return {
+            **preview,
+            "ok": True,
+            "executed": True,
+            "summary": f"Propagation executed for {len(preview.get('recipients', []))} recipient state(s).",
+        }
+
     # ── New functionality: remove double-propagated entries ─────────
 
     def removeDoublePropagatedEntries(

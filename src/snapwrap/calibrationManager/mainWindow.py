@@ -8,16 +8,22 @@ loading so the UI stays responsive while scanning 50+ states.
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Optional
 
 from qtpy.QtCore import QObject, QThread, Qt, Signal  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
+    QHBoxLayout,
     QDialog,
+    QLineEdit,
     QLabel,
     QMessageBox,
     QProgressBar,
+    QPushButton,
     QSplitter,
     QStatusBar,
+    QTextEdit,
     QVBoxLayout,
 )
 
@@ -79,6 +85,198 @@ class _LoadWorker(QObject):
             self.error.emit(str(exc))
 
 
+class _PropagationDialog(QDialog):
+    """Small modal dialog for previewing/executing propagation from UI."""
+
+    def __init__(self, model: CalibrationManagerModel, isLite: bool, parent=None):
+        super().__init__(parent)
+        self._model = model
+        self._isLite = isLite
+        self._lastPreview = None
+        self.didExecute = False
+
+        self.setWindowTitle("Propagate difcal")
+        self.setMinimumSize(820, 620)
+
+        layout = QVBoxLayout(self)
+
+        donorRow = QHBoxLayout()
+        donorRow.addWidget(QLabel("Donor run:"))
+        self._donorRunEdit = QLineEdit()
+        self._donorRunEdit.setPlaceholderText("e.g. 68926")
+        donorRow.addWidget(self._donorRunEdit)
+
+        self._previewBtn = QPushButton("Preview")
+        self._previewBtn.clicked.connect(self._onPreview)
+        donorRow.addWidget(self._previewBtn)
+        layout.addLayout(donorRow)
+
+        self._previewText = QTextEdit()
+        self._previewText.setReadOnly(True)
+        self._previewText.setPlaceholderText("Preview details will appear here.")
+        layout.addWidget(self._previewText)
+
+        logHeader = QHBoxLayout()
+        logHeader.addWidget(QLabel("Recent propagation log entries"))
+        logHeader.addStretch()
+        self._refreshLogBtn = QPushButton("Refresh log")
+        self._refreshLogBtn.clicked.connect(self._refreshLogView)
+        logHeader.addWidget(self._refreshLogBtn)
+        layout.addLayout(logHeader)
+
+        self._logText = QTextEdit()
+        self._logText.setReadOnly(True)
+        self._logText.setPlaceholderText("No propagation log entries found yet.")
+        layout.addWidget(self._logText)
+
+        actionRow = QHBoxLayout()
+        actionRow.addStretch()
+        self._executeBtn = QPushButton("Confirm Propagation")
+        self._executeBtn.setEnabled(False)
+        self._executeBtn.clicked.connect(self._onExecute)
+        actionRow.addWidget(self._executeBtn)
+
+        self._closeBtn = QPushButton("Close")
+        self._closeBtn.clicked.connect(self.reject)
+        actionRow.addWidget(self._closeBtn)
+        layout.addLayout(actionRow)
+
+        self._refreshLogView()
+
+    @staticmethod
+    def _propagation_log_path() -> str:
+        import snapwrap.snapStateMgr as ssm
+
+        calibrationHome = ssm.SNAPHome().calib
+        return os.path.join(calibrationHome, ".logs", "propagation_log.jsonl")
+
+    @staticmethod
+    def _format_log_entry(entry: dict) -> str:
+        ts = entry.get("timestamp", "?")
+        user = entry.get("linux_user", "?")
+        outcome = entry.get("outcome", "?")
+        donor = entry.get("donorRunNumber", "?")
+        dstate = entry.get("donorStateID", "?")
+        dver = entry.get("donorVersion", "?")
+        rstate = entry.get("recipientStateID", "-")
+        newv = entry.get("newVersion", "-")
+        err = entry.get("error")
+        line = (
+            f"{ts} | user={user} | outcome={outcome} | "
+            f"donorRun={donor} state={dstate} v={dver} | "
+            f"recipient={rstate} newVersion={newv}"
+        )
+        if err:
+            line += f" | error={err}"
+        return line
+
+    def _refreshLogView(self) -> None:
+        logPath = self._propagation_log_path()
+        if not os.path.exists(logPath):
+            self._logText.setPlainText(
+                f"Log file not found yet:\n{logPath}\n\n"
+                "It will be created after the first propagation attempt."
+            )
+            return
+
+        try:
+            with open(logPath, "r", encoding="utf-8") as fh:
+                lines = [line.strip() for line in fh.readlines() if line.strip()]
+        except Exception as exc:
+            self._logText.setPlainText(f"Failed to read log file:\n{logPath}\n\n{exc}")
+            return
+
+        if not lines:
+            self._logText.setPlainText(f"Log file is empty:\n{logPath}")
+            return
+
+        parsed = []
+        for line in lines[-50:]:  # keep view lightweight
+            try:
+                parsed.append(json.loads(line))
+            except Exception:
+                parsed.append({
+                    "timestamp": "?",
+                    "outcome": "parse_error",
+                    "error": f"malformed JSONL line: {line[:180]}",
+                })
+
+        parsed.reverse()  # newest first
+        display = [self._format_log_entry(entry) for entry in parsed]
+        self._logText.setPlainText("\n".join(display))
+
+    @staticmethod
+    def _formatPreview(preview: dict) -> str:
+        lines = [
+            f"donorRunNumber: {preview.get('donorRunNumber')}",
+            f"donorStateID: {preview.get('donorStateID')}",
+            f"selectedDonorVersion: {preview.get('selectedDonorVersion')}",
+            f"selectedDonorCycleID: {preview.get('selectedDonorCycleID')}",
+            f"blocked: {preview.get('blocked')}",
+            f"blockReason: {preview.get('blockReason')}",
+            "",
+            "Recipients:",
+        ]
+        recipients = preview.get("recipients", [])
+        if not recipients:
+            lines.append("  (none)")
+        else:
+            for r in recipients:
+                lines.append(
+                    f"  - {r.get('stateID')} "
+                    f"(current={r.get('recipientPreviousVersions')}, newVersion={r.get('newVersion')})"
+                )
+        return "\n".join(lines)
+
+    def _onPreview(self) -> None:
+        donorRun = self._donorRunEdit.text().strip()
+        if not donorRun:
+            QMessageBox.information(self, "Preview", "Please enter a donor run number.")
+            return
+        try:
+            preview = self._model.previewPropagation(donorRun, isLite=self._isLite)
+            self._lastPreview = preview
+            self._previewText.setPlainText(self._formatPreview(preview))
+            self._executeBtn.setEnabled(bool(preview.get("ok")) and not bool(preview.get("blocked")))
+            self._refreshLogView()
+        except Exception as exc:
+            self._executeBtn.setEnabled(False)
+            QMessageBox.warning(self, "Preview", f"Preview failed: {exc}")
+
+    def _onExecute(self) -> None:
+        donorRun = self._donorRunEdit.text().strip()
+        if not donorRun:
+            return
+        if self._lastPreview is None:
+            QMessageBox.information(self, "Propagate", "Run Preview before executing.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Propagation",
+            f"Execute propagation from donor run {donorRun} to "
+            f"{len(self._lastPreview.get('recipients', []))} recipient state(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            result = self._model.executePropagation(donorRun, isLite=self._isLite)
+            self._previewText.setPlainText(
+                self._formatPreview(result) + "\n\nSummary:\n" + result.get("summary", "")
+            )
+            self._refreshLogView()
+            if result.get("ok") and result.get("executed"):
+                self.didExecute = True
+                QMessageBox.information(self, "Propagation", result.get("summary", "Propagation completed."))
+            else:
+                QMessageBox.warning(self, "Propagation", result.get("summary", "Propagation was blocked."))
+        except Exception as exc:
+            QMessageBox.warning(self, "Propagation", f"Propagation failed: {exc}")
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # Main window
 # ═══════════════════════════════════════════════════════════════════════
@@ -118,6 +316,14 @@ class CalibrationManager(QDialog):
         )
         self._homeLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
         outerLayout.addWidget(self._homeLabel)
+
+        actionBar = QHBoxLayout()
+        actionBar.addStretch()
+        self._propagateBtn = QPushButton("Propagate…")
+        self._propagateBtn.setToolTip("Preview and execute difcal propagation")
+        self._propagateBtn.clicked.connect(self._onPropagateRequested)
+        actionBar.addWidget(self._propagateBtn)
+        outerLayout.addLayout(actionBar)
 
         splitter = QSplitter(Qt.Vertical)
 
@@ -440,3 +646,13 @@ class CalibrationManager(QDialog):
             cycleID=self._cycleID,
             stateID=self._stateID,
         )
+
+    def _onPropagateRequested(self) -> None:
+        """Open the propagation dialog and refresh on successful execution."""
+        dlg = _PropagationDialog(self._model, self._isLite, self)
+        if self._runNumber:
+            dlg._donorRunEdit.setText(str(self._runNumber))
+        dlg.exec_()
+        if dlg.didExecute:
+            self._refresh()
+            self._statusBar.showMessage("Propagation complete; views refreshed.", 5000)
