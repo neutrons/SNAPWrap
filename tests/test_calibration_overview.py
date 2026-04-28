@@ -522,3 +522,145 @@ class TestGetStateSummaryDoublePropagated:
         # getCalibrationDetails returns a list sorted by version
         assert details[0]["isDoublePropagated"] is False
         assert details[1]["isDoublePropagated"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 2 — removeDoublePropagatedEntries()
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestRemoveDoublePropagatedEntries:
+    """Unit tests for model.removeDoublePropagatedEntries().
+
+    ``deleteCalibrationVersion`` does real filesystem work; we patch it
+    on the model class so no files are touched.
+    """
+
+    _STATE_ID = "abcd1234abcd1234"
+    _DP_COMMENT = (
+        "(copied from run:68979 version:2)  original comments: "
+        "(copied from run:12345 version:1)  original comments: measured"
+    )
+
+    @staticmethod
+    def _model():
+        import sys
+        from unittest.mock import MagicMock
+        for mod in (
+            "qtpy", "qtpy.QtCore", "qtpy.QtGui", "qtpy.QtWidgets",
+            "snapwrap.cycleDates",
+        ):
+            sys.modules.setdefault(mod, MagicMock())
+        from snapwrap.calibrationManager.model import CalibrationManagerModel
+        return CalibrationManagerModel()
+
+    @staticmethod
+    def _patch_ssm(entries):
+        from unittest.mock import MagicMock, patch
+
+        def _check(runNumber, stateID, isLite, calType):
+            return {
+                "statusDetail": "no run number provided; general state info only",
+                "calibIndexList": entries if calType == "difcal" else [],
+                "numberCalibrations": len(entries),
+                "latestCalibrationDate": "never",
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.checkCalibrationStatus.side_effect = _check
+        mock_ssm.validateIndex.return_value = {"ok": True}
+        mock_ssm.pullStateDict.return_value = {}
+        mock_ssm.autoStateName.return_value = "test-state"
+        return patch("snapwrap.calibrationManager.model.ssm", mock_ssm)
+
+    def test_no_double_propagated_entries(self):
+        """Returns ok=True with empty versions list when nothing to do."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": "(copied from run:68979 version:1)  original comments: measured"},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
+        assert result["ok"] is True
+        assert result["versions"] == []
+        assert "No double-propagated" in result["summary"]
+
+    def test_dry_run_reports_versions_without_deleting(self):
+        """Dry-run returns the correct version list; deleteCalibrationVersion not called live."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "3", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        from unittest.mock import patch as _patch
+        with self._patch_ssm(entries):
+            with _patch.object(
+                model.__class__, "deleteCalibrationVersion",
+                return_value={"ok": True, "message": "[DRY RUN] Would delete…"},
+            ) as mock_delete:
+                result = model.removeDoublePropagatedEntries(
+                    self._STATE_ID, dryRun=True,
+                )
+        assert result["ok"] is True
+        assert result["versions"] == [3]
+        assert "[DRY RUN]" in result["summary"]
+        # deleteCalibrationVersion should have been called once (dry-run=True)
+        mock_delete.assert_called_once_with(
+            self._STATE_ID, "difcal", 3, isLite=True, dryRun=True,
+        )
+
+    def test_live_run_calls_delete_for_each_version(self):
+        """Live run calls deleteCalibrationVersion for each DP version."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": self._DP_COMMENT},
+            {"version": "4", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        from unittest.mock import patch as _patch, call
+        with self._patch_ssm(entries):
+            with _patch.object(
+                model.__class__, "deleteCalibrationVersion",
+                return_value={"ok": True, "message": "Deleted."},
+            ) as mock_delete:
+                result = model.removeDoublePropagatedEntries(
+                    self._STATE_ID, dryRun=False,
+                )
+        assert result["ok"] is True
+        assert set(result["versions"]) == {2, 4}
+        # Should be called highest-first (4 then 2) so re-numbering is safe
+        calls = mock_delete.call_args_list
+        assert calls[0] == call(self._STATE_ID, "difcal", 4, isLite=True, dryRun=False)
+        assert calls[1] == call(self._STATE_ID, "difcal", 2, isLite=True, dryRun=False)
+
+    def test_partial_failure_propagates_ok_false(self):
+        """If any deletion fails, ok=False is returned."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        from unittest.mock import patch as _patch
+        with self._patch_ssm(entries):
+            with _patch.object(
+                model.__class__, "deleteCalibrationVersion",
+                return_value={"ok": False, "message": "File not found."},
+            ):
+                result = model.removeDoublePropagatedEntries(
+                    self._STATE_ID, dryRun=False,
+                )
+        assert result["ok"] is False
+        assert result["versions"] == [2]
+
+    def test_version_zero_never_deleted(self):
+        """Version 0 must never be targeted even if its comment matches."""
+        entries = [
+            {"version": "0", "comments": self._DP_COMMENT},
+            {"version": "1", "comments": "measured on site"},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
+        assert result["versions"] == []
+

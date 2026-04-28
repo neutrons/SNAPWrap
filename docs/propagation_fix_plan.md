@@ -99,9 +99,9 @@ when neither `CORRUPT` nor `CORRUPT_INDEX` applies.
 
 ### Status
 
-- [ ] `utils.py` — add `_is_propagated_entry(entry: dict) -> bool`
-- [ ] `utils.py` — guard in `propagateDifcal()`: reject if latest valid difcal entry is a propagation
-- [ ] `tests/test_propagation.py` (new) — unit tests for guard (mock `checkCalibrationStatus` returning propagated entry)
+- [x] `utils.py` — add `_is_propagated_entry(entry: dict) -> bool`
+- [x] `utils.py` — guard in `propagateDifcal()`: reject if latest valid difcal entry is a propagation
+- [x] `tests/test_propagation.py` (new) — unit tests for guard (mock `checkCalibrationStatus` returning propagated entry)
 
 ### Guard logic
 
@@ -131,9 +131,9 @@ Use the original measured calibration donor run instead.
 
 ### Status
 
-- [ ] `utils.py` — add `_write_propagation_log(entry: dict)`
-- [ ] `utils.py` — call `_write_propagation_log()` in `propagateDifcal()` at each outcome
-- [ ] `tests/test_propagation.py` — test log file creation/append and entry schema
+- [x] `utils.py` — add `_write_propagation_log(entry: dict)`
+- [x] `utils.py` — call `_write_propagation_log()` in `propagateDifcal()` at each outcome
+- [x] `tests/test_propagation.py` — test log file creation/append and entry schema
 - [ ] `mainWindow.py` — stretch goal: "View Propagation Log" button opening a `QDialog`
 
 ### Log file

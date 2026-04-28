@@ -404,6 +404,85 @@ class CalibrationManagerModel:
             dryRun=dryRun,
         )
 
+    # ── New functionality: remove double-propagated entries ─────────
+
+    def removeDoublePropagatedEntries(
+        self,
+        stateID: str,
+        isLite: bool = True,
+        dryRun: bool = True,
+    ) -> Dict[str, Any]:
+        """Delete all double-propagated difcal versions from a state's index.
+
+        A double-propagated entry is one whose ``comments`` field is itself
+        a propagation comment (copy-of-a-copy).  These entries are
+        structurally invalid and must be removed before re-propagating
+        from the correct donor.
+
+        Versions are deleted from highest to lowest so that the
+        ``fixIndex`` re-numbering after each deletion does not shift the
+        version numbers of entries still to be removed.
+
+        Parameters
+        ----------
+        dryRun : bool
+            If ``True`` (default), only report what *would* be deleted.
+            No files are modified.
+
+        Returns
+        -------
+        dict
+            * ``ok`` – ``True`` if all deletions succeeded (or dry-run).
+            * ``versions`` – sorted list of version numbers that are / would
+              be deleted.
+            * ``messages`` – per-version result messages from
+              :meth:`deleteCalibrationVersion`.
+            * ``summary`` – human-readable one-line summary.
+        """
+        calStatus = ssm.checkCalibrationStatus(
+            runNumber=None, stateID=stateID, isLite=isLite, calType="difcal",
+        )
+        entries = calStatus.get("calibIndexList", [])
+        dp_versions = sorted(
+            [
+                int(e.get("version", -1))
+                for e in entries
+                if int(e.get("version", -1)) != 0
+                and is_double_propagated(e.get("comments", ""))
+            ],
+            reverse=True,  # highest first so re-numbering doesn't affect remaining targets
+        )
+
+        if not dp_versions:
+            return {
+                "ok": True,
+                "versions": [],
+                "messages": [],
+                "summary": f"No double-propagated entries found in state {stateID}.",
+            }
+
+        messages = []
+        all_ok = True
+        for version in dp_versions:
+            result = self.deleteCalibrationVersion(
+                stateID, "difcal", version, isLite=isLite, dryRun=dryRun,
+            )
+            messages.append(result.get("message", ""))
+            if not result.get("ok"):
+                all_ok = False
+
+        prefix = "[DRY RUN] Would delete" if dryRun else "Deleted"
+        summary = (
+            f"{prefix} {len(dp_versions)} double-propagated difcal version(s) "
+            f"from state {stateID}: {sorted(dp_versions)}."
+        )
+        return {
+            "ok": all_ok,
+            "versions": sorted(dp_versions),
+            "messages": messages,
+            "summary": summary,
+        }
+
     # ── New functionality: delete a calibration version ──────────────
 
     @staticmethod
@@ -485,13 +564,17 @@ class CalibrationManagerModel:
         #    Strip the 'cycleID' annotation that checkCalibrationStatus
         #    added — it's not part of the on-disk schema and validateIndex
         #    will flag it as an extra key.
+        #    Sort ascending by version to match the native snapred index order.
         _INDEX_KEYS = {"version", "runNumber", "useLiteMode",
                        "appliesTo", "comments", "author", "timestamp"}
-        updatedEntries = [
-            {k: v for k, v in e.items() if k in _INDEX_KEYS}
-            for e in indexEntries
-            if int(e.get("version", -1)) != version
-        ]
+        updatedEntries = sorted(
+            [
+                {k: v for k, v in e.items() if k in _INDEX_KEYS}
+                for e in indexEntries
+                if int(e.get("version", -1)) != version
+            ],
+            key=lambda e: int(e.get("version", 0)),
+        )
         with open(indexPath, "w") as fh:
             json.dump(updatedEntries, fh, indent=2)
 

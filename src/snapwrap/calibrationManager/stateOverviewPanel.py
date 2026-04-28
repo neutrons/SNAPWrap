@@ -184,6 +184,12 @@ class StateTableModel(QAbstractTableModel):
                 return bool(value)
             if role == Qt.UserRole + 2:
                 return bool(row_dict.get("deleteOnly", False))
+            if role == Qt.UserRole + 3:
+                # Show "Fix DP…" button only when not also corrupt
+                return (
+                    bool(row_dict.get("hasDoublePropagated", False))
+                    and not bool(value)
+                )
             if role == Qt.DisplayRole:
                 return "Yes" if value else ""
             if role == Qt.ToolTipRole and value:
@@ -257,6 +263,7 @@ class StateOverviewPanel(QWidget):
     stateSelected = Signal(str)
     repairRequested = Signal(str)
     deleteStateRequested = Signal(str)
+    removeDoublePropagatedRequested = Signal(str)
     contextChanged = Signal(str)  # run number or ""
 
     def __init__(self, parent=None):
@@ -333,6 +340,9 @@ class StateOverviewPanel(QWidget):
         self._repairDelegate = RepairButtonDelegate(self)
         self._repairDelegate.repairRequested.connect(self.repairRequested)
         self._repairDelegate.deleteStateRequested.connect(self.deleteStateRequested)
+        self._repairDelegate.removeDoublePropagatedRequested.connect(
+            self.removeDoublePropagatedRequested
+        )
         self.tableView.setItemDelegateForColumn(corrupt_col, self._repairDelegate)
 
         layout.addWidget(self.tableView)
