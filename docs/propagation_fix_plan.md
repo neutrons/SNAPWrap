@@ -182,78 +182,6 @@ Phases 1–3 are deployed and the damage has been assessed.
 
 ---
 
-## Phase 5 — UX Migration: Propagation Workflow in Calibration Manager
-
-### Goal
-
-Move propagation from ad-hoc script usage into a guided UI flow so users can:
-
-1. preview exactly which donor calibration/version will be used,
-2. inspect recipient impact before writing,
-3. confirm execution explicitly,
-4. immediately validate outcomes in the same UI.
-
-### Status
-
-- [ ] `model.py` — add `previewPropagation(donorRunNumber, isLite, includeGuideStatus=False) -> dict`
-- [ ] `model.py` — add `executePropagation(donorRunNumber, isLite, includeGuideStatus=False) -> dict`
-- [ ] `mainWindow.py` — add "Propagate…" action/button launching a propagation dialog
-- [ ] `mainWindow.py` — wire preview → confirm → execute flow with refresh of affected state rows
-- [ ] `stateOverviewPanel.py` — optional donor-run quick action (populate run field + open dialog)
-- [ ] `calibrationDetailPanel.py` — optional auto-select recipient state after success
-- [ ] `tests/test_calibration_overview.py` — unit tests for preview/execute model wrappers (mock ssm/utils)
-- [ ] `tests/test_propagation.py` — add UI-facing contract tests for expected preview payload keys
-
-### Proposed interaction flow
-
-1. User clicks **Propagate…**
-2. Dialog asks for donor run number (and lite/native toggle)
-3. User clicks **Preview** (always dry-run)
-4. UI shows:
-     - donor state, donor selected version, donor comments,
-     - recipient states and current/latest versions,
-     - block reason if donor is propagated or donor has no valid difcal
-5. User clicks **Confirm Propagation**
-6. UI runs execute path (`propagate=True`) and then refreshes tables/details
-7. Success panel shows summary and latest log entries (Phase 4 JSONL)
-
-### Preview payload contract (draft)
-
-```json
-{
-    "ok": true,
-    "donorRunNumber": "68926",
-    "donorStateID": "7a68989468eb04f0",
-    "selectedDonorVersion": 3,
-    "selectedDonorCycleID": "2026-A",
-    "selectedDonorComment": "(copied from run:68922 version:1)...",
-    "blocked": true,
-    "blockReason": "donor_is_propagated",
-    "recipients": [
-        {
-            "stateID": "...",
-            "recipientPreviousVersions": 1,
-            "newVersion": 2
-        }
-    ]
-}
-```
-
-### Error/confirm UX requirements
-
-- **Hard stop** when `blocked=true`; execute button disabled.
-- Confirmation text must include donor run/state/version and number of recipients.
-- Post-run summary must include success count / failure count and log-file location:
-    `{calibrationHome}/.logs/propagation_log.jsonl`.
-
-### Non-goals (Phase 5)
-
-- No multi-donor batch propagation.
-- No editable version override (still derived from run-number validity logic).
-- No historical rollback UI (existing backup/fixIndex tooling remains backend-only).
-
----
-
 ## File Inventory
 
 | File | Phases |
@@ -263,9 +191,9 @@ Move propagation from ad-hoc script usage into a guided UI flow so users can:
 | `src/snapwrap/calibrationManager/delegates.py` | 1 |
 | `src/snapwrap/calibrationManager/stateOverviewPanel.py` | 1, 2 |
 | `src/snapwrap/calibrationManager/calibrationDetailPanel.py` | 1 |
-| `src/snapwrap/calibrationManager/mainWindow.py` | 2, 5 |
+| `src/snapwrap/calibrationManager/mainWindow.py` | 2 |
 | `src/snapwrap/utils.py` | 3, 4 |
-| `tests/test_calibration_overview.py` | 1, 2, 5 |
+| `tests/test_calibration_overview.py` | 1, 2 |
 | `tests/test_propagation.py` *(new)* | 3, 4 |
 | `docs/propagation_fix_plan.md` *(this file)* | — |
 
@@ -278,7 +206,6 @@ Phase 1 (Detection)
     └── Phase 2 (Repair) — depends on Phase 1 status model
 Phase 3 (Prevention) — logically independent; deploy after Phase 2 cleanup
 Phase 4 (Audit Trail) — independent; can be done in parallel with Phase 3
-Phase 5 (UI propagation workflow) — depends on Phase 3 guard + Phase 4 logging
 ```
 
-Recommended deployment order: **1 → 2 → (clean the damage) → 3 → 4 → 5**
+Recommended deployment order: **1 → 2 → (clean the damage) → 3 → 4**
