@@ -28,13 +28,27 @@ def show():
     ``QAppThreadCall`` to create widgets on the GUI thread.
     """
     from mantidqt.utils.qt.qappthreadcall import QAppThreadCall
+    from qtpy.QtCore import QThread
+    from qtpy.QtWidgets import QApplication
 
     def _open():
         global _active_dialog
         if _active_dialog is not None:
-            _active_dialog.raise_()
-            _active_dialog.activateWindow()
-            return
+            # If the Qt object was deleted but the Python reference remained,
+            # clear it and create a fresh dialog.
+            try:
+                # Probe object validity; this can raise if underlying C++ object
+                # has already been deleted.
+                _ = _active_dialog.isVisible()
+
+                # Re-show when previously closed/hidden.
+                if not _active_dialog.isVisible():
+                    _active_dialog.show()
+                _active_dialog.raise_()
+                _active_dialog.activateWindow()
+                return
+            except Exception:
+                _active_dialog = None
 
         from snapwrap.calibrationManager.mainWindow import CalibrationManager
 
@@ -51,4 +65,18 @@ def show():
 
         _active_dialog.destroyed.connect(_on_destroyed)
 
-    QAppThreadCall(_open, blocking=True)()
+    # If called from a GUI menu action, we're already on the Qt GUI thread.
+    # In that case call directly to avoid thread-handoff quirks in some
+    # Workbench builds. Otherwise marshal to GUI thread via QAppThreadCall.
+    app = QApplication.instance()
+    if app is not None and QThread.currentThread() == app.thread():
+        # Direct call is safe when already in GUI context.
+        _open()
+        return
+
+    try:
+        QAppThreadCall(_open, blocking=True)()
+    except Exception:
+        # Last-resort fallback keeps manual scripting usable even if
+        # qappthreadcall wiring is unavailable in a specific environment.
+        _open()

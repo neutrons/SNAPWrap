@@ -518,6 +518,11 @@ def availableStates():
     #create list of state folders
     stateFolderList = [f for f in os.listdir(powderHome) if os.path.isdir(os.path.join(powderHome,f))]
     for nonState in nonStateFolders:
+        if nonState not in stateFolderList:
+            raise ValueError(
+                f"Powder home directory invalid: '{nonState}' directory is absent "
+                f"(expected at {os.path.join(powderHome, nonState)})"
+            )
         stateFolderList.remove(nonState)
 
     #purge statefolders that don't have exactly 16 charater strings as names

@@ -40,6 +40,7 @@ _QCOLOURS = {
     "orange": QColor(0xFF, 0x85, 0x1B),
     "blue": QColor(0x00, 0x74, 0xD9),
     "grey": QColor(0xAA, 0xAA, 0xAA),
+    "yellow": QColor(0xFF, 0xDD, 0x00),
 }
 
 _LED_RADIUS = 8
@@ -97,39 +98,61 @@ class StatusLEDDelegate(QStyledItemDelegate):
 
 
 class RepairButtonDelegate(QStyledItemDelegate):
-    """Renders a clickable action button when the row is flagged corrupt.
+    """Renders a clickable action button when the row needs attention.
 
     The button label is context-dependent:
 
     * **"Repair…"** — standard corruption that ``fixIndex`` can resolve.
     * **"Delete…"** — cross-state contamination where the only safe
       option is to delete the entire state folder.
+    * **"Fix DP…"** — double-propagated entries that need to be removed
+      (shown only when the state is not also corrupt).
 
-    ``Qt.UserRole`` carries the ``isCorrupt`` bool.
-    ``Qt.UserRole + 2`` carries the ``deleteOnly`` bool (True → "Delete…").
+    Role usage (all on the ``isCorrupt`` column):
 
-    Emits :pyqtSignal:`repairRequested(str)` with the stateID.
+    ``Qt.UserRole``     — ``isCorrupt`` bool  
+    ``Qt.UserRole + 2`` — ``deleteOnly`` bool (True → "Delete…")  
+    ``Qt.UserRole + 3`` — ``hasDoublePropagated`` bool  
+
+    Signals
+    -------
+    repairRequested(str)
+        Emitted with the stateID when "Repair…" is clicked.
+    deleteStateRequested(str)
+        Emitted with the stateID when "Delete…" is clicked.
+    removeDoublePropagatedRequested(str)
+        Emitted with the stateID when "Fix DP…" is clicked.
     """
 
     repairRequested = Signal(str)
     deleteStateRequested = Signal(str)
+    removeDoublePropagatedRequested = Signal(str)
 
     def paint(self, painter: QPainter, option, index: QModelIndex) -> None:
         is_corrupt = index.data(Qt.UserRole)
-        if not is_corrupt:
+        has_dp = index.data(Qt.UserRole + 3)
+
+        if not is_corrupt and not has_dp:
             return
 
         delete_only = index.data(Qt.UserRole + 2)
 
+        if is_corrupt:
+            label = "Delete…" if delete_only else "Repair…"
+        else:
+            label = "Fix DP…"
+
         btn = QStyleOptionButton()
         btn.rect = option.rect.adjusted(4, 4, -4, -4)
-        btn.text = "Delete…" if delete_only else "Repair…"
+        btn.text = label
         btn.state = QStyle.State_Enabled
         QApplication.style().drawControl(QStyle.CE_PushButton, btn, painter)
 
     def editorEvent(self, event, model, option, index: QModelIndex) -> bool:
         is_corrupt = index.data(Qt.UserRole)
-        if not is_corrupt:
+        has_dp = index.data(Qt.UserRole + 3)
+
+        if not is_corrupt and not has_dp:
             return False
 
         from qtpy.QtCore import QEvent  # type: ignore
@@ -139,11 +162,14 @@ class RepairButtonDelegate(QStyledItemDelegate):
             state_index = index.sibling(index.row(), 1)
             state_id = state_index.data(Qt.DisplayRole)
             if state_id:
-                delete_only = index.data(Qt.UserRole + 2)
-                if delete_only:
-                    self.deleteStateRequested.emit(str(state_id))
+                if is_corrupt:
+                    delete_only = index.data(Qt.UserRole + 2)
+                    if delete_only:
+                        self.deleteStateRequested.emit(str(state_id))
+                    else:
+                        self.repairRequested.emit(str(state_id))
                 else:
-                    self.repairRequested.emit(str(state_id))
+                    self.removeDoublePropagatedRequested.emit(str(state_id))
             return True
 
         return False

@@ -10,6 +10,9 @@ import inspect
 import importlib
 import copy
 import time
+import re
+import getpass
+from datetime import datetime
 import importlib.resources as resources
 
 from .wrapConfig import WrapConfig
@@ -1457,6 +1460,41 @@ def restoreDBins(redObj,originalIngredients):
         
     return
 
+
+_PROPAGATED_ENTRY_RE = re.compile(r"^\(copied from run:\S+ version:\d+\)")
+
+
+def _is_propagated_entry(entry: dict) -> bool:
+    """Return True if a calibration index entry was produced by propagateDifcal."""
+
+    if not isinstance(entry, dict):
+        return False
+
+    comments = entry.get("comments", "")
+    if not isinstance(comments, str):
+        return False
+
+    return bool(_PROPAGATED_ENTRY_RE.match(comments.strip()))
+
+
+def _write_propagation_log(entry: dict) -> None:
+    """Append a propagation event to calibrationHome/.logs/propagation_log.jsonl."""
+
+    try:
+        calibrationHome = Config["instrument.calibration.home"]
+        logDir = os.path.join(calibrationHome, ".logs")
+        os.makedirs(logDir, exist_ok=True)
+        logPath = os.path.join(logDir, "propagation_log.jsonl")
+
+        payload = dict(entry or {})
+        payload.setdefault("timestamp", datetime.now().isoformat(timespec="seconds"))
+        payload.setdefault("linux_user", getpass.getuser())
+
+        with open(logPath, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload) + "\n")
+    except Exception as e:
+        printWarning(f"WARNING: failed to write propagation log entry: {e}")
+
 def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatus=False):
 
     #This will accept a reference Run number, determine a list of all existing 
@@ -1475,10 +1513,51 @@ def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatu
                                             isLite=isLite,
                                             calType='difcal')
 
+    donorLatest = donorCalStatus.get("latestValidCalibrationDict", {})
+
 
     # if state is uncalibrated, stop. Nothing to propagate
     if not donorCalStatus["runIsCalibrated"]:
         print(f"ERROR: provided run number: {donorRunNumber} of state: {donorStateID} does not have a valid difcal")
+        _write_propagation_log({
+            "donorRunNumber": str(donorRunNumber),
+            "donorStateID": donorStateID,
+            "donorVersion": None,
+            "donorCycleID": None,
+            "recipientStateID": None,
+            "recipientPreviousVersions": None,
+            "newVersion": None,
+            "outcome": "skipped_no_donor_calibration",
+            "dryRun": not propagate,
+            "error": None,
+        })
+        return
+
+    if _is_propagated_entry(donorLatest):
+        msg = (
+            f"propagateDifcal — donor run {donorRunNumber} (state {donorStateID}) "
+            f"has a propagated calibration as its latest valid entry "
+            f"(version {donorLatest.get('version')}, comment: {donorLatest.get('comments', '')!r}). "
+            "Propagating a propagated calibration is not permitted. "
+            "Use the original measured calibration donor run instead."
+        )
+        try:
+            Logger("snapwrap").error(msg)
+        except Exception:
+            print(f"ERROR: {msg}")
+
+        _write_propagation_log({
+            "donorRunNumber": str(donorRunNumber),
+            "donorStateID": donorStateID,
+            "donorVersion": donorLatest.get("version"),
+            "donorCycleID": donorLatest.get("cycleID"),
+            "recipientStateID": None,
+            "recipientPreviousVersions": None,
+            "newVersion": None,
+            "outcome": "skipped_donor_is_propagated",
+            "dryRun": not propagate,
+            "error": None,
+        })
         return
     else:
          print(f"""
@@ -1531,10 +1610,51 @@ Donor calibration info
             for key in calStatus:
                
                 print("    ",key," : ",calStatus[key])
-
-            ssm.copyDifcal(donorCalStatus,calStatus,propagate)
+            try:
+                ssm.copyDifcal(donorCalStatus,calStatus,propagate)
+                maxExistingVersion = max(entry["version"] for entry in calStatus["calibIndexList"])
+                _write_propagation_log({
+                    "donorRunNumber": str(donorRunNumber),
+                    "donorStateID": donorStateID,
+                    "donorVersion": donorLatest.get("version"),
+                    "donorCycleID": donorLatest.get("cycleID"),
+                    "recipientStateID": calStatus.get("stateID"),
+                    "recipientPreviousVersions": calStatus.get("numberCalibrations"),
+                    "newVersion": maxExistingVersion + 1,
+                    "outcome": "success",
+                    "dryRun": False,
+                    "error": None,
+                })
+            except Exception as e:
+                _write_propagation_log({
+                    "donorRunNumber": str(donorRunNumber),
+                    "donorStateID": donorStateID,
+                    "donorVersion": donorLatest.get("version"),
+                    "donorCycleID": donorLatest.get("cycleID"),
+                    "recipientStateID": calStatus.get("stateID"),
+                    "recipientPreviousVersions": calStatus.get("numberCalibrations"),
+                    "newVersion": None,
+                    "outcome": "error",
+                    "dryRun": False,
+                    "error": str(e),
+                })
+                raise
     else:
         print("\nPropagatation of calibration was not requested")
+        for calStatus in recipientCalStatus:
+            maxExistingVersion = max(entry["version"] for entry in calStatus["calibIndexList"])
+            _write_propagation_log({
+                "donorRunNumber": str(donorRunNumber),
+                "donorStateID": donorStateID,
+                "donorVersion": donorLatest.get("version"),
+                "donorCycleID": donorLatest.get("cycleID"),
+                "recipientStateID": calStatus.get("stateID"),
+                "recipientPreviousVersions": calStatus.get("numberCalibrations"),
+                "newVersion": maxExistingVersion + 1,
+                "outcome": "dry_run",
+                "dryRun": True,
+                "error": None,
+            })
         
 def reload(runNumber,
            all=False,

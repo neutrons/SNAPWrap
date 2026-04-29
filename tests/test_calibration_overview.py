@@ -325,3 +325,479 @@ class TestTooltipLogic:
     def test_mode_b_no_details_still_shows_label(self):
         tip = self._call(True, {}, CalStatus.UNCALIBRATED)
         assert "Status: Uncalibrated" in tip
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 1 — double-propagation detection
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestIsDoublePropagated:
+    """Unit tests for the pure-function is_double_propagated() helper."""
+
+    from snapwrap.calibrationManager.constants import is_double_propagated as _fn
+
+    # ── should match ────────────────────────────────────────────────
+    def test_copy_of_copy_detected(self):
+        comment = (
+            "(copied from run:68979 version:2) original comments: "
+            "(copied from run:12345 version:1) original comments: measured on site"
+        )
+        from snapwrap.calibrationManager.constants import is_double_propagated
+        assert is_double_propagated(comment) is True
+
+    def test_copy_of_copy_no_trailing_text(self):
+        """Regex requires the second '(copied from run:' to appear — even mid-string."""
+        comment = (
+            "(copied from run:99999 version:10) original comments: "
+            "(copied from run:11111 version:3)"
+        )
+        from snapwrap.calibrationManager.constants import is_double_propagated
+        assert is_double_propagated(comment) is True
+
+    # ── should NOT match ────────────────────────────────────────────
+    def test_normal_propagation_not_flagged(self):
+        comment = "(copied from run:68979 version:2) original comments: measured in 2024-B"
+        from snapwrap.calibrationManager.constants import is_double_propagated
+        assert is_double_propagated(comment) is False
+
+    def test_empty_string_not_flagged(self):
+        from snapwrap.calibrationManager.constants import is_double_propagated
+        assert is_double_propagated("") is False
+
+    def test_measured_comment_not_flagged(self):
+        comment = "standard powder diffraction calibration"
+        from snapwrap.calibrationManager.constants import is_double_propagated
+        assert is_double_propagated(comment) is False
+
+    def test_partial_prefix_not_flagged(self):
+        """The first '(copied from run:…)' prefix must be present, not just the second."""
+        comment = "original comments: (copied from run:12345 version:1)"
+        from snapwrap.calibrationManager.constants import is_double_propagated
+        assert is_double_propagated(comment) is False
+
+
+class TestCombineCalTypeStatusesDoublePropagated:
+    """combine_caltype_statuses() with hasDoublePropagated flag."""
+
+    def test_double_propagated_returns_status(self):
+        result = combine_caltype_statuses(
+            CalTypeStatus.VALID, CalTypeStatus.VALID,
+            hasDoublePropagated=True,
+        )
+        assert result is CalStatus.DOUBLE_PROPAGATED
+
+    def test_corrupt_overrides_double_propagated(self):
+        """CORRUPT must take precedence over DOUBLE_PROPAGATED."""
+        result = combine_caltype_statuses(
+            CalTypeStatus.VALID, CalTypeStatus.VALID,
+            difCorrupt=True,
+            hasDoublePropagated=True,
+        )
+        assert result is CalStatus.CORRUPT
+
+    def test_double_propagated_display_constants(self):
+        assert CalStatus.DOUBLE_PROPAGATED in STATUS_LABEL
+        assert CalStatus.DOUBLE_PROPAGATED in STATUS_TOOLTIP
+        assert STATUS_LABEL[CalStatus.DOUBLE_PROPAGATED] != ""
+        assert STATUS_TOOLTIP[CalStatus.DOUBLE_PROPAGATED] != ""
+
+
+class TestGetStateSummaryDoublePropagated:
+    """getStateSummary() correctly detects double-propagated difcal entries.
+
+    ``snapwrap.calibrationManager.model`` uses ``ssm`` as a module-level
+    alias for ``snapwrap.snapStateMgr``.  We patch its attributes directly
+    so no real calibration home is touched.
+    """
+
+    # ── constants reused across tests ────────────────────────────────
+    _STATE_ID = "abcd1234abcd1234"
+    _DP_COMMENT = (
+        "(copied from run:68979 version:2) original comments: "
+        "(copied from run:12345 version:1) original comments: measured"
+    )
+
+    @staticmethod
+    def _cal_status(entries, status_detail="no run number provided; general state info only"):
+        """Return a fake checkCalibrationStatus response with given calibIndexList."""
+        return {
+            "statusDetail": status_detail,
+            "calibIndexList": entries,
+        }
+
+    @staticmethod
+    def _patch_ssm(difcal_entries, normcal_entries=None):
+        """Return a context-manager that patches the model's ssm module reference."""
+        from unittest.mock import MagicMock, patch
+
+        _nrm = normcal_entries or []
+
+        def _check_cal_status(runNumber, stateID, isLite, calType):
+            entries = difcal_entries if calType == "difcal" else _nrm
+            return {
+                "statusDetail": "no run number provided; general state info only",
+                "calibIndexList": entries,
+                "numberCalibrations": len(entries),
+                "latestCalibrationDate": "never",
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.checkCalibrationStatus.side_effect = _check_cal_status
+        mock_ssm.validateIndex.return_value = {"ok": True}
+        mock_ssm.pullStateDict.return_value = {}
+        mock_ssm.autoStateName.return_value = "test-state"
+        return patch("snapwrap.calibrationManager.model.ssm", mock_ssm)
+
+    @staticmethod
+    def _model():
+        import sys
+        from unittest.mock import MagicMock
+        for mod in (
+            "qtpy", "qtpy.QtCore", "qtpy.QtGui", "qtpy.QtWidgets",
+            "snapwrap.cycleDates",
+        ):
+            sys.modules.setdefault(mod, MagicMock())
+        from snapwrap.calibrationManager.model import CalibrationManagerModel
+        return CalibrationManagerModel()
+
+    # ── getStateSummary tests ────────────────────────────────────────
+
+    def test_no_double_propagated(self):
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": "(copied from run:68979 version:1) original comments: measured on site"},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            summary = model.getStateSummary(self._STATE_ID)
+        assert summary["hasDoublePropagated"] is False
+        assert summary["doublePropagatedVersions"] == []
+
+    def test_one_double_propagated(self):
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "3", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            summary = model.getStateSummary(self._STATE_ID)
+        assert summary["hasDoublePropagated"] is True
+        assert summary["doublePropagatedVersions"] == [3]
+
+    def test_multiple_double_propagated(self):
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": self._DP_COMMENT},
+            {"version": "4", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            summary = model.getStateSummary(self._STATE_ID)
+        assert summary["hasDoublePropagated"] is True
+        assert set(summary["doublePropagatedVersions"]) == {2, 4}
+
+    def test_version_zero_skipped(self):
+        """Version 0 (geometric default) must never be flagged as double-propagated."""
+        entries = [
+            {"version": "0", "comments": self._DP_COMMENT},
+            {"version": "1", "comments": "measured on site"},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            summary = model.getStateSummary(self._STATE_ID)
+        assert summary["hasDoublePropagated"] is False
+
+    # ── getCalibrationDetails tests ──────────────────────────────────
+
+    def test_getCalibrationDetails_annotates_entries(self):
+        """getCalibrationDetails() must set isDoublePropagated on each entry."""
+        raw_entries = [
+            {"version": "1", "comments": "measured on site", "runNumber": "68979"},
+            {"version": "2", "comments": self._DP_COMMENT, "runNumber": "68979"},
+        ]
+        model = self._model()
+        with self._patch_ssm(raw_entries):
+            details = model.getCalibrationDetails(self._STATE_ID, calType="difcal")
+        # getCalibrationDetails returns a list sorted by version
+        assert details[0]["isDoublePropagated"] is False
+        assert details[1]["isDoublePropagated"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 2 — removeDoublePropagatedEntries()
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestRemoveDoublePropagatedEntries:
+    """Unit tests for model.removeDoublePropagatedEntries().
+
+    ``deleteCalibrationVersion`` does real filesystem work; we patch it
+    on the model class so no files are touched.
+    """
+
+    _STATE_ID = "abcd1234abcd1234"
+    _DP_COMMENT = (
+        "(copied from run:68979 version:2)  original comments: "
+        "(copied from run:12345 version:1)  original comments: measured"
+    )
+
+    @staticmethod
+    def _model():
+        import sys
+        from unittest.mock import MagicMock
+        for mod in (
+            "qtpy", "qtpy.QtCore", "qtpy.QtGui", "qtpy.QtWidgets",
+            "snapwrap.cycleDates",
+        ):
+            sys.modules.setdefault(mod, MagicMock())
+        from snapwrap.calibrationManager.model import CalibrationManagerModel
+        return CalibrationManagerModel()
+
+    @staticmethod
+    def _patch_ssm(entries):
+        from unittest.mock import MagicMock, patch
+
+        def _check(runNumber, stateID, isLite, calType):
+            return {
+                "statusDetail": "no run number provided; general state info only",
+                "calibIndexList": entries if calType == "difcal" else [],
+                "numberCalibrations": len(entries),
+                "latestCalibrationDate": "never",
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.checkCalibrationStatus.side_effect = _check
+        mock_ssm.validateIndex.return_value = {"ok": True}
+        mock_ssm.pullStateDict.return_value = {}
+        mock_ssm.autoStateName.return_value = "test-state"
+        return patch("snapwrap.calibrationManager.model.ssm", mock_ssm)
+
+    def test_no_double_propagated_entries(self):
+        """Returns ok=True with empty versions list when nothing to do."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": "(copied from run:68979 version:1)  original comments: measured"},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
+        assert result["ok"] is True
+        assert result["versions"] == []
+        assert "No double-propagated" in result["summary"]
+
+    def test_dry_run_reports_versions_without_deleting(self):
+        """Dry-run returns the correct version list; deleteCalibrationVersion not called live."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "3", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        from unittest.mock import patch as _patch
+        with self._patch_ssm(entries):
+            with _patch.object(
+                model.__class__, "deleteCalibrationVersion",
+                return_value={"ok": True, "message": "[DRY RUN] Would delete…"},
+            ) as mock_delete:
+                result = model.removeDoublePropagatedEntries(
+                    self._STATE_ID, dryRun=True,
+                )
+        assert result["ok"] is True
+        assert result["versions"] == [3]
+        assert "[DRY RUN]" in result["summary"]
+        # deleteCalibrationVersion should have been called once (dry-run=True)
+        mock_delete.assert_called_once_with(
+            self._STATE_ID, "difcal", 3, isLite=True, dryRun=True,
+        )
+
+    def test_live_run_calls_delete_for_each_version(self):
+        """Live run calls deleteCalibrationVersion for each DP version."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": self._DP_COMMENT},
+            {"version": "4", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        from unittest.mock import patch as _patch, call
+        with self._patch_ssm(entries):
+            with _patch.object(
+                model.__class__, "deleteCalibrationVersion",
+                return_value={"ok": True, "message": "Deleted."},
+            ) as mock_delete:
+                result = model.removeDoublePropagatedEntries(
+                    self._STATE_ID, dryRun=False,
+                )
+        assert result["ok"] is True
+        assert set(result["versions"]) == {2, 4}
+        # Should be called highest-first (4 then 2) so re-numbering is safe
+        calls = mock_delete.call_args_list
+        assert calls[0] == call(self._STATE_ID, "difcal", 4, isLite=True, dryRun=False)
+        assert calls[1] == call(self._STATE_ID, "difcal", 2, isLite=True, dryRun=False)
+
+    def test_partial_failure_propagates_ok_false(self):
+        """If any deletion fails, ok=False is returned."""
+        entries = [
+            {"version": "1", "comments": "measured on site"},
+            {"version": "2", "comments": self._DP_COMMENT},
+        ]
+        model = self._model()
+        from unittest.mock import patch as _patch
+        with self._patch_ssm(entries):
+            with _patch.object(
+                model.__class__, "deleteCalibrationVersion",
+                return_value={"ok": False, "message": "File not found."},
+            ):
+                result = model.removeDoublePropagatedEntries(
+                    self._STATE_ID, dryRun=False,
+                )
+        assert result["ok"] is False
+        assert result["versions"] == [2]
+
+    def test_version_zero_never_deleted(self):
+        """Version 0 must never be targeted even if its comment matches."""
+        entries = [
+            {"version": "0", "comments": self._DP_COMMENT},
+            {"version": "1", "comments": "measured on site"},
+        ]
+        model = self._model()
+        with self._patch_ssm(entries):
+            result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
+        assert result["versions"] == []
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Phase 5 — propagation preview/execute wrappers
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestPropagationPreviewExecute:
+    """Unit tests for model.previewPropagation() / executePropagation()."""
+
+    @staticmethod
+    def _model():
+        import sys
+        from unittest.mock import MagicMock
+        for mod in (
+            "qtpy", "qtpy.QtCore", "qtpy.QtGui", "qtpy.QtWidgets",
+            "snapwrap.cycleDates",
+        ):
+            sys.modules.setdefault(mod, MagicMock())
+        from snapwrap.calibrationManager.model import CalibrationManagerModel
+        return CalibrationManagerModel()
+
+    def test_preview_blocked_no_donor_calibration(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.checkCalibrationStatus.return_value = {
+            "runIsCalibrated": False,
+            "latestValidCalibrationDict": {},
+        }
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            preview = model.previewPropagation("68926", isLite=True)
+
+        assert preview["blocked"] is True
+        assert preview["blockReason"] == "no_donor_calibration"
+        assert preview["recipients"] == []
+
+    def test_preview_blocked_when_donor_is_propagated(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        donor_status = {
+            "runIsCalibrated": True,
+            "latestValidCalibrationDict": {
+                "version": 3,
+                "cycleID": "2026-A",
+                "comments": "(copied from run:68922 version:1) original comments: measured",
+            },
+        }
+
+        def _check(runNumber, stateID, isLite, calType):
+            if runNumber is not None:
+                return donor_status
+            return {
+                "stateID": "recipient-state",
+                "numberCalibrations": 1,
+                "calibIndexList": [{"version": 0}, {"version": 1}],
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.availableStates.return_value = ["donor-state", "recipient-state"]
+        mock_ssm.pullStateDict.return_value = {"det_arc1": 10, "det_arc2": 20}
+        mock_ssm.checkCalibrationStatus.side_effect = _check
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            preview = model.previewPropagation("68926", isLite=True)
+
+        assert preview["blocked"] is True
+        assert preview["blockReason"] == "donor_is_propagated"
+        assert preview["selectedDonorVersion"] == 3
+        assert preview["recipients"][0]["newVersion"] == 2
+
+    def test_execute_calls_propagate_when_not_blocked(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        donor_status = {
+            "runIsCalibrated": True,
+            "latestValidCalibrationDict": {
+                "version": 2,
+                "cycleID": "2026-A",
+                "comments": "measured directly",
+            },
+        }
+
+        def _check(runNumber, stateID, isLite, calType):
+            if runNumber is not None:
+                return donor_status
+            return {
+                "stateID": "recipient-state",
+                "numberCalibrations": 1,
+                "calibIndexList": [{"version": 0}, {"version": 1}],
+            }
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.availableStates.return_value = ["donor-state", "recipient-state"]
+        mock_ssm.pullStateDict.return_value = {"det_arc1": 10, "det_arc2": 20}
+        mock_ssm.checkCalibrationStatus.side_effect = _check
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            with patch("snapwrap.utils.propagateDifcal") as mock_propagate:
+                result = model.executePropagation("68926", isLite=True)
+
+        assert result["ok"] is True
+        assert result["executed"] is True
+        mock_propagate.assert_called_once_with(
+            "68926", isLite=True, propagate=True, includeGuideStatus=False,
+        )
+
+    def test_execute_does_not_call_propagate_when_blocked(self):
+        model = self._model()
+        from unittest.mock import MagicMock, patch
+
+        mock_ssm = MagicMock()
+        mock_ssm.stateDef.return_value = ("donor-state", {"det_arc1": 10, "det_arc2": 20})
+        mock_ssm.detectorConfig.return_value = "cfg-a"
+        mock_ssm.checkCalibrationStatus.return_value = {
+            "runIsCalibrated": False,
+            "latestValidCalibrationDict": {},
+        }
+
+        with patch("snapwrap.calibrationManager.model.ssm", mock_ssm):
+            with patch("snapwrap.utils.propagateDifcal") as mock_propagate:
+                result = model.executePropagation("68926", isLite=True)
+
+        assert result["ok"] is False
+        assert result["executed"] is False
+        assert result["summary"] == "Propagation blocked by donor validation."
+        mock_propagate.assert_not_called()
+

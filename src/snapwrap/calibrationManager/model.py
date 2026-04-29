@@ -24,6 +24,7 @@ from snapwrap.calibrationManager.constants import (
     caltype_status_for_cycle,
     caltype_status_from_detail,
     combine_caltype_statuses,
+    is_double_propagated,
 )
 
 
@@ -257,9 +258,21 @@ class CalibrationManagerModel:
             corruptIssues.append(f"normcal: validation error: {exc}")
 
         # ── combine into overall status ──────────────────────────
+        # Check for double-propagated difcal entries (copy-of-copy).
+        # Only scan entries that are not version 0 (geometric default).
+        difcalEntries = difcal.get("calibIndexList", [])
+        doublePropVersions = [
+            int(e.get("version", -1))
+            for e in difcalEntries
+            if int(e.get("version", -1)) != 0
+            and is_double_propagated(e.get("comments", ""))
+        ]
+        hasDoublePropagated = bool(doublePropVersions)
+
         status = combine_caltype_statuses(
             difTypeStatus, nrmTypeStatus,
             difCorrupt=difCorrupt, nrmCorrupt=nrmCorrupt,
+            hasDoublePropagated=hasDoublePropagated,
         )
 
         # ── latest difcal cycle ──────────────────────────────────
@@ -298,6 +311,8 @@ class CalibrationManagerModel:
             # True when the corruption cannot be fixed by fixIndex and the
             # only resolution is deleting the entire state folder.
             "deleteOnly": any("cross-state contamination" in ci for ci in corruptIssues),
+            "hasDoublePropagated": hasDoublePropagated,
+            "doublePropagatedVersions": doublePropVersions,
         }
 
     # ── Calibration detail queries ───────────────────────────────────
@@ -335,6 +350,8 @@ class CalibrationManagerModel:
             else:
                 entry["isPropagated"] = False
                 entry["effectiveRun"] = entry.get("runNumber", "")
+            # Flag copy-of-copy entries for the UI to highlight
+            entry["isDoublePropagated"] = is_double_propagated(comment)
 
         # checkCalibrationStatus sorts by timestamp desc; re-sort by version asc
         entries.sort(key=lambda e: int(e.get("version", 0)))
@@ -386,6 +403,210 @@ class CalibrationManagerModel:
             calType=calType,
             dryRun=dryRun,
         )
+
+    # ── Phase 5: propagation preview/execute wrappers ─────────────
+
+    def previewPropagation(
+        self,
+        donorRunNumber,
+        isLite: bool = True,
+        includeGuideStatus: bool = False,
+    ) -> Dict[str, Any]:
+        """Preview donor/recipient details for propagation without writing files.
+
+        Returns a UI-friendly payload that explains which donor calibration
+        would be used and which states would be targeted.
+        """
+
+        donorRunNumber = str(donorRunNumber)
+        donorStateID, donorStateDict = ssm.stateDef(donorRunNumber)
+        donorDetConfig = ssm.detectorConfig(donorStateDict, includeGuideStatus)
+
+        donorCalStatus = ssm.checkCalibrationStatus(
+            runNumber=donorRunNumber,
+            stateID=None,
+            isLite=isLite,
+            calType="difcal",
+        )
+
+        donorLatest = donorCalStatus.get("latestValidCalibrationDict", {})
+        preview: Dict[str, Any] = {
+            "ok": True,
+            "donorRunNumber": donorRunNumber,
+            "donorStateID": donorStateID,
+            "selectedDonorVersion": donorLatest.get("version"),
+            "selectedDonorCycleID": donorLatest.get("cycleID"),
+            "selectedDonorComment": donorLatest.get("comments", ""),
+            "blocked": False,
+            "blockReason": None,
+            "recipients": [],
+        }
+
+        if not donorCalStatus.get("runIsCalibrated", False):
+            preview["blocked"] = True
+            preview["blockReason"] = "no_donor_calibration"
+            return preview
+
+        from snapwrap import utils as wrap
+
+        if wrap._is_propagated_entry(donorLatest):
+            preview["blocked"] = True
+            preview["blockReason"] = "donor_is_propagated"
+
+        recipients: List[Dict[str, Any]] = []
+        for stateID in ssm.availableStates():
+            if stateID == donorStateID:
+                continue
+            stateDict = ssm.pullStateDict(stateID)
+            detConfig = ssm.detectorConfig(stateDict, includeGuideStatus)
+            if detConfig != donorDetConfig:
+                continue
+
+            calStatus = ssm.checkCalibrationStatus(
+                runNumber=None,
+                stateID=stateID,
+                isLite=isLite,
+                calType="difcal",
+            )
+            existingVersions = [
+                int(entry.get("version", 0))
+                for entry in calStatus.get("calibIndexList", [])
+            ]
+            maxVersion = max(existingVersions) if existingVersions else None
+            recipients.append({
+                "stateID": stateID,
+                "recipientPreviousVersions": calStatus.get("numberCalibrations", 0),
+                "newVersion": (maxVersion + 1) if maxVersion is not None else None,
+            })
+
+        preview["recipients"] = recipients
+        return preview
+
+    def executePropagation(
+        self,
+        donorRunNumber,
+        isLite: bool = True,
+        includeGuideStatus: bool = False,
+    ) -> Dict[str, Any]:
+        """Execute propagation from UI after preview/confirmation."""
+
+        preview = self.previewPropagation(
+            donorRunNumber,
+            isLite=isLite,
+            includeGuideStatus=includeGuideStatus,
+        )
+
+        if preview.get("blocked"):
+            return {
+                **preview,
+                "ok": False,
+                "executed": False,
+                "summary": "Propagation blocked by donor validation.",
+            }
+
+        try:
+            from snapwrap import utils as wrap
+
+            wrap.propagateDifcal(
+                donorRunNumber,
+                isLite=isLite,
+                propagate=True,
+                includeGuideStatus=includeGuideStatus,
+            )
+        except Exception as exc:
+            return {
+                **preview,
+                "ok": False,
+                "executed": False,
+                "summary": f"Propagation failed: {exc}",
+                "error": str(exc),
+            }
+
+        return {
+            **preview,
+            "ok": True,
+            "executed": True,
+            "summary": f"Propagation executed for {len(preview.get('recipients', []))} recipient state(s).",
+        }
+
+    # ── New functionality: remove double-propagated entries ─────────
+
+    def removeDoublePropagatedEntries(
+        self,
+        stateID: str,
+        isLite: bool = True,
+        dryRun: bool = True,
+    ) -> Dict[str, Any]:
+        """Delete all double-propagated difcal versions from a state's index.
+
+        A double-propagated entry is one whose ``comments`` field is itself
+        a propagation comment (copy-of-a-copy).  These entries are
+        structurally invalid and must be removed before re-propagating
+        from the correct donor.
+
+        Versions are deleted from highest to lowest so that the
+        ``fixIndex`` re-numbering after each deletion does not shift the
+        version numbers of entries still to be removed.
+
+        Parameters
+        ----------
+        dryRun : bool
+            If ``True`` (default), only report what *would* be deleted.
+            No files are modified.
+
+        Returns
+        -------
+        dict
+            * ``ok`` – ``True`` if all deletions succeeded (or dry-run).
+            * ``versions`` – sorted list of version numbers that are / would
+              be deleted.
+            * ``messages`` – per-version result messages from
+              :meth:`deleteCalibrationVersion`.
+            * ``summary`` – human-readable one-line summary.
+        """
+        calStatus = ssm.checkCalibrationStatus(
+            runNumber=None, stateID=stateID, isLite=isLite, calType="difcal",
+        )
+        entries = calStatus.get("calibIndexList", [])
+        dp_versions = sorted(
+            [
+                int(e.get("version", -1))
+                for e in entries
+                if int(e.get("version", -1)) != 0
+                and is_double_propagated(e.get("comments", ""))
+            ],
+            reverse=True,  # highest first so re-numbering doesn't affect remaining targets
+        )
+
+        if not dp_versions:
+            return {
+                "ok": True,
+                "versions": [],
+                "messages": [],
+                "summary": f"No double-propagated entries found in state {stateID}.",
+            }
+
+        messages = []
+        all_ok = True
+        for version in dp_versions:
+            result = self.deleteCalibrationVersion(
+                stateID, "difcal", version, isLite=isLite, dryRun=dryRun,
+            )
+            messages.append(result.get("message", ""))
+            if not result.get("ok"):
+                all_ok = False
+
+        prefix = "[DRY RUN] Would delete" if dryRun else "Deleted"
+        summary = (
+            f"{prefix} {len(dp_versions)} double-propagated difcal version(s) "
+            f"from state {stateID}: {sorted(dp_versions)}."
+        )
+        return {
+            "ok": all_ok,
+            "versions": sorted(dp_versions),
+            "messages": messages,
+            "summary": summary,
+        }
 
     # ── New functionality: delete a calibration version ──────────────
 
@@ -468,13 +689,17 @@ class CalibrationManagerModel:
         #    Strip the 'cycleID' annotation that checkCalibrationStatus
         #    added — it's not part of the on-disk schema and validateIndex
         #    will flag it as an extra key.
+        #    Sort ascending by version to match the native snapred index order.
         _INDEX_KEYS = {"version", "runNumber", "useLiteMode",
                        "appliesTo", "comments", "author", "timestamp"}
-        updatedEntries = [
-            {k: v for k, v in e.items() if k in _INDEX_KEYS}
-            for e in indexEntries
-            if int(e.get("version", -1)) != version
-        ]
+        updatedEntries = sorted(
+            [
+                {k: v for k, v in e.items() if k in _INDEX_KEYS}
+                for e in indexEntries
+                if int(e.get("version", -1)) != version
+            ],
+            key=lambda e: int(e.get("version", 0)),
+        )
         with open(indexPath, "w") as fh:
             json.dump(updatedEntries, fh, indent=2)
 
