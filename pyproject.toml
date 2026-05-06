@@ -67,13 +67,13 @@ default-tag = "0.1.0"
 method = "minor"
 
 [tool.versioningit.format]
-distance = "{next_version}.dev{distance}"
+distance = "{next_version}.dev{committer_date:%Y%m%d%H%M%S}"
 # Since pixi builds currently require the package version to be set statically in pyproject.toml,
 # and we solve that by temporarily changing pyproject.toml during build using the pixi tasks
 # sync-version and reset-toml, then we need to ignore uncommitted changes in order for the wheel
 # version to be consistent with the package version
 dirty = "{version}"
-distance-dirty = "{next_version}.dev{distance}"
+distance-dirty = "{next_version}.dev{committer_date:%Y%m%d%H%M%S}"
 
 [tool.versioningit.write]
 file = "src/snapwrap/_version.py"
@@ -196,7 +196,7 @@ pandas = "*"
 
 [tool.pixi.package]
 name = "snapwrap"
-version = "2.2.0.dev31"     # placeholder, overwritten by sync-version
+version = "0.0.0"     # placeholder, overwritten by sync-version
 
 [tool.pixi.package.build]
 backend = { name = "pixi-build-python", version = "0.4.*" }
