@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutrons.org/snapwrap/reduction_artefacts/state.schema.json",
+  "title": "Reduction Artefacts IPTS Allocator State",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ipts",
+    "next_campaign_id",
+    "campaigns",
+    "aliases"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "ipts": { "type": "integer", "minimum": 1 },
+    "next_campaign_id": { "type": "integer", "minimum": 1 },
+    "campaigns": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9_-]{1,62}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["campaign_id", "created_at", "status"],
+        "properties": {
+          "campaign_id": { "type": "integer", "minimum": 1 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["active", "closed", "archived"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "aliases": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9_-]{1,62}$" },
+      "additionalProperties": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{1,62}$" }
+    }
+  },
+  "additionalProperties": true
+}

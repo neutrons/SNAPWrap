@@ -11,6 +11,7 @@ dependencies = [
   "panel >=1.7.0",
   "sqlalchemy >=2.0.0",
   "ruamel.yaml",
+  "jsonschema >=4.23.0",
   "lmfit",
   "odfpy >=1.4.1",
   "h5py",
@@ -54,6 +55,7 @@ artifacts = [
   "src/snapwrap/**/*.yml",
   "src/snapwrap/**/*.yaml",
   "src/snapwrap/**/*.ini",
+  "src/snapwrap/**/*.json",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -159,6 +161,7 @@ scipy = "*"
 python-dateutil = "*"
 packaging = "*"
 pyyaml = "*"
+jsonschema = ">=4.23.0"
 # NOTE: this dep SHOULD have been in snapred, but was missed
 "ruamel.yaml" = "*"
 
@@ -190,6 +193,7 @@ scipy = "*"
 python-dateutil = "*"
 packaging = "*"
 pyyaml = "*"
+jsonschema = ">=4.23.0"
 pandas = "*"
 # NOTE: this dep SHOULD have been in snapred, but was missed
 "ruamel.yaml" = "*"

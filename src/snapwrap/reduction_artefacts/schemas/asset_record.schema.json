@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutrons.org/snapwrap/reduction_artefacts/asset_record.schema.json",
+  "title": "Reduction Artefacts Asset Record",
+  "type": "object",
+  "required": [
+    "record_id",
+    "timestamp",
+    "campaign_id",
+    "campaign_slug",
+    "ipts",
+    "asset_id",
+    "asset_type",
+    "version",
+    "status",
+    "path",
+    "provenance"
+  ],
+  "properties": {
+    "record_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "campaign_id": { "type": "integer", "minimum": 1 },
+    "campaign_slug": { "type": "string" },
+    "ipts": { "type": "integer", "minimum": 1 },
+    "asset_id": { "type": "string" },
+    "asset_type": {
+      "type": "string",
+      "enum": ["cif", "ub_matrix", "seemeta_json", "manual_pixel_mask", "other"]
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "type": "string", "enum": ["active", "superseded", "invalid", "archived"] },
+    "applicability": {
+      "type": "object",
+      "properties": {
+        "scope": { "type": "string", "enum": ["campaign", "run"] },
+        "run_number": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "path": { "type": "string" },
+    "checksum": { "type": "string" },
+    "provenance": {
+      "type": "object",
+      "required": ["source", "created_by"],
+      "properties": {
+        "source": { "type": "string", "enum": ["manual", "imported", "generated"] },
+        "created_by": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": true
+}

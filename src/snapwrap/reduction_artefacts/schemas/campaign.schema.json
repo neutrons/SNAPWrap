@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutrons.org/snapwrap/reduction_artefacts/campaign.schema.json",
+  "title": "Reduction Artefacts Campaign",
+  "type": "object",
+  "required": [
+    "campaign_id",
+    "campaign_slug",
+    "ipts",
+    "assembly_type",
+    "status",
+    "created_at",
+    "updated_at",
+    "schema_version"
+  ],
+  "properties": {
+    "campaign_id": { "type": "integer", "minimum": 1 },
+    "campaign_slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$" },
+    "ipts": { "type": "integer", "minimum": 1 },
+    "assembly_type": { "type": "string", "enum": ["DAC", "PE", "OTHER"] },
+    "status": { "type": "string", "enum": ["active", "closed", "archived"] },
+    "description": { "type": "string" },
+    "owners": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "schema_version": { "type": "string" },
+    "metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": true
+}
