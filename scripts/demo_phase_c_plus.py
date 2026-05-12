@@ -1,4 +1,10 @@
-"""Phase C+ end-to-end demo: campaign manifest ingest + SEEMeta inference.
+"""Phase C+ end-to-end demo: campaign manifest v0.2.0 ingest + SEEMeta inference.
+
+Demonstrates the living-manifest model:
+  - candidate_species (CIF + inline EOS, no separate phases file)
+  - ruby pressure annotation
+  - post-analysis observed_species annotation
+  - add_candidate_species mid-campaign
 
 Part 1 — Synthetic ingest (always runs; no IPTS mount required).
 Part 2 — Real bruciteA ingest from IPTS-33219 (gated on mount existence).
@@ -14,18 +20,16 @@ import tempfile
 from pathlib import Path
 
 from snapwrap.reduction_artefacts import (
+    add_candidate_species,
+    annotate_run,
     bootstrap_campaign_from_manifest,
     list_asset_records,
-    load_phase_description,
 )
 
 _IPTS_SHARED = Path("/SNS/SNAP/IPTS-33219/shared")
 _BRUCITE_MANIFEST = (
     _IPTS_SHARED
-    / "snapwrap"
-    / "reduction_artefacts"
-    / "manifests"
-    / "bruciteA_manifest.json"
+    / "snapwrap" / "reduction_artefacts" / "manifests" / "bruciteA_manifest.json"
 )
 
 # ── Part 1: Synthetic ingest ──────────────────────────────────────────────────
@@ -37,111 +41,144 @@ print("=" * 60)
 with tempfile.TemporaryDirectory() as tmpdir:
     tmp = Path(tmpdir)
 
-    # Write a synthetic SEE file so assembly_type can be inferred
+    # Synthetic SEE file for assembly_type inference
     see_dir = tmp / "SEE"
     see_dir.mkdir()
-    see_file = see_dir / "SEE000042.json"
-    see_file.write_text(json.dumps({"type": "assembly.dac", "components": []}))
-
-    # Write a placeholder CIF and EOS file (contents don't matter for this demo)
-    cif_path = tmp / "placeholder.cif"
-    cif_path.write_text("# placeholder cif\n")
-    eos_path = tmp / "placeholder.eos.json"
-    eos_path.write_text(
-        json.dumps({
-            "eos_type": "vinet",
-            "V_0": 15.862,
-            "K_0": 295.2,
-            "K_prime": 4.32,
-            "source": "demo",
-        })
+    (see_dir / "SEE000042.json").write_text(
+        json.dumps({"type": "assembly.dac", "components": []})
     )
 
     manifest = {
-        "schema_version": "0.1.0",
+        "schema_version": "0.2.0",
         "campaign": {
             "slug": "synthetic-demo",
             "ipts": 1,
             "source_run": 42,
-            "description": "Synthetic demo campaign for Phase C+",
+            "description": "Synthetic demo campaign",
+            "owners": ["demo"],
         },
-        "assets": [
+        "candidate_species": [
             {
-                "asset_id": "cif-placeholder",
-                "asset_type": "cif",
-                "path": str(cif_path),
-                "applicability": {"scope": "campaign"},
-                "provenance": {"source": "manual", "created_by": "demo"},
-            },
-            {
-                "asset_id": "eos-placeholder",
-                "asset_type": "eos_description",
-                "path": str(eos_path),
-                "applicability": {"scope": "campaign"},
-                "provenance": {"source": "manual", "created_by": "demo"},
+                "species_id": "tungsten",
+                "role": "calibrant",
+                "cif": "/data/W.cif",
+                "eos": {
+                    "type": "vinet", "V_0": 15.862, "K_0": 295.2, "K_prime": 4.32,
+                    "source": "Dewaele 2004",
+                },
+                "stability_pressure": [None, None],
+                "artefact_path": None,
             },
         ],
+        "runs": [
+            {"run_number": 1001, "ruby_pressure_gpa": None, "observed_species": None},
+            {"run_number": 1002, "ruby_pressure_gpa": None, "observed_species": None},
+        ],
     }
-    manifest_path = tmp / "demo_manifest.json"
-    manifest_path.write_text(json.dumps(manifest))
+    mf = tmp / "manifest.json"
+    mf.write_text(json.dumps(manifest))
 
-    result = bootstrap_campaign_from_manifest(
-        manifest_path,
-        shared_root=tmp,
-        seemeta_dir=see_dir,
-    )
+    result = bootstrap_campaign_from_manifest(mf, shared_root=tmp, seemeta_dir=see_dir)
 
     print(f"  Campaign slug : {result['campaign']['campaign_slug']}")
     print(f"  Assembly type : {result['campaign']['assembly_type']}  (inferred from SEEMeta)")
-    print(f"  Assets registered : {len(result['assets'])}")
+    print(f"  Candidate species : {[s['species_id'] for s in result['candidate_species']]}")
 
-    registered = list_asset_records(
-        ipts=1, campaign_identifier="synthetic-demo", shared_root=tmp
+    assets = list_asset_records(ipts=1, campaign_identifier="synthetic-demo", shared_root=tmp)
+    print(f"  Assets registered : {len(assets)}")
+    for a in assets:
+        print(f"    • {a['asset_id']} [{a['asset_type']}]")
+
+    # Simulate operator recording ruby pressure before run 1001
+    annotate_run(ipts=1, campaign_identifier="synthetic-demo", run_number=1001,
+                 shared_root=tmp, ruby_before_gpa=3.10)
+    print("\n  After neutron collection (run 1001):")
+    annotate_run(ipts=1, campaign_identifier="synthetic-demo", run_number=1001,
+                 shared_root=tmp, ruby_after_gpa=3.14, ruby_nominal_gpa=3.10)
+
+    # Simulate analysis writing back observed species
+    annotate_run(
+        ipts=1, campaign_identifier="synthetic-demo", run_number=1001,
+        shared_root=tmp,
+        observed_species=[{
+            "species_id": "tungsten",
+            "lattice_params": {"a": 3.138},
+            "pressure_gpa": 3.24,
+        }],
     )
-    for rec in registered:
-        print(f"    • {rec['asset_id']} [{rec['asset_type']}]")
+
+    # Read living manifest back and show run state
+    living = json.loads(
+        (tmp / "snapwrap" / "reduction_artefacts" / "campaigns"
+         / "synthetic-demo" / "manifest.json").read_text()
+    )
+    run = living["runs"][0]
+    ruby = run["ruby_pressure_gpa"]
+    print(f"  run 1001 ruby: before={ruby['before']} after={ruby['after']} "
+          f"nominal={ruby['nominal']}")
+    obs = run["observed_species"][0]
+    print(f"  run 1001 observed: {obs['species_id']} a={obs['lattice_params']['a']} "
+          f"P={obs['pressure_gpa']} GPa")
+
+    # Mid-campaign: unexpected phase discovered — add it
+    add_candidate_species(
+        ipts=1, campaign_identifier="synthetic-demo",
+        species_def={
+            "species_id": "unexpected-phase",
+            "role": "sample",
+            "cif": "/data/unexpected.cif",
+            "eos": None,
+            "stability_pressure": [5.0, None],
+        },
+        shared_root=tmp,
+    )
+    living2 = json.loads(
+        (tmp / "snapwrap" / "reduction_artefacts" / "campaigns"
+         / "synthetic-demo" / "manifest.json").read_text()
+    )
+    print(f"\n  Candidate species after mid-campaign add: "
+          f"{[s['species_id'] for s in living2['candidate_species']]}")
 
 print()
 
-# ── Part 2: Real bruciteA ingest (gated) ────────────────────────────────────
+# ── Part 2: Real bruciteA ingest (gated) ─────────────────────────────────────
 
 print("=" * 60)
 print("Part 2 — Real bruciteA ingest from IPTS-33219")
 print("=" * 60)
 
 if not _IPTS_SHARED.exists():
-    print("  ⚠  IPTS mount not accessible; skipping Part 2.")
-    print(f"     ({_IPTS_SHARED} does not exist)")
+    print(f"  ⚠  IPTS mount not accessible; skipping Part 2.\n     ({_IPTS_SHARED})")
 else:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         see_dir = _IPTS_SHARED / "SEE"
 
         result = bootstrap_campaign_from_manifest(
-            _BRUCITE_MANIFEST,
-            shared_root=tmp,
-            seemeta_dir=see_dir,
+            _BRUCITE_MANIFEST, shared_root=tmp, seemeta_dir=see_dir,
         )
 
-        print(f"  Campaign slug : {result['campaign']['campaign_slug']}")
-        print(f"  Assembly type : {result['campaign']['assembly_type']}  (from SEE065891.json)")
-        print(f"  Assets registered : {len(result['assets'])}")
+        print(f"  Campaign slug   : {result['campaign']['campaign_slug']}")
+        print(f"  Assembly type   : {result['campaign']['assembly_type']}"
+              f"  (from SEE065891.json)")
+        print(f"  Candidate species:")
+        for s in result["candidate_species"]:
+            eos = s.get("cif_asset", {})
+            print(f"    • {s['species_id']} [{s['role']}]")
 
-        registered = list_asset_records(
-            ipts=33219, campaign_identifier="brucitea", shared_root=tmp
+        assets = list_asset_records(ipts=33219, campaign_identifier="brucitea",
+                                    shared_root=tmp)
+        print(f"  Assets in index : {len(assets)}")
+        for a in assets:
+            print(f"    • {a['asset_id']} [{a['asset_type']}]")
+
+        # Show manifest runs
+        living = json.loads(
+            (tmp / "snapwrap" / "reduction_artefacts" / "campaigns"
+             / "brucitea" / "manifest.json").read_text()
         )
-        for rec in registered:
-            print(f"    • {rec['asset_id']} [{rec['asset_type']}]")
-
-        # Load the phase description and show EOS K₀ for each phase
-        phase_records = [r for r in registered if r["asset_type"] == "phase_description"]
-        if phase_records:
-            print()
-            print("  Phase description loaded from inspectrum:")
-            exp = load_phase_description(phase_records[0]["path"])
-            for phase in exp.phases:
-                k0 = getattr(phase.eos, "K_0", "n/a") if phase.eos else "n/a"
-                print(f"    • {phase.name} [{phase.role}]  K₀ = {k0} GPa")
+        print(f"  Runs declared   : {[r['run_number'] for r in living['runs']]}")
+        print(f"  (all ruby/observed fields are null — ready for real data)")
 
 print()
 print("Phase C+ demo complete.")

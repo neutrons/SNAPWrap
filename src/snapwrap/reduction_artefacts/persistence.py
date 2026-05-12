@@ -693,30 +693,44 @@ def bootstrap_campaign_from_manifest(
 ) -> dict[str, Any]:
     """Validate a campaign manifest, bootstrap the campaign, and register all assets.
 
+    The manifest (v0.2.0 schema) is the **living document** for the campaign.
+    After validation it is copied to ``campaigns/{slug}/manifest.json`` under
+    the campaign root, where :func:`annotate_run` and
+    :func:`add_candidate_species` will update it in-place over the campaign
+    lifetime.
+
+    Each ``candidate_species`` entry's CIF file is registered as a ``cif``
+    asset in ``assets_index.jsonl``.  EOS parameters are embedded inline in the
+    manifest and are not registered as separate assets.
+
+    Each ``assembly_assets`` entry is registered in ``assets_index.jsonl``.
+
     Assembly type resolution order:
 
-    1. ``manifest.campaign.assembly_type`` (explicit) — used directly after
-       normalisation.
+    1. ``manifest.campaign.assembly_type`` (explicit) — used directly.
     2. ``manifest.campaign.source_run`` — SEEMeta file
        ``{seemeta_dir}/SEE{source_run:06d}.json`` is loaded and
        :func:`infer_assembly_type_from_seemeta` is called.
-    3. If neither is present: ``ValueError`` is raised.
+    3. Neither present → ``ValueError``.
 
-    When ``seemeta_dir`` is not supplied, the SEE directory is derived from
-    the IPTS number: ``/SNS/SNAP/IPTS-{ipts}/shared/SEE/``.
+    When ``seemeta_dir`` is not supplied, defaults to
+    ``/SNS/SNAP/IPTS-{ipts}/shared/SEE/``.
 
     Args:
         manifest_path: Path to the campaign manifest JSON file.
         shared_root: Override the IPTS shared root (used in tests).
-        seemeta_dir: Override the directory that contains ``SEE*.json`` files.
+        seemeta_dir: Override directory containing ``SEE*.json`` files.
 
     Returns:
-        ``{"campaign": <campaign_record>, "assets": [<asset_records>]}``.
+        ``{"campaign": <campaign_record>,
+           "candidate_species": [<per-species dict with cif_asset_record>],
+           "assembly_assets": [<asset_records>],
+           "manifest_path": "<absolute path to living manifest copy>"}``
 
     Raises:
-        FileNotFoundError: Manifest file not found.
+        FileNotFoundError: Manifest file or SEEMeta file not found.
         jsonschema.ValidationError: Manifest fails schema validation.
-        ValueError: Cannot determine assembly type or required fields missing.
+        ValueError: Cannot determine assembly type.
         SlugConflictError: Campaign slug already in use.
     """
     from .requirements import infer_assembly_type_from_seemeta, normalize_assembly_type
@@ -734,18 +748,19 @@ def bootstrap_campaign_from_manifest(
     ipts: int = int(camp["ipts"])
     slug: str = camp["slug"]
 
+    # ── Resolve assembly_type ────────────────────────────────────────────────
     if "assembly_type" in camp:
         assembly_type = normalize_assembly_type(camp["assembly_type"])
     elif "source_run" in camp:
-        source_run: int = int(camp["source_run"])
+        source_run_num: int = int(camp["source_run"])
         if seemeta_dir is None:
             see_dir = Path(f"/SNS/SNAP/IPTS-{ipts}/shared/SEE")
         else:
             see_dir = Path(seemeta_dir)
-        see_file = see_dir / f"SEE{source_run:06d}.json"
+        see_file = see_dir / f"SEE{source_run_num:06d}.json"
         if not see_file.exists():
             raise FileNotFoundError(
-                f"SEEMeta file not found for run {source_run}: {see_file}"
+                f"SEEMeta file not found for run {source_run_num}: {see_file}"
             )
         with see_file.open("r", encoding="utf-8") as fh:
             seemeta: dict[str, Any] = json.load(fh)
@@ -756,6 +771,7 @@ def bootstrap_campaign_from_manifest(
             "'campaign.assembly_type' or 'campaign.source_run' (for SEEMeta inference)."
         )
 
+    # ── Bootstrap the campaign directory structure ───────────────────────────
     campaign_record = bootstrap_campaign(
         ipts=ipts,
         campaign_slug=slug,
@@ -765,8 +781,35 @@ def bootstrap_campaign_from_manifest(
         owners=camp.get("owners"),
     )
 
-    asset_records: list[dict[str, Any]] = []
-    for asset_def in manifest.get("assets", []):
+    paths = _resolve_paths(ipts=ipts, campaign_slug=slug, shared_root=shared_root)
+    living_manifest_path = paths.campaign_dir / "manifest.json"
+    _atomic_write_json(living_manifest_path, manifest)
+
+    # ── Register CIF assets for each candidate species ───────────────────────
+    species_results: list[dict[str, Any]] = []
+    for species in manifest.get("candidate_species", []):
+        cif_asset_id = f"cif-{species['species_id']}"
+        cif_record = register_asset_record(
+            ipts=ipts,
+            campaign_identifier=slug,
+            asset_id=cif_asset_id,
+            asset_type="cif",
+            path=species["cif"],
+            shared_root=shared_root,
+            applicability_scope="campaign",
+            provenance_source="imported",
+            created_by=camp.get("owners", ["operator"])[0] if camp.get("owners") else "operator",
+            notes=f"CIF for candidate species '{species['species_id']}'",
+        )
+        species_results.append({
+            "species_id": species["species_id"],
+            "role": species["role"],
+            "cif_asset": cif_record,
+        })
+
+    # ── Register assembly assets ─────────────────────────────────────────────
+    assembly_asset_records: list[dict[str, Any]] = []
+    for asset_def in manifest.get("assembly_assets", []):
         applicability = asset_def.get("applicability", {})
         provenance = asset_def.get("provenance", {})
         record = register_asset_record(
@@ -779,12 +822,214 @@ def bootstrap_campaign_from_manifest(
             applicability_scope=applicability.get("scope", "campaign"),
             run_number=applicability.get("run_number"),
             version=int(asset_def.get("version", 1)),
-            status="active",
             metadata=asset_def.get("metadata"),
             provenance_source=provenance.get("source", "manual"),
             created_by=provenance.get("created_by", "operator"),
             notes=provenance.get("notes"),
         )
-        asset_records.append(record)
+        assembly_asset_records.append(record)
 
-    return {"campaign": campaign_record, "assets": asset_records}
+    return {
+        "campaign": campaign_record,
+        "candidate_species": species_results,
+        "assembly_assets": assembly_asset_records,
+        "manifest_path": str(living_manifest_path),
+    }
+
+
+# ── Sentinel for annotate_run unset kwargs ────────────────────────────────────
+
+class _UnsetType:
+    """Sentinel distinguishing 'not supplied' from explicit None."""
+    def __repr__(self) -> str:
+        return "<UNSET>"
+
+
+_UNSET: Any = _UnsetType()
+
+
+def annotate_run(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    run_number: int,
+    shared_root: "Path | str | None" = None,
+    ruby_before_gpa: "float | None" = _UNSET,
+    ruby_after_gpa: "float | None" = _UNSET,
+    ruby_nominal_gpa: "float | None" = _UNSET,
+    observed_species: "list[dict[str, Any]] | None" = _UNSET,
+) -> dict[str, Any]:
+    """Partially update a single run record in the campaign's living manifest.
+
+    Only supplied keyword arguments are written; omitted arguments leave the
+    existing values intact.  This allows real-time updates in three separate
+    calls:
+
+    1. Before shutter opens: ``annotate_run(..., ruby_before_gpa=3.1)``
+    2. After shutter closes: ``annotate_run(..., ruby_after_gpa=3.15,
+       ruby_nominal_gpa=3.1)``
+    3. Post-analysis: ``annotate_run(..., observed_species=[...])``
+
+    The ``ruby_pressure_gpa`` object is created on first write; subsequent
+    calls merge into it.
+
+    Args:
+        ipts: IPTS number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        run_number: The run number to annotate.
+        shared_root: Override IPTS shared root (used in tests).
+        ruby_before_gpa: Ruby pressure (GPa) before neutron collection.
+        ruby_after_gpa: Ruby pressure (GPa) after neutron collection.
+        ruby_nominal_gpa: The pressure treated as canonical downstream.
+        observed_species: Post-analysis list of observed-species dicts.
+            Each must have at least ``species_id``; optionally
+            ``lattice_params``, ``pressure_gpa``, ``artefact_path``.
+
+    Returns:
+        The updated run dict.
+
+    Raises:
+        KeyError: ``run_number`` not found in ``manifest.runs``.
+        FileNotFoundError: Living manifest not found in campaign directory.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts, campaign_identifier=campaign_identifier, shared_root=shared_root
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+    manifest_path = paths.campaign_dir / "manifest.json"
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Living manifest not found: {manifest_path}. "
+            "Was the campaign bootstrapped from a manifest?"
+        )
+
+    lock_path = manifest_path.with_suffix(".json.lock")
+    with _exclusive_lock(lock_path):
+        with manifest_path.open("r", encoding="utf-8") as fh:
+            manifest = json.load(fh)
+
+        runs: list[dict[str, Any]] = manifest.get("runs", [])
+        run_idx = next(
+            (i for i, r in enumerate(runs) if r.get("run_number") == run_number),
+            None,
+        )
+        if run_idx is None:
+            raise KeyError(
+                f"run_number {run_number} not declared in manifest.runs for campaign {campaign_slug!r}"
+            )
+
+        run = runs[run_idx]
+
+        # ── Merge ruby pressure fields ───────────────────────────────────────
+        ruby_fields = {
+            "before": ruby_before_gpa,
+            "after": ruby_after_gpa,
+            "nominal": ruby_nominal_gpa,
+        }
+        has_ruby_update = any(
+            not isinstance(v, _UnsetType) for v in ruby_fields.values()
+        )
+        if has_ruby_update:
+            existing_ruby = run.get("ruby_pressure_gpa") or {}
+            if not isinstance(existing_ruby, dict):
+                existing_ruby = {}
+            for field, value in ruby_fields.items():
+                if not isinstance(value, _UnsetType):
+                    existing_ruby[field] = value
+            run["ruby_pressure_gpa"] = existing_ruby
+
+        # ── Replace observed_species wholesale ──────────────────────────────
+        if not isinstance(observed_species, _UnsetType):
+            run["observed_species"] = observed_species
+
+        runs[run_idx] = run
+        manifest["runs"] = runs
+        _atomic_write_json(manifest_path, manifest)
+
+    return run
+
+
+def add_candidate_species(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    species_def: dict[str, Any],
+    shared_root: "Path | str | None" = None,
+) -> dict[str, Any]:
+    """Add a newly-discovered candidate species to a campaign manifest mid-campaign.
+
+    The species CIF is registered as a ``cif`` asset in ``assets_index.jsonl``.
+    The manifest's ``candidate_species`` list is extended atomically.
+
+    Args:
+        ipts: IPTS number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        species_def: Dict matching the ``candidate_species`` item schema.
+            Must include ``species_id``, ``role``, and ``cif``.
+        shared_root: Override IPTS shared root (used in tests).
+
+    Returns:
+        The registered CIF asset record.
+
+    Raises:
+        ValueError: ``species_id`` already exists in the manifest.
+        KeyError: Required fields missing from ``species_def``.
+        FileNotFoundError: Living manifest not found.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    for required in ("species_id", "role", "cif"):
+        if required not in species_def:
+            raise KeyError(f"species_def is missing required field: {required!r}")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts, campaign_identifier=campaign_identifier, shared_root=shared_root
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+    manifest_path = paths.campaign_dir / "manifest.json"
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Living manifest not found: {manifest_path}. "
+            "Was the campaign bootstrapped from a manifest?"
+        )
+
+    lock_path = manifest_path.with_suffix(".json.lock")
+    with _exclusive_lock(lock_path):
+        with manifest_path.open("r", encoding="utf-8") as fh:
+            manifest = json.load(fh)
+
+        existing_ids = {s["species_id"] for s in manifest.get("candidate_species", [])}
+        new_id = species_def["species_id"]
+        if new_id in existing_ids:
+            raise ValueError(
+                f"species_id {new_id!r} already exists in campaign {campaign_slug!r}"
+            )
+
+        # Ensure artefact_path defaults to null
+        entry = {**species_def}
+        entry.setdefault("artefact_path", None)
+        entry.setdefault("stability_pressure", [None, None])
+
+        manifest.setdefault("candidate_species", []).append(entry)
+        _atomic_write_json(manifest_path, manifest)
+
+    # Register the CIF asset outside the manifest lock (register_asset_record has its own lock)
+    camp = manifest.get("campaign", {})
+    cif_record = register_asset_record(
+        ipts=ipts,
+        campaign_identifier=campaign_slug,
+        asset_id=f"cif-{new_id}",
+        asset_type="cif",
+        path=species_def["cif"],
+        shared_root=shared_root,
+        applicability_scope="campaign",
+        provenance_source="manual",
+        created_by=(camp.get("owners", ["operator"]) or ["operator"])[0],
+        notes=f"CIF for candidate species '{new_id}' (added mid-campaign)",
+    )
+    return cif_record

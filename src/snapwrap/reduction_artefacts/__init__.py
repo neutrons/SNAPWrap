@@ -7,6 +7,8 @@ persistence/validation. Schema files are intentionally colocated here (not in
 
 from .persistence import (
 	SlugConflictError,
+	add_candidate_species,
+	annotate_run,
 	append_jsonl_record,
 	bootstrap_campaign,
 	bootstrap_campaign_from_manifest,
@@ -59,6 +61,8 @@ from .schema_paths import get_schema_path, list_schema_paths
 
 __all__ = [
 	"SlugConflictError",
+	"add_candidate_species",
+	"annotate_run",
 	"append_jsonl_record",
 	"ApplicabilityScope",
 	"ArtefactDefinition",

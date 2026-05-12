@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neutrons.org/snapwrap/reduction_artefacts/campaign_manifest.schema.json",
   "title": "Reduction Artefacts Campaign Manifest",
-  "description": "Declarative manifest for bootstrapping a reduction artefacts campaign from a single file.",
+  "description": "Living declarative manifest for a reduction artefacts campaign. Evolves in real-time as pressure steps proceed and analysis annotations are added.",
   "type": "object",
-  "required": ["schema_version", "campaign", "assets"],
+  "required": ["schema_version", "campaign", "candidate_species", "runs"],
   "properties": {
     "schema_version": {
       "type": "string",
-      "description": "Schema version, e.g. \"0.1.0\"."
+      "description": "Schema version, e.g. \"0.2.0\"."
     },
     "campaign": {
       "type": "object",
@@ -32,66 +32,103 @@
         "source_run": {
           "type": "integer",
           "minimum": 1,
-          "description": "Optional run number used to derive assembly_type via SEEMeta when assembly_type is absent."
+          "description": "Run number used to derive assembly_type via SEEMeta when assembly_type is absent."
         },
         "description": {
-          "type": "string",
-          "description": "Human-readable description of the campaign."
+          "type": "string"
         },
         "owners": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "List of usernames or team names responsible for this campaign."
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false
     },
-    "assets": {
+
+    "candidate_species": {
       "type": "array",
-      "description": "Ordered list of assets to register when bootstrapping the campaign.",
+      "description": "All crystalline species that might scatter during the campaign. Each entry has a required CIF; EOS is optional and may be filled in later.",
+      "items": {
+        "type": "object",
+        "required": ["species_id", "role", "cif"],
+        "properties": {
+          "species_id": {
+            "type": "string",
+            "description": "Unique identifier for this species within the campaign."
+          },
+          "role": {
+            "type": "string",
+            "enum": ["calibrant", "sample"],
+            "description": "Whether this species acts as a pressure calibrant or the primary sample."
+          },
+          "cif": {
+            "type": "string",
+            "description": "Absolute path to the CIF file for this species."
+          },
+          "eos": {
+            "description": "Equation of state parameters. Null if not yet known.",
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "required": ["type", "K_0", "K_prime", "V_0"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["vinet", "birch-murnaghan", "murnaghan"]
+                  },
+                  "order": { "type": "integer" },
+                  "V_0": { "type": "number" },
+                  "V_0_unit": { "type": "string" },
+                  "Z": { "type": "integer" },
+                  "K_0": { "type": "number" },
+                  "K_0_err": { "type": "number" },
+                  "K_prime": { "type": "number" },
+                  "K_prime_err": { "type": "number" },
+                  "source": { "type": "string" }
+                },
+                "additionalProperties": true
+              }
+            ]
+          },
+          "stability_pressure": {
+            "type": "array",
+            "description": "Pressure range [P_min_GPa, P_max_GPa] over which this phase is expected to be stable. Null entries mean unbounded.",
+            "items": { "type": ["number", "null"] },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "artefact_path": {
+            "type": ["string", "null"],
+            "description": "Relative path (from campaign root) to the persisted crystalSpecies artefact JSON. Null until first reduction run."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "assembly_assets": {
+      "type": "array",
+      "description": "Assets that are properties of the pressure cell itself (UB matrices, pixel masks, SEE files) rather than of any specific crystalline phase.",
       "items": {
         "type": "object",
         "required": ["asset_id", "asset_type", "path"],
         "properties": {
-          "asset_id": {
-            "type": "string",
-            "description": "Unique identifier for this asset within the campaign."
-          },
+          "asset_id": { "type": "string" },
           "asset_type": {
             "type": "string",
             "enum": [
-              "cif",
-              "eos_description",
-              "phase_description",
-              "ub_matrix",
-              "seemeta_json",
-              "manual_pixel_mask",
-              "other"
-            ],
-            "description": "Asset type tag."
+              "cif", "eos_description", "phase_description",
+              "ub_matrix", "seemeta_json", "manual_pixel_mask", "other"
+            ]
           },
-          "path": {
-            "type": "string",
-            "description": "Absolute path to the asset file."
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "Asset version number (default 1)."
-          },
+          "path": { "type": "string" },
+          "version": { "type": "integer", "minimum": 1 },
           "applicability": {
             "type": "object",
             "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["campaign", "run"],
-                "description": "Whether this asset applies campaign-wide or to a specific run."
-              },
-              "run_number": {
-                "type": ["integer", "null"],
-                "minimum": 1,
-                "description": "Run number when scope is \"run\"."
-              }
+              "scope": { "type": "string", "enum": ["campaign", "run"] },
+              "run_number": { "type": ["integer", "null"] }
             },
             "additionalProperties": true
           },
@@ -99,18 +136,85 @@
             "type": "object",
             "required": ["source", "created_by"],
             "properties": {
-              "source": {
-                "type": "string",
-                "enum": ["manual", "imported", "generated"]
-              },
+              "source": { "type": "string", "enum": ["manual", "imported", "generated"] },
               "created_by": { "type": "string" },
               "notes": { "type": "string" }
             },
             "additionalProperties": true
           },
-          "metadata": {
-            "type": "object",
-            "additionalProperties": true
+          "metadata": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "runs": {
+      "type": "array",
+      "description": "One entry per neutron run. Starts sparse (just run_number); ruby pressures are added in real time; observed_species and per-species pressures are added post-analysis.",
+      "items": {
+        "type": "object",
+        "required": ["run_number"],
+        "properties": {
+          "run_number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ruby_pressure_gpa": {
+            "description": "Ruby fluorescence pressure measurements bracketing the neutron run.",
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "properties": {
+                  "before": {
+                    "type": ["number", "null"],
+                    "description": "Ruby pressure (GPa) measured immediately before the neutron shutter opened."
+                  },
+                  "after": {
+                    "type": ["number", "null"],
+                    "description": "Ruby pressure (GPa) measured after the neutron shutter closed. Null if not yet measured or run was interrupted."
+                  },
+                  "nominal": {
+                    "type": ["number", "null"],
+                    "description": "The pressure value used downstream as 'the pressure for this run'. Typically equal to before; may be set explicitly by the analyst."
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "observed_species": {
+            "description": "Post-analysis list of species confirmed to be scattering in this run. Null until analysis has been run.",
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["species_id"],
+                  "properties": {
+                    "species_id": {
+                      "type": "string",
+                      "description": "Must match a species_id in candidate_species."
+                    },
+                    "lattice_params": {
+                      "type": ["object", "null"],
+                      "description": "Refined lattice parameters (keys a, b, c, alpha, beta, gamma as applicable).",
+                      "additionalProperties": { "type": "number" }
+                    },
+                    "pressure_gpa": {
+                      "type": ["number", "null"],
+                      "description": "Pressure derived from this species' EOS + refined lattice params. Null if EOS is absent or refinement not yet run."
+                    },
+                    "artefact_path": {
+                      "type": ["string", "null"],
+                      "description": "Relative path to the run-scoped crystalSpecies artefact for this observation."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            ]
           }
         },
         "additionalProperties": false
