@@ -80,3 +80,16 @@ def test_build_requirement_report_invalid_assembly() -> None:
 def test_infer_assembly_type_from_seemeta_missing_field() -> None:
     with pytest.raises(KeyError):
         infer_assembly_type_from_seemeta({"instrument": "SNAP"})
+
+
+def test_infer_assembly_type_from_real_see_record() -> None:
+    """Regression: real SEE records use top-level 'type' field (C+.0 fix)."""
+    # Mimics the structure of /SNS/SNAP/IPTS-33219/shared/SEE/SEE065891.json
+    seemeta = {"type": "assembly.dac", "components": []}
+    assert infer_assembly_type_from_seemeta(seemeta) == "DAC"
+
+
+def test_infer_assembly_type_from_seemeta_type_key_not_assembly() -> None:
+    """A 'type' value that isn't an assembly type should fall through to KeyError."""
+    with pytest.raises(KeyError):
+        infer_assembly_type_from_seemeta({"type": "some_other_thing"})

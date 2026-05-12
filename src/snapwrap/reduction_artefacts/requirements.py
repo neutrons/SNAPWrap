@@ -83,11 +83,19 @@ def normalize_assembly_type(raw: str) -> str:
 
 
 def infer_assembly_type_from_seemeta(seemeta: Mapping[str, Any]) -> str:
-    """Infer normalized assembly type from a SEEMeta-like mapping."""
-    for key in ("assembly_type", "assembly", "sample_environment", "cell_type"):
+    """Infer normalized assembly type from a SEEMeta-like mapping.
+
+    Checks multiple key names in preference order to accommodate both legacy
+    SEEMeta conventions and real SEE record files (which use a top-level
+    ``"type"`` field, e.g. ``"assembly.dac"``).
+    """
+    for key in ("assembly_type", "assembly", "sample_environment", "cell_type", "type"):
         value = seemeta.get(key)
         if isinstance(value, str) and value.strip():
-            return normalize_assembly_type(value)
+            try:
+                return normalize_assembly_type(value)
+            except ValueError:
+                continue  # key present but value not a recognized assembly type
     raise KeyError("SEEMeta does not include a recognizable assembly type field")
 
 
