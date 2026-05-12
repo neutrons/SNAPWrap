@@ -9,6 +9,8 @@ from snapwrap.reduction_artefacts import (
     SlugConflictError,
     append_jsonl_record,
     bootstrap_campaign,
+    list_asset_records,
+    register_asset_record,
     rename_campaign_slug,
     read_jsonl_records,
     resolve_campaign_slug,
@@ -195,3 +197,76 @@ def test_resolve_campaign_slug_supports_alias_and_id_lookup(tmp_path: Path) -> N
         campaign_identifier=campaign["campaign_id"],
         shared_root=shared_root,
     ) == "pe_water_01"
+
+
+def test_register_asset_record_appends_schema_valid_asset(tmp_path: Path) -> None:
+    shared_root = _campaign_root(tmp_path)
+    campaign = bootstrap_campaign(
+        ipts=35214,
+        campaign_slug="dac_fe_01",
+        assembly_type="DAC",
+        shared_root=shared_root,
+    )
+
+    record = register_asset_record(
+        ipts=35214,
+        campaign_identifier=campaign["campaign_slug"],
+        asset_id="cif-sample-01",
+        asset_type="cif",
+        path="assets/sample_01.cif",
+        shared_root=shared_root,
+        metadata={"sample": "brucite"},
+    )
+
+    assert record["campaign_slug"] == campaign["campaign_slug"]
+    assert record["asset_type"] == "cif"
+    assert record["applicability"]["scope"] == "campaign"
+    assert record["applicability"]["run_number"] is None
+
+    rows = list_asset_records(
+        ipts=35214,
+        campaign_identifier=campaign["campaign_slug"],
+        shared_root=shared_root,
+    )
+    assert len(rows) == 1
+    assert rows[0]["asset_id"] == "cif-sample-01"
+
+
+def test_list_asset_records_supports_run_scoped_filter(tmp_path: Path) -> None:
+    shared_root = _campaign_root(tmp_path)
+    campaign = bootstrap_campaign(
+        ipts=35214,
+        campaign_slug="pe_h2o_01",
+        assembly_type="PE",
+        shared_root=shared_root,
+    )
+
+    register_asset_record(
+        ipts=35214,
+        campaign_identifier=campaign["campaign_slug"],
+        asset_id="pe-see-1",
+        asset_type="seemeta_json",
+        path="assets/SEE065918.json",
+        shared_root=shared_root,
+        applicability_scope="run",
+        run_number=65918,
+    )
+    register_asset_record(
+        ipts=35214,
+        campaign_identifier=campaign["campaign_slug"],
+        asset_id="pe-see-2",
+        asset_type="seemeta_json",
+        path="assets/SEE065919.json",
+        shared_root=shared_root,
+        applicability_scope="run",
+        run_number=65919,
+    )
+
+    rows_65918 = list_asset_records(
+        ipts=35214,
+        campaign_identifier=campaign["campaign_slug"],
+        shared_root=shared_root,
+        run_number=65918,
+    )
+    assert len(rows_65918) == 1
+    assert rows_65918[0]["asset_id"] == "pe-see-1"

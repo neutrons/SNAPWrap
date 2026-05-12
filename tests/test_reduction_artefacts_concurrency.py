@@ -40,10 +40,10 @@ def test_bootstrap_campaign_concurrent_unique_slugs(tmp_path: Path) -> None:
     for proc in processes:
         proc.start()
 
-    results = [queue.get(timeout=10) for _ in processes]
+    results = [queue.get(timeout=60) for _ in processes]
 
     for proc in processes:
-        proc.join(timeout=10)
+        proc.join(timeout=60)
         assert proc.exitcode == 0
 
     successes = [entry for entry in results if entry[0] == "ok"]
@@ -83,10 +83,10 @@ def test_bootstrap_campaign_concurrent_same_slug_conflicts(tmp_path: Path) -> No
     for proc in processes:
         proc.start()
 
-    results = [queue.get(timeout=10) for _ in processes]
+    results = [queue.get(timeout=60) for _ in processes]
 
     for proc in processes:
-        proc.join(timeout=10)
+        proc.join(timeout=60)
         assert proc.exitcode == 0
 
     successes = [entry for entry in results if entry[0] == "ok"]

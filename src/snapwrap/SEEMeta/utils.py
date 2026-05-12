@@ -71,7 +71,7 @@ def acquireMeta(runNumber):
 
     #first check if an override is present
     if os.path.isfile(overridePath):
-        print("SEE Override located in {overridePath}")
+        print(f"SEE Override located in {overridePath}")
         SEEDict = SEEJsonLoader(overridePath)
         return SEEDict
     

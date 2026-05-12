@@ -435,3 +435,124 @@ def bootstrap_campaign(
         index_path.touch(exist_ok=True)
 
     return campaign_record
+
+
+def register_asset_record(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    asset_id: str,
+    asset_type: str,
+    path: str,
+    shared_root: Path | str | None = None,
+    applicability_scope: str = "campaign",
+    run_number: int | None = None,
+    version: int = 1,
+    status: str = "active",
+    checksum: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    provenance_source: str = "manual",
+    created_by: str = "operator",
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Register a single asset record in a campaign ``assets_index.jsonl``.
+
+    This is the minimal Phase 3 ingestion primitive used to persist campaign or
+    run-scoped assets while preserving append-only history.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if not asset_id.strip():
+        raise ValueError("asset_id must be non-empty")
+    if not path.strip():
+        raise ValueError("path must be non-empty")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    record: dict[str, Any] = {
+        "record_id": f"asset-{asset_id}-v{version}-{_utc_now_iso()}",
+        "timestamp": _utc_now_iso(),
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "asset_id": asset_id,
+        "asset_type": asset_type,
+        "version": version,
+        "status": status,
+        "applicability": {
+            "scope": applicability_scope,
+            "run_number": run_number if applicability_scope == "run" else None,
+        },
+        "path": path,
+        "provenance": {
+            "source": provenance_source,
+            "created_by": created_by,
+        },
+    }
+    if checksum:
+        record["checksum"] = checksum
+    if notes:
+        record["provenance"]["notes"] = notes
+    if metadata is not None:
+        record["metadata"] = metadata
+
+    append_jsonl_record(
+        paths.assets_index,
+        record,
+        schema_name="asset_record.schema.json",
+    )
+    return record
+
+
+def list_asset_records(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+    asset_type: str | None = None,
+    status: str | None = None,
+    run_number: int | None = None,
+) -> list[dict[str, Any]]:
+    """List persisted asset records for a campaign with optional filters."""
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+    records = read_jsonl_records(paths.assets_index)
+
+    filtered: list[dict[str, Any]] = []
+    for row in records:
+        if asset_type is not None and row.get("asset_type") != asset_type:
+            continue
+        if status is not None and row.get("status") != status:
+            continue
+        if run_number is not None:
+            applicability = row.get("applicability")
+            if not isinstance(applicability, dict):
+                continue
+            if applicability.get("scope") != "run":
+                continue
+            if applicability.get("run_number") != run_number:
+                continue
+        filtered.append(row)
+    return filtered
