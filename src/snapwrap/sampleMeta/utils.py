@@ -4,8 +4,10 @@
 # This is frequently necessary (e.g. to represent sample and gasket) 
 
 import json
+from pathlib import Path
 
 from mantid.simpleapi import *
+from mantid.simpleapi import GetIPTS, LoadCIF, CreateSampleWorkspace, DeleteWorkspace, mtd
 from mantid.geometry import CrystalStructure, ReflectionGenerator, ReflectionConditionFilter, SpaceGroupFactory
 import numpy as np
 from scipy.optimize import least_squares
@@ -16,6 +18,18 @@ from scipy.optimize import least_squares
 import importlib
 import snapwrap.sampleMeta.latticeFittingFunctions as lff
 importlib.reload(lff) #is this needed?
+
+
+def _mantidScattererStrings(crystalStructure):
+    """Return a list of Mantid-style scatterer strings from a CrystalStructure.
+
+    Mantid's ``CrystalStructure.getScatterers()`` already returns a sequence of
+    space-separated strings of the form ``"Element x y z occ uiso"``.  We simply
+    normalise whitespace so we can re-join them with the ``"; "`` delimiter that
+    the ``CrystalStructure`` constructor expects on input.
+    """
+    return [" ".join(str(s).split()) for s in list(crystalStructure.getScatterers())]
+
 
 class crystalReflection:
 
@@ -96,12 +110,25 @@ class crystalSpecies:
     # the construction of this class reflects how it will be created in the field. We assume that the
     # user at least knows the space group 
 
+    #: Schema version for ``to_dict`` / ``from_dict`` round-trips.  Bumped when
+    #: persisted attributes are added or renamed.  ``from_dict`` remains tolerant
+    #: of older versions (or no version field at all).
+    SCHEMA_VERSION = 1
+
+    #: Roles this species can play in a reduction workflow.  ``"sample"`` is the
+    #: thing being studied; ``"calibrant"`` is a phase with a well-known EOS used
+    #: to deduce sample conditions (e.g. tungsten in a DAC).
+    ALLOWED_ROLES = ("sample", "calibrant")
+
     def __init__(self,
                 spaceGroup,
                 observedReflections,
                 name = None, #a name for this species
                 scatterers = "",
-                dLimits = None): #fraction of maximum intensity to use as threshold for d-spacing generation
+                dLimits = None, #fraction of maximum intensity to use as threshold for d-spacing generation
+                cifPath = None, #optional provenance: path to the CIF this species was seeded from
+                role = "sample", #"sample" or "calibrant"
+                eos = None): #optional EquationOfState (snapwrap.sampleMeta.eos), attached for refinement workflows
         
         # spaceGroups is string with H-M space group
         # observedReflections is a list of crystalReflection objects
@@ -142,6 +169,17 @@ class crystalSpecies:
 
         #encountered a need to specify d-range to use when calculating d-spacings
         self.dLimits = dLimits
+
+        # Provenance + role + (optional) equation of state.  These travel with the
+        # species through to_dict/from_dict and feed the future refinement bridge
+        # (see docs/crystal_species_refinement_plan.md, Phases B–D).
+        self.cifPath = str(cifPath) if cifPath is not None else None
+        if role not in self.ALLOWED_ROLES:
+            raise ValueError(
+                f"Invalid role {role!r}; expected one of {self.ALLOWED_ROLES}"
+            )
+        self.role = role
+        self.eos = eos
 
     def _systemFromSG(self):
 
@@ -206,8 +244,18 @@ class crystalSpecies:
         # allowedSystems = ['cubic','tetragonal','orthorhombic','hexagonal','trigonal','monoclinic','triclinic']
         allowedSystems = ['cubic','hexagonal','trigonal']
         if self.crystalSystem.lower() not in allowedSystems:
-            raise ValueError(f"ERROR: crystal system {crystalSystem} not currently supported")
-            return        
+            # Don't raise: a from_cif()-seeded crystalSpecies has a perfectly good
+            # CIF-derived unit cell that we must NOT clobber just because we can't
+            # *re-fit* it from observed reflections in this system.  Log + return
+            # None and leave any existing cell intact.  See Phase A3 of
+            # docs/crystal_species_refinement_plan.md.
+            print(
+                f"WARNING: cell-from-reflections refinement not implemented for "
+                f"crystal system '{self.crystalSystem}'. Existing unit cell (if any) "
+                f"will be preserved."
+            )
+            self.valid["unitCell"] = False
+            return None
 
         #need to handle each system separately
         if cell.crystalSystem == "cubic":
@@ -447,8 +495,19 @@ class crystalSpecies:
         else:
             unit_cell_dict = None
     
+        # Serialize the optional EquationOfState (a dataclass) if present.
+        if self.eos is not None:
+            try:
+                from dataclasses import asdict as _asdict
+                eos_dict = _asdict(self.eos)
+            except Exception:
+                eos_dict = None
+        else:
+            eos_dict = None
+
         # Create the dictionary representation
         species_dict = {
+            "_schema_version": self.SCHEMA_VERSION,
             "name": self.name,
             "spaceGroup": self.spaceGroup,
             "observedReflections": observed_reflections_dicts,
@@ -458,7 +517,10 @@ class crystalSpecies:
             "extentOverPosition": self.extentOverPosition,
             "unitCell": unit_cell_dict,
             "hasCrystalStructure": self.hasCrystalStructure,
-            "dLimits": self.dLimits  # <-- preserve dLimits
+            "dLimits": self.dLimits,  # <-- preserve dLimits
+            "cifPath": self.cifPath,
+            "role": self.role,
+            "eos": eos_dict,
         }
     
         return species_dict
@@ -477,15 +539,36 @@ class crystalSpecies:
         name = d.get("name")
         scatterers = d.get("scatterers", "")
         dLimits = d.get("dLimits", None)  # <-- restore dLimits
-    
+        cifPath = d.get("cifPath", None)
+        role = d.get("role", "sample")
+
+        # Reconstruct the optional EquationOfState dataclass.
+        eos_dict = d.get("eos", None)
+        eos = None
+        if eos_dict:
+            try:
+                from snapwrap._inspectrum import EquationOfState
+                eos = EquationOfState(**eos_dict)
+            except Exception as exc:
+                print(
+                    f"WARNING: could not rehydrate EquationOfState from dict: {exc}"
+                )
+                eos = None
+
         # Create a crystalSpecies object
         species = cls(
             spaceGroup=space_group,
             observedReflections=observed_reflections,
             name=name,
             scatterers=scatterers,
-            dLimits=dLimits
+            dLimits=dLimits,
+            cifPath=cifPath,
+            role=role,
+            eos=eos,
         )
+
+        # Track the on-disk schema version this dict came from (None == legacy).
+        species._loaded_schema_version = d.get("_schema_version", None)
     
         # Restore additional attributes
         species.crystalSystem = d.get("crystalSystem")
@@ -505,6 +588,77 @@ class crystalSpecies:
             species.unitCell.gamma = unit_cell_dict["gamma"]
             species.valid["unitCell"] = True  # Mark unitCell as valid
     
+        return species
+
+    @classmethod
+    def from_cif(cls, cifPath, name=None, dLimits=None, role="sample", eos=None):
+        """Construct a ``crystalSpecies`` from a CIF file via Mantid's ``LoadCIF``.
+
+        This mirrors the approach used by the standalone ``crystalBox.Box``
+        class: a temporary sample workspace is created, ``LoadCIF`` parses the
+        CIF and attaches a ``CrystalStructure`` to its sample, and we then
+        extract the space group, unit-cell parameters and scatterer strings
+        directly from that Mantid object.  This avoids re-implementing CIF
+        parsing inside SNAPWrap and inherits whatever CIF dialects Mantid
+        already supports.
+
+        Args:
+            cifPath: path to a CIF file on disk.
+            name: optional human-readable name; defaults to the CIF stem.
+            dLimits: optional ``(dMin, dMax)`` tuple, passed through to the
+                ``crystalSpecies`` constructor.
+            role: ``"sample"`` (default) or ``"calibrant"``.  See
+                :attr:`crystalSpecies.ALLOWED_ROLES`.
+            eos: optional ``EquationOfState`` instance to attach (used by the
+                refinement bridge — see Phase B/D of the refinement plan).
+
+        Returns:
+            A fully-populated ``crystalSpecies`` whose ``unitCell`` reflects
+            the CIF, with ``cifPath`` recorded for downstream provenance.
+        """
+        path = Path(cifPath)
+        if not path.exists():
+            raise FileNotFoundError(f"CIF file does not exist: {path}")
+
+        ws_name = f"_snapwrap_cif_{path.stem}"
+        CreateSampleWorkspace(OutputWorkspace=ws_name)
+        try:
+            LoadCIF(Workspace=ws_name, InputFile=str(path))
+            mantid_cs = mtd[ws_name].sample().getCrystalStructure()
+
+            spaceGroup = mantid_cs.getSpaceGroup().getHMSymbol()
+            uc = mantid_cs.getUnitCell()
+            scatterer_strs = _mantidScattererStrings(mantid_cs)
+            scatterers = "; ".join(scatterer_strs)
+
+            a, b, c = uc.a(), uc.b(), uc.c()
+            alpha, beta, gamma = uc.alpha(), uc.beta(), uc.gamma()
+        finally:
+            if mtd.doesExist(ws_name):
+                DeleteWorkspace(Workspace=ws_name)
+
+        species = cls(
+            spaceGroup=spaceGroup,
+            observedReflections=[],
+            name=name if name is not None else path.stem,
+            scatterers=scatterers,
+            dLimits=dLimits,
+            cifPath=str(path),
+            role=role,
+            eos=eos,
+        )
+
+        # Populate unit-cell directly from CIF-derived Mantid values.
+        species.unitCell = unitCell(species.crystalSystem)
+        species.unitCell.a = a
+        species.unitCell.b = b
+        species.unitCell.c = c
+        species.unitCell.alpha = alpha
+        species.unitCell.beta = beta
+        species.unitCell.gamma = gamma
+        species.valid["unitCell"] = True
+
+        species.hasCrystalStructure = species._buildCrystalStructure()
         return species
 
 def speciesListToJson(species_list, runNumber):

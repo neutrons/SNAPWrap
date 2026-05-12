@@ -5,7 +5,12 @@ import numpy as np
 
 def cubic_d2Inv(ref,a): #calculates 1/d^^2 given reflection ref and lattice param a
 
-    return (ref.h**2+ref.h*ref.k+ref.l**2)/a**2
+    # 1/d^2 = (h^2 + k^2 + l^2) / a^2 for the cubic system.
+    # Historical bug fixed 2026-05-12: the middle term used to read ``ref.h*ref.k``
+    # (a hexagonal-formula leftover), which produced wrong cell estimates for
+    # any non-(h0l) reflection.  See docs/inspectrum_ground_truths.md
+    # (snapwrap cubic_d2Inv bug entry).
+    return (ref.h**2 + ref.k**2 + ref.l**2) / a**2
 
 def residual_cubic(params,reflectionList):
 
