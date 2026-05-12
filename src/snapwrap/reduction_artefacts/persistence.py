@@ -683,3 +683,108 @@ def list_crystal_species_records(
         filtered.append(row)
     return filtered
     return filtered
+
+
+def bootstrap_campaign_from_manifest(
+    manifest_path: "str | Path",
+    *,
+    shared_root: "Path | str | None" = None,
+    seemeta_dir: "Path | str | None" = None,
+) -> dict[str, Any]:
+    """Validate a campaign manifest, bootstrap the campaign, and register all assets.
+
+    Assembly type resolution order:
+
+    1. ``manifest.campaign.assembly_type`` (explicit) — used directly after
+       normalisation.
+    2. ``manifest.campaign.source_run`` — SEEMeta file
+       ``{seemeta_dir}/SEE{source_run:06d}.json`` is loaded and
+       :func:`infer_assembly_type_from_seemeta` is called.
+    3. If neither is present: ``ValueError`` is raised.
+
+    When ``seemeta_dir`` is not supplied, the SEE directory is derived from
+    the IPTS number: ``/SNS/SNAP/IPTS-{ipts}/shared/SEE/``.
+
+    Args:
+        manifest_path: Path to the campaign manifest JSON file.
+        shared_root: Override the IPTS shared root (used in tests).
+        seemeta_dir: Override the directory that contains ``SEE*.json`` files.
+
+    Returns:
+        ``{"campaign": <campaign_record>, "assets": [<asset_records>]}``.
+
+    Raises:
+        FileNotFoundError: Manifest file not found.
+        jsonschema.ValidationError: Manifest fails schema validation.
+        ValueError: Cannot determine assembly type or required fields missing.
+        SlugConflictError: Campaign slug already in use.
+    """
+    from .requirements import infer_assembly_type_from_seemeta, normalize_assembly_type
+
+    manifest_path = Path(manifest_path)
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Campaign manifest not found: {manifest_path}")
+
+    with manifest_path.open("r", encoding="utf-8") as fh:
+        manifest: dict[str, Any] = json.load(fh)
+
+    validate_record(manifest, "campaign_manifest.schema.json")
+
+    camp = manifest["campaign"]
+    ipts: int = int(camp["ipts"])
+    slug: str = camp["slug"]
+
+    if "assembly_type" in camp:
+        assembly_type = normalize_assembly_type(camp["assembly_type"])
+    elif "source_run" in camp:
+        source_run: int = int(camp["source_run"])
+        if seemeta_dir is None:
+            see_dir = Path(f"/SNS/SNAP/IPTS-{ipts}/shared/SEE")
+        else:
+            see_dir = Path(seemeta_dir)
+        see_file = see_dir / f"SEE{source_run:06d}.json"
+        if not see_file.exists():
+            raise FileNotFoundError(
+                f"SEEMeta file not found for run {source_run}: {see_file}"
+            )
+        with see_file.open("r", encoding="utf-8") as fh:
+            seemeta: dict[str, Any] = json.load(fh)
+        assembly_type = infer_assembly_type_from_seemeta(seemeta)
+    else:
+        raise ValueError(
+            f"Manifest for campaign {slug!r} must specify either "
+            "'campaign.assembly_type' or 'campaign.source_run' (for SEEMeta inference)."
+        )
+
+    campaign_record = bootstrap_campaign(
+        ipts=ipts,
+        campaign_slug=slug,
+        assembly_type=assembly_type,
+        shared_root=shared_root,
+        description=camp.get("description"),
+        owners=camp.get("owners"),
+    )
+
+    asset_records: list[dict[str, Any]] = []
+    for asset_def in manifest.get("assets", []):
+        applicability = asset_def.get("applicability", {})
+        provenance = asset_def.get("provenance", {})
+        record = register_asset_record(
+            ipts=ipts,
+            campaign_identifier=slug,
+            asset_id=asset_def["asset_id"],
+            asset_type=asset_def["asset_type"],
+            path=asset_def["path"],
+            shared_root=shared_root,
+            applicability_scope=applicability.get("scope", "campaign"),
+            run_number=applicability.get("run_number"),
+            version=int(asset_def.get("version", 1)),
+            status="active",
+            metadata=asset_def.get("metadata"),
+            provenance_source=provenance.get("source", "manual"),
+            created_by=provenance.get("created_by", "operator"),
+            notes=provenance.get("notes"),
+        )
+        asset_records.append(record)
+
+    return {"campaign": campaign_record, "assets": asset_records}

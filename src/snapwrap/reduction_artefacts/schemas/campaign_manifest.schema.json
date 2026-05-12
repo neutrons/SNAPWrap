@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutrons.org/snapwrap/reduction_artefacts/campaign_manifest.schema.json",
+  "title": "Reduction Artefacts Campaign Manifest",
+  "description": "Declarative manifest for bootstrapping a reduction artefacts campaign from a single file.",
+  "type": "object",
+  "required": ["schema_version", "campaign", "assets"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version, e.g. \"0.1.0\"."
+    },
+    "campaign": {
+      "type": "object",
+      "required": ["slug", "ipts"],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "description": "Unique campaign identifier matching ^[a-z0-9][a-z0-9_-]{1,62}$.",
+          "pattern": "^[a-z0-9][a-z0-9_-]{1,62}$"
+        },
+        "ipts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "IPTS number for this campaign."
+        },
+        "assembly_type": {
+          "type": "string",
+          "enum": ["DAC", "PE", "OTHER"],
+          "description": "Optional. If absent, MUST be inferred from SEEMeta of source_run."
+        },
+        "source_run": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional run number used to derive assembly_type via SEEMeta when assembly_type is absent."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the campaign."
+        },
+        "owners": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of usernames or team names responsible for this campaign."
+        }
+      },
+      "additionalProperties": false
+    },
+    "assets": {
+      "type": "array",
+      "description": "Ordered list of assets to register when bootstrapping the campaign.",
+      "items": {
+        "type": "object",
+        "required": ["asset_id", "asset_type", "path"],
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "description": "Unique identifier for this asset within the campaign."
+          },
+          "asset_type": {
+            "type": "string",
+            "enum": [
+              "cif",
+              "eos_description",
+              "phase_description",
+              "ub_matrix",
+              "seemeta_json",
+              "manual_pixel_mask",
+              "other"
+            ],
+            "description": "Asset type tag."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path to the asset file."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Asset version number (default 1)."
+          },
+          "applicability": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["campaign", "run"],
+                "description": "Whether this asset applies campaign-wide or to a specific run."
+              },
+              "run_number": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "description": "Run number when scope is \"run\"."
+              }
+            },
+            "additionalProperties": true
+          },
+          "provenance": {
+            "type": "object",
+            "required": ["source", "created_by"],
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": ["manual", "imported", "generated"]
+              },
+              "created_by": { "type": "string" },
+              "notes": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
