@@ -1,0 +1,58 @@
+{
+  "instrument": "SNAP",
+  "facility": "SNS",
+  "pixel_grouping_scheme": "all",
+  "global_conditions": {
+    "temperature": 295,
+    "max_pressure": 60.0
+  },
+  "phases": [
+    {
+      "name": "tungsten",
+      "cif": "EntryWithCollCode43421_tungsten.cif",
+      "role": "calibrant",
+      "reference_conditions": { "pressure": null, "temperature": 295 },
+      "eos": {
+        "type": "vinet",
+        "order": 3,
+        "V_0": 15.862,
+        "V_0_unit": "A3/atom",
+        "Z": 2,
+        "K_0": 295.2,
+        "K_0_err": 3.9,
+        "K_prime": 4.32,
+        "K_prime_err": 0.11,
+        "source": "A. Dewaele, P. Loubeyre, M. Mezouar, PRB 70 094112 (2004)"
+      },
+      "stability_pressure": [null, null]
+    },
+    {
+      "name": "ice-VII",
+      "cif": "EntryWithCollCode211741_iceVII.cif",
+      "role": "sample",
+      "reference_conditions": { "pressure": null, "temperature": 295 },
+      "eos": {
+        "type": "birch-murnaghan",
+        "order": 3,
+        "V_0": 12.3,
+        "V_0_unit": "cm3/mol",
+        "V_0_err": 0.3,
+        "Z": 2,
+        "K_0": 23.7,
+        "K_0_err": 0.6,
+        "K_prime": 4.15,
+        "K_prime_err": 0.07,
+        "source": "R.J. Hemley, A.P. Jephcoat, H.K. Mao, C.S. Zha, L.W. Finger, D.E. Cox, Nature 330 737-740 (1987)"
+      },
+      "stability_pressure": [2.1, null]
+    }
+  ],
+  "spectrum_conditions": [
+    { "run_number": 59056, "pressure": null },
+    { "run_number": 59058, "pressure": null },
+    { "run_number": 59059, "pressure": null },
+    { "run_number": 59061, "pressure": null },
+    { "run_number": 59062, "pressure": null },
+    { "run_number": 59063, "pressure": null }
+  ]
+}

@@ -169,6 +169,10 @@ jsonschema = ">=4.23.0"
 snapwrap = { path = ".", editable = true }
 bm3d-streak-removal = "*"
 pytest-playwright = "*"
+# Vendored snapwrap._inspectrum subsystem dependencies (PyPI-only).
+# See docs/inspectrum_absorption_plan.md.
+cryspy = ">=0.10.0"
+pycifstar = "*"
 
 [tool.pixi.package.host-dependencies]
 hatchling = "*"
@@ -280,11 +284,11 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
 # tornado 6.5.5 fixes CVE-2026-31958 / GHSA-78cv-mqj4-43f7 but is not yet on conda-forge (latest: 6.5.4)
 # Remove the --ignore-vuln flags once conda-forge packages tornado >=6.5.5
 audit-deps = { cmd = "pip-audit --local -s osv --ignore-vuln GHSA-78cv-mqj4-43f7 --ignore-vuln CVE-2026-31958 --ignore-vuln CVE-2026-3219", description = "Audit the package dependencies for vulnerabilities" }
-clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
-clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
-clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artifacts" }
-clean-pypi = { cmd = "rm -rf dist", description = "Clean the PyPI build artifacts" }
-clean-all = { description = "Clean all artifacts", depends-on = [
+clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artefacts" }
+clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artefacts" }
+clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artefacts" }
+clean-pypi = { cmd = "rm -rf dist", description = "Clean the PyPI build artefacts" }
+clean-all = { description = "Clean all artefacts", depends-on = [
   "clean",
   "clean-conda",
   "clean-docs",
@@ -308,7 +312,8 @@ testpaths = ["tests"]
 python_files = ["test*.py"]
 norecursedirs = [".git", "tmp*", "_tmp*", "__pycache__", "*dataset*", "*data_set*"]
 markers = [
-    "mymarker: example markers goes here"
+    "mymarker: example markers goes here",
+    "inspectrum: tests for the vendored snapwrap._inspectrum subsystem (skipped if cryspy is not importable)",
 ]
 
 ############

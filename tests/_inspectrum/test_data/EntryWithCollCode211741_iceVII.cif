@@ -1,0 +1,118 @@
+
+#(C) 2026 by FIZ Karlsruhe - Leibniz Institute for Information Infrastructure.  All rights reserved.
+data_211741-ICSD
+_database_code_ICSD 211741
+_audit_creation_date 2025-02-01
+_chemical_name_common 'Deuterated water'
+_chemical_formula_structural 'D2 O'
+_chemical_formula_sum 'D2 O1'
+_chemical_name_structure_type Ice(VII)
+_exptl_crystal_density_diffrn 1.82
+_diffrn_ambient_temperature 300.
+_citation_title
+
+;
+Crystal structure and compressibility of magnesium chloride heptahydrate found
+under high pressure
+;
+loop_
+_citation_id
+_citation_journal_full
+_citation_year
+_citation_journal_volume
+_citation_page_first
+_citation_page_last
+_citation_journal_id_ASTM
+primary
+
+;
+Acta Crystallographica, Section B: Structural Science, Crystal Engineering and
+Materials
+; 2024 80 695 705 ACSBDA
+loop_
+_citation_author_citation_id
+_citation_author_name
+primary 'Yamashita, Keishiro'
+primary 'Komatsu, Kazuki'
+primary 'Hattori, Takanori'
+primary 'Machida, Shinichi'
+primary 'Kagi, Hiroyuki'
+_cell_length_a 3.31812(4)
+_cell_length_b 3.31812(4)
+_cell_length_c 3.31812(4)
+_cell_angle_alpha 90.
+_cell_angle_beta 90.
+_cell_angle_gamma 90.
+_cell_volume 36.53
+_cell_formula_units_Z 2
+_space_group_name_H-M_alt 'P n -3 m Z'
+_space_group_IT_number 224
+loop_
+_space_group_symop_id
+_space_group_symop_operation_xyz
+1 '-y, x+1/2, z+1/2'
+2 'y+1/2, x+1/2, -z'
+3 'y+1/2, -x, z+1/2'
+4 '-y, -x, -z'
+5 '-z, x+1/2, y+1/2'
+6 'z+1/2, x+1/2, -y'
+7 'z+1/2, -x, y+1/2'
+8 '-z, -x, -y'
+9 'z+1/2, -y, x+1/2'
+10 '-z, y+1/2, x+1/2'
+11 'z+1/2, y+1/2, -x'
+12 '-z, -y, -x'
+13 'y+1/2, -z, x+1/2'
+14 '-y, z+1/2, x+1/2'
+15 'y+1/2, z+1/2, -x'
+16 '-y, -z, -x'
+17 'x+1/2, z+1/2, -y'
+18 'x+1/2, -z, y+1/2'
+19 '-x, z+1/2, y+1/2'
+20 '-x, -z, -y'
+21 'x+1/2, y+1/2, -z'
+22 'x+1/2, -y, z+1/2'
+23 '-x, y+1/2, z+1/2'
+24 '-x, -y, -z'
+25 'y, -x+1/2, -z+1/2'
+26 '-y+1/2, -x+1/2, z'
+27 '-y+1/2, x, -z+1/2'
+28 'y, x, z'
+29 'z, -x+1/2, -y+1/2'
+30 '-z+1/2, -x+1/2, y'
+31 '-z+1/2, x, -y+1/2'
+32 'z, x, y'
+33 '-z+1/2, y, -x+1/2'
+34 'z, -y+1/2, -x+1/2'
+35 '-z+1/2, -y+1/2, x'
+36 'z, y, x'
+37 '-y+1/2, z, -x+1/2'
+38 'y, -z+1/2, -x+1/2'
+39 '-y+1/2, -z+1/2, x'
+40 'y, z, x'
+41 '-x+1/2, -z+1/2, y'
+42 '-x+1/2, z, -y+1/2'
+43 'x, -z+1/2, -y+1/2'
+44 'x, z, y'
+45 '-x+1/2, -y+1/2, z'
+46 '-x+1/2, y, -z+1/2'
+47 'x, -y+1/2, -z+1/2'
+48 'x, y, z'
+loop_
+_atom_type_symbol
+_atom_type_oxidation_number
+O2- -2
+D1+ 1
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_symmetry_multiplicity
+_atom_site_Wyckoff_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_U_iso_or_equiv
+_atom_site_occupancy
+O1 O2- 2 a 0.75 0.75 0.75 0.0181(7) 1.
+D1 D1+ 8 e 0.91012(31) 0.91012(31) 0.91012(31) 0.0306(8) 0.5
+#End of TTdata_211741-ICSD
