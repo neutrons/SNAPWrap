@@ -474,6 +474,179 @@ class crystalSpecies:
         
         return
 
+    def refine(self, observed_d, pressure_gpa=None):
+        """Refine the unit cell against a list of observed d-spacings.
+
+        This is the Phase B4 entry point.  It wraps the strain-search
+        machinery vendored in ``snapwrap._inspectrum`` and updates
+        ``self.unitCell`` in place.
+
+        **Two paths:**
+
+        1. **EOS-guided** (preferred): if ``self.eos`` is set *and*
+           ``pressure_gpa`` is supplied, ``predicted_strain`` converts the
+           pressure to an expected isotropic linear strain, which becomes the
+           initial guess for the fine peak-matching step.
+
+        2. **Blind sweep** (fallback): if either ``self.eos`` or
+           ``pressure_gpa`` is ``None``, ``sweep_strain`` performs a
+           two-pass coarse/fine grid search over the configurable strain
+           range (default 0.90–1.10) with no pressure prior.
+
+        In both paths the result is a strain factor ``s`` such that every
+        calculated d-spacing scales as ``d_obs ≈ s × d_calc``.  For a
+        cubic system this gives ``a_refined = s × a_calc``.
+
+        Args:
+            observed_d: Sequence of observed d-spacing values (Å).
+                Should already be filtered to ``self.dLimits`` if set.
+            pressure_gpa: Optional sample pressure (GPa).  Required to
+                activate the EOS-guided path.
+
+        Returns:
+            ``dict`` with keys:
+
+            - ``"strain"`` – best-fit linear strain factor.
+            - ``"path"`` – ``"eos_guided"`` or ``"blind_sweep"``.
+            - ``"pressure_gpa"`` – echoes input, or ``None``.
+            - ``"unitCell_updated"`` – ``True`` if ``self.unitCell`` was
+              modified.
+            - ``"message"`` – human-readable summary.
+
+        Raises:
+            NotImplementedError: Phase D will replace this skeleton with the
+                full least-squares bridge.  For now only cubic systems are
+                supported; all others raise immediately.
+
+        Note:
+            This method is a **skeleton**.  The full least-squares wiring,
+            multi-system support, and uncertainty propagation will be
+            implemented in Phase D.  See
+            ``docs/crystal_species_refinement_plan.md`` Phase D.
+
+        .. warning::
+            Phase D design should be reviewed with a frontier-class model
+            before implementation begins.  See
+            ``docs/handover_phase_b.md`` escalation reminder.
+        """
+        import numpy as np
+        from snapwrap.sampleMeta.eos import predicted_strain, sweep_strain
+
+        obs_d = np.asarray(observed_d, dtype=float)
+
+        if len(obs_d) == 0:
+            return {
+                "strain": 1.0,
+                "path": "no_data",
+                "pressure_gpa": pressure_gpa,
+                "unitCell_updated": False,
+                "message": "No observed d-spacings supplied; nothing to refine.",
+            }
+
+        # Build the reference reflections list expected by sweep_strain.
+        # Each entry needs at least {"d": float}; heights and fwhm are
+        # synthetic (uniform) since we are just doing a strain search here.
+        if self.unitCell is None or not self.valid.get("unitCell"):
+            return {
+                "strain": 1.0,
+                "path": "no_cell",
+                "pressure_gpa": pressure_gpa,
+                "unitCell_updated": False,
+                "message": (
+                    "No valid unit cell available to seed refinement. "
+                    "Call from_cif or supply observed reflections first."
+                ),
+            }
+
+        if self.crystalSystem != "cubic":
+            raise NotImplementedError(
+                f"refine() currently only supports cubic systems; "
+                f"got '{self.crystalSystem}'. Full multi-system support "
+                f"will be added in Phase D."
+            )
+
+        # Seed reflections from the current (CIF-derived) unit cell.
+        a0 = self.unitCell.a
+        # For cubic: d_hkl = a / sqrt(h²+k²+l²). Generate a simple set
+        # of low-index reflections out to the observed d-range.
+        d_max = float(np.max(obs_d)) * 1.05
+        d_min = float(np.min(obs_d)) * 0.95
+        calc_refs = []
+        for h in range(0, 6):
+            for k in range(0, h + 1):
+                for l in range(0, k + 1):
+                    hkl2 = h * h + k * k + l * l
+                    if hkl2 == 0:
+                        continue
+                    d_hkl = a0 / np.sqrt(hkl2)
+                    if d_min <= d_hkl <= d_max:
+                        # sweep_strain's match_peaks_at_strain requires d, hkl,
+                        # F_sq, and multiplicity; use uniform values so all
+                        # reflections are treated equally in this skeleton.
+                        calc_refs.append({
+                            "d": d_hkl,
+                            "hkl": (h, k, l),
+                            "F_sq": 1.0,
+                            "multiplicity": 1,
+                        })
+
+        if len(calc_refs) == 0:
+            return {
+                "strain": 1.0,
+                "path": "no_refs",
+                "pressure_gpa": pressure_gpa,
+                "unitCell_updated": False,
+                "message": (
+                    f"No calculated reflections fall in the observed d-range "
+                    f"[{d_min:.3f}, {d_max:.3f}] Å for a = {a0:.4f} Å."
+                ),
+            }
+
+        obs_heights = np.ones(len(obs_d))
+        obs_fwhm = np.full(len(obs_d), 0.02)
+
+        # --- Choose path ---
+        if self.eos is not None and pressure_gpa is not None:
+            s_prior = predicted_strain(self.eos, pressure_gpa)
+            half_w = 0.05  # ±5 % around EOS prediction
+            best_strain, _matches, _score = sweep_strain(
+                obs_d,
+                obs_heights,
+                obs_fwhm,
+                calc_refs,
+                tolerance=0.03,
+                s_min=max(0.5, s_prior - half_w),
+                s_max=min(1.5, s_prior + half_w),
+            )
+            path = "eos_guided"
+        else:
+            best_strain, _matches, _score = sweep_strain(
+                obs_d,
+                obs_heights,
+                obs_fwhm,
+                calc_refs,
+                tolerance=0.03,
+            )
+            path = "blind_sweep"
+
+        # Update unit cell.
+        self.unitCell.a = a0 * best_strain
+        self.unitCell.b = a0 * best_strain
+        self.unitCell.c = a0 * best_strain
+        self.valid["unitCell"] = True
+
+        return {
+            "strain": best_strain,
+            "path": path,
+            "pressure_gpa": pressure_gpa,
+            "unitCell_updated": True,
+            "message": (
+                f"{path}: strain = {best_strain:.6f}, "
+                f"a_refined = {self.unitCell.a:.5f} Å "
+                f"(was {a0:.5f} Å)"
+            ),
+        }
+
     def to_dict(self):
         """
         Converts the crystalSpecies object to a dictionary representation.
