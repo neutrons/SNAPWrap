@@ -17,6 +17,7 @@ class AssetType(StrEnum):
 
     CIF = "cif"
     EOS_DESCRIPTION = "eos_description"
+    PHASE_DESCRIPTION = "phase_description"
     UB_MATRIX = "ub_matrix"
     SEEMETA_JSON = "seemeta_json"
     MANUAL_PIXEL_MASK = "manual_pixel_mask"

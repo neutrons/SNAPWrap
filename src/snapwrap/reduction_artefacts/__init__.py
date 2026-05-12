@@ -9,6 +9,7 @@ from .persistence import (
 	SlugConflictError,
 	append_jsonl_record,
 	bootstrap_campaign,
+	bootstrap_campaign_from_manifest,
 	list_asset_records,
 	list_crystal_species_records,
 	register_asset_record,
@@ -42,6 +43,7 @@ from .asset_artefact_examples import (
 from .builders import (
 	build_crystal_species,
 	load_eos_description,
+	load_phase_description,
 )
 from .requirements import (
 	build_requirement_report,
@@ -67,6 +69,7 @@ __all__ = [
 	"AssetStatus",
 	"AssetType",
 	"bootstrap_campaign",
+	"bootstrap_campaign_from_manifest",
 	"build_crystal_species",
 	"build_crystal_species_from_cif",
 	"build_crystal_species_from_cif_and_eos",
@@ -84,6 +87,7 @@ __all__ = [
 	"list_crystal_species_records",
 	"list_schema_paths",
 	"load_eos_description",
+	"load_phase_description",
 	"LoadedAsset",
 	"normalize_assembly_type",
 	"PixelMaskWorkspaceObject",

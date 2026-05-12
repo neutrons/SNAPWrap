@@ -22,6 +22,7 @@ from snapwrap.reduction_artefacts import (
     bootstrap_campaign,
     list_crystal_species_records,
     load_eos_description,
+    load_phase_description,
     register_asset_record,
     register_crystal_species_artefact,
 )
@@ -292,3 +293,44 @@ def test_register_crystal_species_artefact_records_asset_ids(tmp_path):
     assert rec["cif_asset_id"] == "cif-w-01"
     assert rec["eos_asset_id"] == "eos-w-01"
     assert rec["eosPath"] == "/data/W.eos.json"
+
+
+# ── C+.1: AssetType.PHASE_DESCRIPTION + load_phase_description ───────────────
+
+_SNAP_PHASES_FIXTURE = (
+    Path(__file__).parent / "_inspectrum" / "test_data" / "snap_phases.json"
+)
+
+
+def test_asset_type_phase_description_exists():
+    """C+.1: AssetType.PHASE_DESCRIPTION has the expected string value."""
+    assert AssetType.PHASE_DESCRIPTION == "phase_description"
+
+
+def test_asset_type_phase_description_round_trips_schema(tmp_path):
+    """C+.1: 'phase_description' asset_type is accepted by the asset_record schema."""
+    bootstrap_campaign(
+        ipts=1,
+        campaign_slug="pd-schema-test",
+        assembly_type="DAC",
+        shared_root=tmp_path,
+    )
+    rec = register_asset_record(
+        ipts=1,
+        campaign_identifier="pd-schema-test",
+        asset_id="phases-01",
+        asset_type="phase_description",
+        path="manifests/phases.json",
+        shared_root=tmp_path,
+    )
+    assert rec["asset_type"] == "phase_description"
+
+
+def test_load_phase_description_returns_experiment_description():
+    """C+.1: load_phase_description wraps inspectrum loader correctly."""
+    pytest.importorskip("cryspy", reason="cryspy required for phase description loading")
+    exp = load_phase_description(_SNAP_PHASES_FIXTURE)
+    # snap_phases.json has 2 phases: tungsten + ice-VII
+    assert len(exp.phases) == 2
+    names = {p.name for p in exp.phases}
+    assert "tungsten" in names

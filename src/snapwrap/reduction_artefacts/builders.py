@@ -4,6 +4,8 @@ Provides:
 
 - :func:`load_eos_description` — load an ``EquationOfState`` from a
   ``.eos.json`` file on disk.
+- :func:`load_phase_description` — load an inspectrum-style multi-phase
+  description JSON file, returning an ``ExperimentDescription``.
 - :func:`build_crystal_species` — given one CIF asset record (and an optional
   EOS asset record) return a :class:`~snapwrap.reduction_artefacts.assets.LoadedAsset`
   wrapping a :class:`~snapwrap.sampleMeta.utils.crystalSpecies`.
@@ -129,3 +131,32 @@ def build_crystal_species(
 
     species = CrystalSpecies.from_cif(cif_asset.path, role=role, eos=eos_obj)
     return LoadedAsset(record=cif_asset, payload=species)
+
+
+def load_phase_description(path: "str | Path") -> Any:
+    """Load an inspectrum-style multi-phase description JSON file.
+
+    Wraps :func:`snapwrap._inspectrum.loaders.load_phase_descriptions`.
+    The returned object is an ``ExperimentDescription`` dataclass whose
+    ``phases`` list contains one entry per phase declared in the file.
+
+    No Mantid import is required.  CIFs referenced inside the JSON are loaded
+    by inspectrum's own ``load_cif`` (cryspy-backed).
+
+    Args:
+        path: Path to the phases JSON file (inspectrum ``snap_phases.json``
+              schema).
+
+    Returns:
+        An ``ExperimentDescription`` instance.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+        ValueError: If the file fails inspectrum validation.
+    """
+    from snapwrap._inspectrum.loaders import load_phase_descriptions
+
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Phase description file not found: {p}")
+    return load_phase_descriptions(p)
