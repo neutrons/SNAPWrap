@@ -74,15 +74,16 @@ Already prototyped via `LoadCIF`. Promoted to first-class:
   search (inspectrum's `sweep_strain`). Committed `8231143`.
   Tests: `tests/test_sample_meta_refine.py` (7 tests, Mantid-gated).
 
-### Phase C — `reduction_artefacts` recognises crystallography
+### Phase C — `reduction_artefacts` recognises crystallography ✅ done (May 2026)
 
-- C1. Add `AssetType.CIF` and `AssetType.EOS_DESCRIPTION` to `assets.py`.
-- C2. Add `build_crystal_species(cif_asset, eos_asset=None, role="sample")`
-  artefact builder.
-- C3. Register `crystalSpecies` as a `LoadedAsset[crystalSpecies]`.
-- C4. Append-only `crystal_species_index.jsonl` per built artefact, including
-  `cifPath`, `eosPath`, `refinedPressure_GPa`, `refined_a/b/c/...`,
-  `source_run`.
+- C1. ✅ `AssetType.EOS_DESCRIPTION = "eos_description"` added; `asset_record.schema.json` enum updated.
+- C2. ✅ `builders.py`: `load_eos_description(path)` reads `.eos.json` → `EquationOfState`;
+  `build_crystal_species(cif_asset, eos_asset=None, role)` → `LoadedAsset[crystalSpecies]`.
+  Committed `307156c`. Tests: `tests/test_reduction_artefacts_crystal_species_builder.py` (15 tests, no Mantid).
+- C3. ✅ `LoadedAsset[crystalSpecies]` expressible via existing generic; `build_crystal_species` is its factory.
+- C4. ✅ `CampaignPaths.crystal_species_index`; `register_crystal_species_artefact()` + `list_crystal_species_records()`
+  in `persistence.py`. Fields: `species_name, role, cifPath, eosPath, source_run, refined_a/b/c,
+  refinedPressure_GPa, unitCell_updated, cif_asset_id, eos_asset_id`.
 
 ### Phase D — Refinement bridge
 
