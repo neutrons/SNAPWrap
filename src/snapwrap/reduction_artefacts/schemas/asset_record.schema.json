@@ -25,7 +25,7 @@
     "asset_id": { "type": "string" },
     "asset_type": {
       "type": "string",
-      "enum": ["cif", "ub_matrix", "seemeta_json", "manual_pixel_mask", "other"]
+      "enum": ["cif", "eos_description", "ub_matrix", "seemeta_json", "manual_pixel_mask", "other"]
     },
     "version": { "type": "integer", "minimum": 1 },
     "status": { "type": "string", "enum": ["active", "superseded", "invalid", "archived"] },

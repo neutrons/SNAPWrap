@@ -82,6 +82,18 @@ def build_crystal_species_from_cif(path):
     return crystalSpecies.from_cif(Path(path))
 
 
+def build_crystal_species_from_cif_and_eos(cif_path, eos_path):
+    """Build a ``crystalSpecies`` artefact from a CIF + EOS description pair.
+
+    Mantid is required. EOS loading does not require Mantid.
+    """
+    from snapwrap.reduction_artefacts.builders import load_eos_description
+    from snapwrap.sampleMeta.utils import crystalSpecies
+
+    eos_obj = load_eos_description(eos_path)
+    return crystalSpecies.from_cif(Path(cif_path), eos=eos_obj)
+
+
 def build_pixel_mask_workspace_from_nxs(path):
     return PixelMaskWorkspaceObject(source_nxs=Path(path))
 
@@ -145,16 +157,38 @@ def list_asset_artefact_examples():
         AssetArtefactExample(
             slug="eos_file_to_eos_object",
             asset=AssetDefinition(
-                name="eos file",
-                file_format="TBD",
-                typical_extensions=(),
+                name="eos description file",
+                file_format="JSON",
+                typical_extensions=(".eos.json",),
             ),
             artefact=ArtefactDefinition(
-                name="EOS object",
-                in_memory_object="EOSObject",
-                derived_from_asset="eos file",
+                name="EquationOfState object",
+                in_memory_object="snapwrap.sampleMeta.eos.EquationOfState",
+                derived_from_asset="eos description file",
             ),
-            notes="File format and schema are intentionally TBD.",
+            notes=(
+                "JSON file with fields: eos_type, V_0, K_0, K_prime, source. "
+                "Loaded via snapwrap.reduction_artefacts.builders.load_eos_description. "
+                "No Mantid required."
+            ),
+        ),
+        AssetArtefactExample(
+            slug="cif_and_eos_to_crystal_species",
+            asset=AssetDefinition(
+                name="cif + eos description files",
+                file_format="CIF + JSON",
+                typical_extensions=(".cif", ".eos.json"),
+            ),
+            artefact=ArtefactDefinition(
+                name="crystalSpecies object (EOS-equipped)",
+                in_memory_object="snapwrap.sampleMeta.utils.crystalSpecies",
+                derived_from_asset="cif + eos description files",
+            ),
+            notes=(
+                "Built via build_crystal_species() in builders.py. "
+                "Combines CIF-seeded unit cell with EOS for pressure-guided refinement. "
+                "Mantid required at build-time."
+            ),
         ),
     ]
 
@@ -166,6 +200,12 @@ def build_example_artefact(example_slug, source_path):
         "nxs_to_pixel_mask_workspace": build_pixel_mask_workspace_from_nxs,
         "swiss_cheese_json_to_object": build_swiss_cheese_from_json,
         "eos_file_to_eos_object": build_eos_object,
+        "cif_and_eos_to_crystal_species": lambda p: (_ for _ in ()).throw(
+            TypeError(
+                "cif_and_eos_to_crystal_species requires two paths "
+                "(cif_path, eos_path); use build_crystal_species_from_cif_and_eos directly."
+            )
+        ),
     }
     try:
         builder = builders[example_slug]

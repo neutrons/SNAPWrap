@@ -41,6 +41,7 @@ class CampaignPaths:
     runs_index: Path
     assets_index: Path
     artefacts_index: Path
+    crystal_species_index: Path
 
 
 def _utc_now_iso() -> str:
@@ -90,6 +91,7 @@ def _resolve_paths(ipts: int, campaign_slug: str, shared_root: Path | str | None
         runs_index=campaign_dir / "runs.jsonl",
         assets_index=campaign_dir / "assets_index.jsonl",
         artefacts_index=campaign_dir / "artefacts_index.jsonl",
+        crystal_species_index=campaign_dir / "crystal_species_index.jsonl",
     )
 
 
@@ -555,4 +557,129 @@ def list_asset_records(
             if applicability.get("run_number") != run_number:
                 continue
         filtered.append(row)
+    return filtered
+
+
+def register_crystal_species_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    species_name: str,
+    cif_path: str | None,
+    role: str = "sample",
+    eos_path: str | None = None,
+    source_run: int | None = None,
+    refined_a: float | None = None,
+    refined_b: float | None = None,
+    refined_c: float | None = None,
+    refined_pressure_gpa: float | None = None,
+    unitCell_updated: bool = False,
+    cif_asset_id: str | None = None,
+    eos_asset_id: str | None = None,
+    shared_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Append a ``crystalSpecies`` artefact record to the campaign index.
+
+    Each call appends one line to
+    ``<campaign_dir>/crystal_species_index.jsonl``.  The index is
+    append-only: records are never deleted or modified in place.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        species_name: Human-readable species name (e.g. ``"ice-VII"``).
+        cif_path: Absolute or relative path to the source CIF file.
+        role: ``"sample"`` or ``"calibrant"`` (passed through from the
+            ``crystalSpecies``).
+        eos_path: Path to the EOS description JSON file, if any.
+        source_run: Run number that triggered this build, if applicable.
+        refined_a: Refined lattice parameter *a* in Å, if available.
+        refined_b: Refined lattice parameter *b* in Å, if available.
+        refined_c: Refined lattice parameter *c* in Å, if available.
+        refined_pressure_gpa: Pressure used/recovered during refinement (GPa).
+        unitCell_updated: Whether ``refine()`` updated the unit cell.
+        cif_asset_id: ``asset_id`` of the CIF asset record, for cross-linking.
+        eos_asset_id: ``asset_id`` of the EOS asset record, for cross-linking.
+        shared_root: Override for the IPTS shared root (useful in tests).
+
+    Returns:
+        The dict appended to ``crystal_species_index.jsonl``.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if not species_name.strip():
+        raise ValueError("species_name must be non-empty")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    now = _utc_now_iso()
+    record: dict[str, Any] = {
+        "record_id": f"cs-{species_name}-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "species_name": species_name,
+        "role": role,
+        "cifPath": cif_path,
+        "eosPath": eos_path,
+        "source_run": source_run,
+        "refined_a": refined_a,
+        "refined_b": refined_b,
+        "refined_c": refined_c,
+        "refinedPressure_GPa": refined_pressure_gpa,
+        "unitCell_updated": unitCell_updated,
+    }
+    if cif_asset_id is not None:
+        record["cif_asset_id"] = cif_asset_id
+    if eos_asset_id is not None:
+        record["eos_asset_id"] = eos_asset_id
+
+    append_jsonl_record(paths.crystal_species_index, record)
+    return record
+
+
+def list_crystal_species_records(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+    role: str | None = None,
+    source_run: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return crystal species index records for a campaign, with optional filters."""
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+    records = read_jsonl_records(paths.crystal_species_index)
+
+    filtered: list[dict[str, Any]] = []
+    for row in records:
+        if role is not None and row.get("role") != role:
+            continue
+        if source_run is not None and row.get("source_run") != source_run:
+            continue
+        filtered.append(row)
+    return filtered
     return filtered

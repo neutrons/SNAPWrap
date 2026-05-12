@@ -16,6 +16,7 @@ class AssetType(StrEnum):
     """Supported persisted asset types for reduction artefact workflows."""
 
     CIF = "cif"
+    EOS_DESCRIPTION = "eos_description"
     UB_MATRIX = "ub_matrix"
     SEEMETA_JSON = "seemeta_json"
     MANUAL_PIXEL_MASK = "manual_pixel_mask"

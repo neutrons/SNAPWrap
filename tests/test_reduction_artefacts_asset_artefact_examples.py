@@ -29,13 +29,14 @@ CIF_FIXTURE = (
 
 def test_list_asset_artefact_examples_contains_expected_four_mappings() -> None:
     examples = list_asset_artefact_examples()
-    assert len(examples) == 4
+    assert len(examples) == 5  # Phase C added cif_and_eos_to_crystal_species
 
     by_slug = {row.slug: row for row in examples}
     assert "cif_to_crystal_species" in by_slug
     assert "nxs_to_pixel_mask_workspace" in by_slug
     assert "swiss_cheese_json_to_object" in by_slug
     assert "eos_file_to_eos_object" in by_slug
+    assert "cif_and_eos_to_crystal_species" in by_slug
 
     cif_row = by_slug["cif_to_crystal_species"]
     assert "crystalSpecies" in cif_row.artefact.in_memory_object
