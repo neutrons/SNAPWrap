@@ -60,17 +60,19 @@ Already prototyped via `LoadCIF`. Promoted to first-class:
   `asset_artefact_examples.py`; the `cif_to_crystal_species` slug now builds a
   real `crystalSpecies` via `from_cif`.
 
-### Phase B — EOS object inside `snapwrap.sampleMeta`
+### Phase B — EOS object inside `snapwrap.sampleMeta` ✅ done (May 2026)
 
-- B1. Add `snapwrap.sampleMeta.eos` re-exporting
+- B1. ✅ Add `snapwrap.sampleMeta.eos` re-exporting
   `snapwrap._inspectrum.models.EquationOfState as EOS` plus
   `snapwrap._inspectrum.eos.predicted_strain` / `pressure_at`.
-- B2. Add `crystalSpecies.eos: EOS | None` attribute, plumbed through
-  `to_dict`/`from_dict`.
-- B3. (Skipped — inspectrum is now vendored, no extra deps required beyond
+  Committed `d001098`. Tests: `tests/test_sample_meta_eos.py` (7 tests, no Mantid).
+- B2. ✅ Add `crystalSpecies.eos: EOS | None` attribute, plumbed through
+  `to_dict`/`from_dict`. Completed in Phase A commit `f852677`.
+- B3. ✅ (Skipped — inspectrum is now vendored, no extra deps required beyond
   what Phase 0 added.)
-- B4. Failure mode: if EOS is missing, `refine` falls back to a blind strain
-  search (inspectrum's `sweep_strain`).
+- B4. ✅ Failure mode: if EOS is missing, `refine` falls back to a blind strain
+  search (inspectrum's `sweep_strain`). Committed `8231143`.
+  Tests: `tests/test_sample_meta_refine.py` (7 tests, Mantid-gated).
 
 ### Phase C — `reduction_artefacts` recognises crystallography
 
