@@ -113,7 +113,7 @@ class crystalSpecies:
     #: Schema version for ``to_dict`` / ``from_dict`` round-trips.  Bumped when
     #: persisted attributes are added or renamed.  ``from_dict`` remains tolerant
     #: of older versions (or no version field at all).
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     #: Roles this species can play in a reduction workflow.  ``"sample"`` is the
     #: thing being studied; ``"calibrant"`` is a phase with a well-known EOS used
@@ -180,6 +180,10 @@ class crystalSpecies:
             )
         self.role = role
         self.eos = eos
+
+        # Populated by refine_species_from_workspace (Phase D).  None until
+        # an inspectrum refinement has been run against this species.
+        self.refined: dict | None = None
 
     def _systemFromSG(self):
 
@@ -694,6 +698,7 @@ class crystalSpecies:
             "cifPath": self.cifPath,
             "role": self.role,
             "eos": eos_dict,
+            "refined": self.refined,
         }
     
         return species_dict
@@ -761,6 +766,9 @@ class crystalSpecies:
             species.unitCell.gamma = unit_cell_dict["gamma"]
             species.valid["unitCell"] = True  # Mark unitCell as valid
     
+        # Restore refinement result if present (Phase D).
+        species.refined = d.get("refined", None)
+
         return species
 
     @classmethod
