@@ -1098,3 +1098,140 @@ def add_candidate_species(
         notes=f"CIF for candidate species '{new_id}' (added mid-campaign)",
     )
     return cif_record
+
+
+def register_swiss_cheese_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    mask_json_path: str,
+    source_run: int,
+    ub_mat_paths: list[str],
+    width_coef: list[float],
+    is_lite: bool,
+    shared_root: Path | str | None = None,
+    version: int = 1,
+    status: str = "active",
+    notes: str | None = None,
+    created_by: str = "operator",
+) -> dict[str, Any]:
+    """Register a DAC swiss-cheese bin-mask artefact in ``artefacts_index.jsonl``.
+
+    Also registers each UB matrix ``.mat`` file as a ``ub_matrix`` asset
+    record in ``assets_index.jsonl`` and cross-links them via
+    ``input_asset_ids``.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        artefact_id: Unique identifier for this artefact, e.g.
+            ``"dac_mask_bruciteA_run65891"``.
+        mask_json_path: Absolute path to the saved swiss-cheese JSON file.
+        source_run: Run number from which the UBs were determined.
+        ub_mat_paths: Ordered list of absolute paths to the saved ISAW ``.mat``
+            UB files.  These are registered as ``ub_matrix`` assets and their
+            ``asset_id`` values appear as ``input_asset_ids`` in the artefact
+            record.
+        width_coef: Polynomial width coefficients used during mask build
+            (stored in metadata for reproducibility).
+        is_lite: Whether the mask targets Lite (18 432-pixel) mode.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        version: Record version number (default 1).
+        status: Artefact status (default ``"active"``).
+        notes: Optional free-text notes stored in ``provenance``.
+        created_by: Creator identifier (default ``"operator"``).
+
+    Returns:
+        The artefact record dict appended to ``artefacts_index.jsonl``.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if not artefact_id.strip():
+        raise ValueError("artefact_id must be non-empty")
+    if not mask_json_path.strip():
+        raise ValueError("mask_json_path must be non-empty")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    # ── Register each UB mat as a ub_matrix asset ─────────────────────────
+    ub_asset_ids: list[str] = []
+    for idx, ub_path in enumerate(ub_mat_paths, start=1):
+        ub_asset_id = f"ub-{artefact_id}-{idx}"
+        register_asset_record(
+            ipts=ipts,
+            campaign_identifier=campaign_slug,
+            asset_id=ub_asset_id,
+            asset_type="ub_matrix",
+            path=ub_path,
+            shared_root=shared_root,
+            applicability_scope="run",
+            run_number=source_run,
+            version=version,
+            status=status,
+            provenance_source="generated",
+            created_by=created_by,
+            notes=notes,
+            metadata={
+                "source_run": source_run,
+                "crystal_index": idx,
+                "width_coef": width_coef,
+                "is_lite": is_lite,
+            },
+        )
+        ub_asset_ids.append(ub_asset_id)
+
+    # ── Register the artefact ─────────────────────────────────────────────
+    now = _utc_now_iso()
+    record: dict[str, Any] = {
+        "record_id": f"artefact-{artefact_id}-v{version}-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "artefact_id": artefact_id,
+        "artefact_type": "bin_mask",
+        "intended_use": "pre_reduction",
+        "method": "swiss_cheese_ub",
+        "version": version,
+        "status": status,
+        "run_context": {
+            "run_number": source_run,
+            "state_id": None,
+        },
+        "input_asset_ids": ub_asset_ids,
+        "path": mask_json_path,
+        "provenance": {
+            "created_by": created_by,
+            "tool": "snapwrap.reduction_artefacts.masking.build_swiss_cheese_from_run",
+        },
+        "metadata": {
+            "width_coef": width_coef,
+            "is_lite": is_lite,
+            "n_diamonds": len(ub_mat_paths),
+        },
+    }
+    if notes:
+        record["provenance"]["notes"] = notes
+
+    append_jsonl_record(
+        paths.artefacts_index,
+        record,
+        schema_name="artefact_record.schema.json",
+    )
+    return record

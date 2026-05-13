@@ -17,6 +17,7 @@ from .persistence import (
 	list_crystal_species_records,
 	register_asset_record,
 	register_crystal_species_artefact,
+	register_swiss_cheese_artefact,
 	rename_campaign_slug,
 	read_jsonl_records,
 	resolve_campaign_slug,
@@ -47,6 +48,10 @@ from .builders import (
 	build_crystal_species,
 	load_eos_description,
 	load_phase_description,
+)
+from .masking import (
+	build_swiss_cheese_from_run,
+	build_swiss_cheese_from_ub_files,
 )
 from .requirements import (
 	build_requirement_report,
@@ -81,6 +86,8 @@ __all__ = [
 	"build_example_artefact",
 	"build_requirement_report",
 	"build_requirement_report_from_seemeta",
+	"build_swiss_cheese_from_run",
+	"build_swiss_cheese_from_ub_files",
 	"EOSObject",
 	"generate_requirement_reports_from_campaign_specs",
 	"generate_requirement_report_for_run",
@@ -99,6 +106,7 @@ __all__ = [
 	"preflight_campaign_specs_seemeta",
 	"register_asset_record",
 	"register_crystal_species_artefact",
+	"register_swiss_cheese_artefact",
 	"rename_campaign_slug",
 	"read_jsonl_records",
 	"resolve_campaign_slug",
