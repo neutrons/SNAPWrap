@@ -12,6 +12,7 @@ from .persistence import (
 	append_jsonl_record,
 	bootstrap_campaign,
 	bootstrap_campaign_from_manifest,
+	copy_to_asset_store,
 	list_asset_records,
 	list_crystal_species_records,
 	register_asset_record,

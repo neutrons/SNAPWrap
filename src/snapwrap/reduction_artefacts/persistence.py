@@ -34,6 +34,7 @@ class CampaignPaths:
     """Resolved campaign paths under an IPTS reduction artefacts root."""
 
     root: Path
+    assets_dir: Path          # managed asset store: root/assets/{asset_type}/
     state_path: Path
     campaigns_dir: Path
     campaign_dir: Path
@@ -84,6 +85,7 @@ def _resolve_paths(ipts: int, campaign_slug: str, shared_root: Path | str | None
     campaign_dir = campaigns_dir / campaign_slug
     return CampaignPaths(
         root=root,
+        assets_dir=root / "assets",
         state_path=root / "_state.json",
         campaigns_dir=campaigns_dir,
         campaign_dir=campaign_dir,
@@ -437,6 +439,69 @@ def bootstrap_campaign(
         index_path.touch(exist_ok=True)
 
     return campaign_record
+
+
+def copy_to_asset_store(
+    src_path: str | Path,
+    asset_type: str,
+    *,
+    ipts: int,
+    shared_root: Path | str | None = None,
+    overwrite: bool = False,
+) -> Path:
+    """Copy a file into the managed asset store and return its destination path.
+
+    The destination is::
+
+        <reduction_artefacts_root>/assets/<asset_type>/<filename>
+
+    The function is idempotent when ``overwrite=False`` and the destination
+    already exists with identical content (checked by size + mtime).  If the
+    file already exists with **different** content, ``FileExistsError`` is
+    raised unless ``overwrite=True``.
+
+    Args:
+        src_path: Source file to copy.
+        asset_type: One of the :class:`~snapwrap.reduction_artefacts.assets.AssetType`
+            string values (e.g. ``"ub_matrix"``, ``"cif"``).
+        ipts: IPTS number (used to locate the shared root).
+        shared_root: Override for the IPTS shared root (useful in tests).
+        overwrite: If ``True``, overwrite an existing destination file.
+
+    Returns:
+        Absolute ``Path`` of the file inside the asset store.
+
+    Raises:
+        FileNotFoundError: If ``src_path`` does not exist.
+        FileExistsError: If the destination exists with different content
+            and ``overwrite=False``.
+    """
+    import shutil
+
+    src = Path(src_path)
+    if not src.exists():
+        raise FileNotFoundError(f"Asset source not found: {src}")
+
+    root = _reduction_artefacts_root(ipts=ipts, shared_root=shared_root)
+    dest_dir = root / "assets" / asset_type
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+
+    if dest.exists() and not overwrite:
+        # Idempotent if same size and mtime — already copied.
+        src_stat = src.stat()
+        dst_stat = dest.stat()
+        if src_stat.st_size == dst_stat.st_size and abs(src_stat.st_mtime - dst_stat.st_mtime) < 2:
+            return dest
+        raise FileExistsError(
+            f"Asset already exists at {dest} with different content. "
+            "Use overwrite=True to replace it."
+        )
+
+    tmp = dest.with_name(f".{dest.name}.tmp")
+    shutil.copy2(src, tmp)
+    os.replace(tmp, dest)
+    return dest
 
 
 def register_asset_record(

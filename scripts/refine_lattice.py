@@ -200,28 +200,62 @@ def main(argv=None) -> int:
         print("\n[dry-run] Not persisting results.")
         return 0
 
-    from snapwrap.reduction_artefacts import annotate_run
+    from snapwrap.reduction_artefacts import (
+        annotate_run,
+        register_crystal_species_artefact,
+    )
 
+    # 6a. Register each successful refinement as a crystalSpecies artefact.
+    # This writes a record to crystal_species_index.jsonl and returns its path,
+    # which we then embed in the manifest via annotate_run.
     observed = []
     for sp in report.species:
-        if sp.refined and sp.refined["success"]:
-            uc = sp.unitCell
-            observed.append(
-                {
-                    "species_id": sp.name,
-                    "lattice_params": {
-                        "a": sp.refined["a"],
-                        "b": sp.refined["b"],
-                        "c": sp.refined["c"],
-                        "alpha": sp.refined["alpha"],
-                        "beta": sp.refined["beta"],
-                        "gamma": sp.refined["gamma"],
-                    },
-                    "pressure_gpa": sp.refined["pressure_gpa"],
-                    "artefact_path": None,
-                }
-            )
+        if not (sp.refined and sp.refined["success"]):
+            continue
 
+        # Find the matching manifest entry to get cif_asset_id provenance.
+        manifest_entry = next(
+            (e for e in candidate_species if e.get("species_id") == sp.name),
+            {},
+        )
+
+        artefact_record = register_crystal_species_artefact(
+            ipts=args.ipts,
+            campaign_identifier=args.campaign,
+            species_name=sp.name,
+            cif_path=sp.cifPath,
+            role=sp.role,
+            source_run=args.run,
+            refined_a=sp.refined["a"],
+            refined_b=sp.refined["b"],
+            refined_c=sp.refined["c"],
+            refined_pressure_gpa=sp.refined["pressure_gpa"],
+            unitCell_updated=True,
+            cif_asset_id=manifest_entry.get("artefact_path"),  # best-effort
+            shared_root=args.shared_root,
+        )
+
+        # artefact_record path is used to close the loop in the manifest.
+        artefact_path = artefact_record.get("path") or artefact_record.get("record_id")
+
+        observed.append(
+            {
+                "species_id": sp.name,
+                "lattice_params": {
+                    "a": sp.refined["a"],
+                    "b": sp.refined["b"],
+                    "c": sp.refined["c"],
+                    "alpha": sp.refined["alpha"],
+                    "beta": sp.refined["beta"],
+                    "gamma": sp.refined["gamma"],
+                },
+                "pressure_gpa": sp.refined["pressure_gpa"],
+                "artefact_path": artefact_path,
+            }
+        )
+        print(f"  Registered artefact: {sp.name}  →  {artefact_path}")
+
+    # 6b. Write observed_species back into the living manifest.
     if observed:
         annotate_run(
             ipts=args.ipts,
