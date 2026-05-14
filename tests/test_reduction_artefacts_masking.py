@@ -27,6 +27,7 @@ from snapwrap.reduction_artefacts.persistence import (
     list_asset_records,
     read_jsonl_records,
     register_swiss_cheese_artefact,
+    register_pixel_mask_artefact,
 )
 
 
@@ -472,5 +473,232 @@ class TestRegisterSwissCheeseErrors:
                 ub_mat_paths=[],
                 width_coef=[0.02],
                 is_lite=True,
+                shared_root=shared,
+            )
+
+
+# ---------------------------------------------------------------------------
+# P1: build_pixel_mask_from_file / build_pixel_mask_letterbox — validation
+# ---------------------------------------------------------------------------
+
+class TestBuildPixelMaskValidation:
+    """Tests that do not require Mantid — file-not-found guards."""
+
+    def test_missing_nxs_raises(self, tmp_path: Path):
+        from snapwrap.reduction_artefacts.masking import build_pixel_mask_from_file
+
+        with pytest.raises(FileNotFoundError, match="Pixel mask file not found"):
+            build_pixel_mask_from_file(
+                tmp_path / "no_such_mask.nxs",
+                ws_name="test_ws",
+            )
+
+    def test_letterbox_missing_standard_file_raises(self, monkeypatch):
+        """If the standard PE mask is absent, FileNotFoundError is raised."""
+        import snapwrap.reduction_artefacts.masking as _m
+
+        monkeypatch.setattr(_m, "STANDARD_PE_MASK_PATH", Path("/nonexistent/PEMask.nxs"))
+        from snapwrap.reduction_artefacts.masking import build_pixel_mask_letterbox
+
+        with pytest.raises(FileNotFoundError):
+            build_pixel_mask_letterbox("test_ws")
+
+
+# ---------------------------------------------------------------------------
+# P2: build_pixel_mask_from_file — happy path (Mantid mocked)
+# ---------------------------------------------------------------------------
+
+class TestBuildPixelMaskHappyPath:
+    def test_returns_ws_name(self, tmp_path: Path):
+        """LoadNexus is called and the ws_name is returned."""
+        fake_nxs = tmp_path / "PEMask.nxs"
+        fake_nxs.touch()
+
+        mock_mantid = MagicMock()
+
+        import snapwrap.reduction_artefacts.masking as _masking_mod
+        import importlib
+
+        with patch.dict(
+            sys.modules,
+            {"mantid.simpleapi": mock_mantid},
+        ):
+            importlib.reload(_masking_mod)
+            from snapwrap.reduction_artefacts.masking import build_pixel_mask_from_file
+
+            result = build_pixel_mask_from_file(fake_nxs, "my_mask_ws")
+
+        assert result == "my_mask_ws"
+        mock_mantid.LoadNexus.assert_called_once_with(
+            Filename=str(fake_nxs), OutputWorkspace="my_mask_ws"
+        )
+
+    def test_letterbox_uses_standard_path(self, tmp_path: Path, monkeypatch):
+        """build_pixel_mask_letterbox delegates to build_pixel_mask_from_file."""
+        fake_nxs = tmp_path / "PEMask.nxs"
+        fake_nxs.touch()
+
+        import snapwrap.reduction_artefacts.masking as _m
+        monkeypatch.setattr(_m, "STANDARD_PE_MASK_PATH", fake_nxs)
+
+        mock_mantid = MagicMock()
+        import importlib
+
+        with patch.dict(sys.modules, {"mantid.simpleapi": mock_mantid}):
+            importlib.reload(_m)
+            _m.STANDARD_PE_MASK_PATH = fake_nxs  # re-apply after reload
+            from snapwrap.reduction_artefacts.masking import build_pixel_mask_letterbox
+
+            result = build_pixel_mask_letterbox("lb_ws")
+
+        assert result == "lb_ws"
+        mock_mantid.LoadNexus.assert_called_once_with(
+            Filename=str(fake_nxs), OutputWorkspace="lb_ws"
+        )
+
+
+# ---------------------------------------------------------------------------
+# P3: register_pixel_mask_artefact — record structure and schema validation
+# ---------------------------------------------------------------------------
+
+class TestRegisterPixelMaskArtefact:
+    @pytest.fixture()
+    def pe_campaign_root(self, tmp_path: Path):
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        ipts = 99902
+        bootstrap_campaign(
+            ipts=ipts,
+            campaign_slug="pe_h2o_01",
+            assembly_type="PE",
+            shared_root=shared,
+            owners=["tester"],
+        )
+        return shared, ipts, "pe_h2o_01"
+
+    @pytest.fixture()
+    def fake_pe_mask(self, tmp_path: Path) -> Path:
+        p = tmp_path / "PEMask.nxs"
+        p.touch()
+        return p
+
+    def test_letterbox_record_structure(self, pe_campaign_root, fake_pe_mask):
+        shared, ipts, slug = pe_campaign_root
+        record = register_pixel_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=slug,
+            artefact_id="pixmask_pe_h2o_01",
+            nxs_path=str(fake_pe_mask),
+            method="pixel_mask.letterbox",
+            ws_name="snapwrap_pixmask_pe_h2o_01",
+            shared_root=shared,
+        )
+        assert record["artefact_type"] == "pixel_mask"
+        assert record["method"] == "pixel_mask.letterbox"
+        assert record["intended_use"] == "pre_reduction"
+        assert record["metadata"]["ws_name"] == "snapwrap_pixmask_pe_h2o_01"
+        assert record["path"] == str(fake_pe_mask)
+        assert len(record["input_asset_ids"]) == 1
+
+    def test_custom_method_accepted(self, pe_campaign_root, fake_pe_mask):
+        shared, ipts, slug = pe_campaign_root
+        record = register_pixel_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=slug,
+            artefact_id="pixmask_custom",
+            nxs_path=str(fake_pe_mask),
+            method="pixel_mask.custom",
+            ws_name="snapwrap_pixmask_custom",
+            shared_root=shared,
+        )
+        assert record["method"] == "pixel_mask.custom"
+
+    def test_invalid_method_raises(self, pe_campaign_root, fake_pe_mask):
+        shared, ipts, slug = pe_campaign_root
+        with pytest.raises(ValueError, match="method must be one of"):
+            register_pixel_mask_artefact(
+                ipts=ipts,
+                campaign_identifier=slug,
+                artefact_id="bad",
+                nxs_path=str(fake_pe_mask),
+                method="pixel_mask.nonexistent",
+                ws_name="ws",
+                shared_root=shared,
+            )
+
+    def test_nxs_asset_registered(self, pe_campaign_root, fake_pe_mask):
+        shared, ipts, slug = pe_campaign_root
+        register_pixel_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=slug,
+            artefact_id="pixmask_pe_h2o_01",
+            nxs_path=str(fake_pe_mask),
+            method="pixel_mask.letterbox",
+            ws_name="snapwrap_pixmask_pe_h2o_01",
+            shared_root=shared,
+        )
+        assets = list_asset_records(
+            ipts=ipts, campaign_identifier=slug, shared_root=shared
+        )
+        mask_assets = [a for a in assets if a.get("asset_type") == "manual_pixel_mask"]
+        assert len(mask_assets) == 1
+        assert mask_assets[0]["path"] == str(fake_pe_mask)
+
+    def test_artefact_record_written_to_index(self, pe_campaign_root, fake_pe_mask):
+        shared, ipts, slug = pe_campaign_root
+        register_pixel_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=slug,
+            artefact_id="pixmask_pe_h2o_01",
+            nxs_path=str(fake_pe_mask),
+            method="pixel_mask.letterbox",
+            ws_name="snapwrap_pixmask_pe_h2o_01",
+            shared_root=shared,
+        )
+        artefacts_index = (
+            shared / "snapwrap" / "reduction_artefacts"
+            / "campaigns" / slug / "artefacts_index.jsonl"
+        )
+        records = read_jsonl_records(artefacts_index)
+        assert any(r.get("artefact_type") == "pixel_mask" for r in records)
+
+    def test_run_scoped_mask(self, pe_campaign_root, fake_pe_mask):
+        shared, ipts, slug = pe_campaign_root
+        record = register_pixel_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=slug,
+            artefact_id="pixmask_run65200",
+            nxs_path=str(fake_pe_mask),
+            method="pixel_mask.custom",
+            ws_name="snapwrap_pixmask_pe_h2o_01_run65200",
+            run_number=65200,
+            shared_root=shared,
+        )
+        assert record["run_context"]["run_number"] == 65200
+
+    def test_missing_campaign_raises(self, tmp_path, fake_pe_mask):
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        ipts = 99902
+        bootstrap_campaign(
+            ipts=ipts,
+            campaign_slug="ghost_pe",
+            assembly_type="PE",
+            shared_root=shared,
+        )
+        camp_json = (
+            shared / "snapwrap" / "reduction_artefacts"
+            / "campaigns" / "ghost_pe" / "campaign.json"
+        )
+        camp_json.unlink()
+
+        with pytest.raises(FileNotFoundError, match="campaign.json"):
+            register_pixel_mask_artefact(
+                ipts=ipts,
+                campaign_identifier="ghost_pe",
+                artefact_id="x",
+                nxs_path=str(fake_pe_mask),
+                method="pixel_mask.letterbox",
+                ws_name="ws",
                 shared_root=shared,
             )

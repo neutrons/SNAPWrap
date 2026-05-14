@@ -239,3 +239,59 @@ def build_swiss_cheese_from_ub_files(
 
     sc.save(str(output_dir), file_prefix)
     return sorted(output_dir.glob(f"{file_prefix}_*.json"))
+
+
+# ---------------------------------------------------------------------------
+# Pixel mask builders (PE cell)
+# ---------------------------------------------------------------------------
+
+#: Path to the standard SNAP PE-cell letterbox pixel mask.
+STANDARD_PE_MASK_PATH: Path = Path("/SNS/SNAP/shared/autoreduce/masks/PEMask.nxs")
+
+
+def build_pixel_mask_from_file(
+    nxs_path: str | Path,
+    ws_name: str,
+) -> str:
+    """Load a pixel mask workspace from a Nexus file via ``LoadNexus``.
+
+    The *nxs_path* is the **asset** (an existing ``.nxs`` mask file on disk).
+    This function produces the in-memory Mantid workspace (the **artefact**).
+    Use :func:`build_pixel_mask_letterbox` as a convenience wrapper for the
+    standard SNAP PE-cell mask.
+
+    Args:
+        nxs_path: Path to the ``.nxs`` pixel mask file.
+        ws_name: Name for the resulting Mantid workspace.  Use a name that
+            encodes campaign/run context, e.g.
+            ``"snapwrap_pixmask_pe_h2o_01_run65200"``.
+
+    Returns:
+        *ws_name* (so callers can chain directly into reduction).
+
+    Raises:
+        FileNotFoundError: If *nxs_path* does not exist.
+    """
+    nxs_path = Path(nxs_path)
+    if not nxs_path.exists():
+        raise FileNotFoundError(f"Pixel mask file not found: {nxs_path}")
+    _mantid.LoadNexus(Filename=str(nxs_path), OutputWorkspace=ws_name)
+    return ws_name
+
+
+def build_pixel_mask_letterbox(ws_name: str) -> str:
+    """Load the standard SNAP PE-cell letterbox pixel mask.
+
+    Convenience wrapper that calls :func:`build_pixel_mask_from_file` with
+    :data:`STANDARD_PE_MASK_PATH`.
+
+    Args:
+        ws_name: Name for the resulting Mantid workspace.
+
+    Returns:
+        *ws_name*.
+
+    Raises:
+        FileNotFoundError: If the standard mask file is not present on disk.
+    """
+    return build_pixel_mask_from_file(STANDARD_PE_MASK_PATH, ws_name)

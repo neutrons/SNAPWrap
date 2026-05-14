@@ -1235,3 +1235,140 @@ def register_swiss_cheese_artefact(
         schema_name="artefact_record.schema.json",
     )
     return record
+
+
+def register_pixel_mask_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    nxs_path: str,
+    method: str,
+    ws_name: str,
+    shared_root: Path | str | None = None,
+    run_number: int | None = None,
+    version: int = 1,
+    status: str = "active",
+    notes: str | None = None,
+    created_by: str = "operator",
+) -> dict[str, Any]:
+    """Register a PE-cell pixel mask artefact in ``artefacts_index.jsonl``.
+
+    Also registers the source ``.nxs`` file as a ``manual_pixel_mask`` asset
+    record in ``assets_index.jsonl`` and cross-links it via
+    ``input_asset_ids``.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        artefact_id: Unique identifier, e.g. ``"pixmask_pe_h2o_01"``.
+        nxs_path: Absolute path to the source ``.nxs`` pixel mask file.
+            Use ``str(STANDARD_PE_MASK_PATH)`` for the letterbox route or the
+            path to a custom mask file for the ``pixel_mask.custom`` route.
+        method: Creation method — ``"pixel_mask.letterbox"`` (standard PE
+            mask from :data:`~snapwrap.reduction_artefacts.masking.STANDARD_PE_MASK_PATH`)
+            or ``"pixel_mask.custom"`` (user-supplied ``.nxs``).
+        ws_name: Mantid workspace name that was (or will be) populated via
+            ``LoadNexus``.  Recorded in metadata so reduction code knows which
+            workspace to use.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        run_number: Run number for which this mask was created, if applicable.
+            Use ``None`` for campaign-wide masks.
+        version: Record version number (default 1).
+        status: Artefact status (default ``"active"``).
+        notes: Optional free-text notes stored in ``provenance``.
+        created_by: Creator identifier (default ``"operator"``).
+
+    Returns:
+        The artefact record dict appended to ``artefacts_index.jsonl``.
+
+    Raises:
+        ValueError: If *ipts* < 1, *artefact_id* is empty, *nxs_path* is
+            empty, or *method* is not one of the two accepted values.
+        FileNotFoundError: If ``campaign.json`` is missing.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if not artefact_id.strip():
+        raise ValueError("artefact_id must be non-empty")
+    if not nxs_path.strip():
+        raise ValueError("nxs_path must be non-empty")
+    _allowed_methods = {"pixel_mask.letterbox", "pixel_mask.custom"}
+    if method not in _allowed_methods:
+        raise ValueError(
+            f"method must be one of {sorted(_allowed_methods)!r}, got {method!r}"
+        )
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    # ── Register the .nxs file as a manual_pixel_mask asset ───────────────
+    nxs_asset_id = f"pixmask-nxs-{artefact_id}-v{version}"
+    register_asset_record(
+        ipts=ipts,
+        campaign_identifier=campaign_slug,
+        asset_id=nxs_asset_id,
+        asset_type="manual_pixel_mask",
+        path=nxs_path,
+        shared_root=shared_root,
+        applicability_scope="run" if run_number is not None else "campaign",
+        run_number=run_number,
+        version=version,
+        status=status,
+        provenance_source="manual",
+        created_by=created_by,
+        notes=notes,
+        metadata={"method": method},
+    )
+
+    # ── Register the artefact ─────────────────────────────────────────────
+    now = _utc_now_iso()
+    record: dict[str, Any] = {
+        "record_id": f"artefact-{artefact_id}-v{version}-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "artefact_id": artefact_id,
+        "artefact_type": "pixel_mask",
+        "intended_use": "pre_reduction",
+        "method": method,
+        "version": version,
+        "status": status,
+        "run_context": {
+            "run_number": run_number,
+            "state_id": None,
+        },
+        "input_asset_ids": [nxs_asset_id],
+        "path": nxs_path,
+        "provenance": {
+            "created_by": created_by,
+            "tool": "snapwrap.reduction_artefacts.masking.build_pixel_mask_from_file",
+        },
+        "metadata": {
+            "ws_name": ws_name,
+        },
+    }
+    if notes:
+        record["provenance"]["notes"] = notes
+
+    append_jsonl_record(
+        paths.artefacts_index,
+        record,
+        schema_name="artefact_record.schema.json",
+    )
+    return record
