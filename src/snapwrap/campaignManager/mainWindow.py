@@ -144,10 +144,10 @@ class CampaignManager(QDialog):
         self._setupPanel.refreshRequested.connect(self._reloadSetup)
         self._setupPanel.pixelMaskRegistrationRequested.connect(self._onPixelMaskRegistrationRequested)
 
+        self._tabs.addTab(self._setupPanel, "Setup")
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(self._runsPanel, "Runs")
         self._tabs.addTab(self._reducePanel, "Reduce")
-        self._tabs.addTab(self._setupPanel, "Setup")
         layout.addWidget(self._tabs, stretch=1)
 
         # Status bar with embedded progress bar.
