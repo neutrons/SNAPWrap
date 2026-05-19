@@ -99,6 +99,53 @@ def infer_assembly_type_from_seemeta(seemeta: Mapping[str, Any]) -> str:
     raise KeyError("SEEMeta does not include a recognizable assembly type field")
 
 
+def infer_assembly_type_from_run(
+    run_number: int,
+    *,
+    ipts: int | None = None,
+    shared_root: Path | str | None = None,
+    seemeta_dir: str = "SEE",
+    filename_pattern: str = "SEE{run:06d}.json",
+) -> str:
+    """Infer normalized assembly type by reading the per-run SEEMeta file.
+
+    Uses the SNAPWrap convention ``{shared_root}/{seemeta_dir}/SEE{run:06d}.json``.
+
+    Args:
+        run_number: SNAP run number.
+        ipts: IPTS number.  If omitted, derived via Mantid's ``GetIPTS``.
+        shared_root: Override ``/SNS/SNAP/IPTS-<ipts>/shared``.
+        seemeta_dir: Sub-directory under *shared_root* (default ``"SEE"``).
+        filename_pattern: Filename format with ``{run}`` placeholder.
+
+    Returns:
+        Normalised assembly type (``"DAC"``, ``"PE"`` or ``"OTHER"``).
+
+    Raises:
+        FileNotFoundError: SEEMeta JSON does not exist.
+        KeyError: SEEMeta does not contain a recognisable assembly type.
+    """
+    if shared_root is None:
+        if ipts is None:
+            from mantid.simpleapi import GetIPTS  # local import: mantid is optional
+            import re
+            ipts_path = GetIPTS(Instrument="SNAP", RunNumber=run_number)
+            m = re.search(r"IPTS-(\d+)", str(ipts_path))
+            if not m:
+                raise RuntimeError(f"Could not parse IPTS from {ipts_path}")
+            ipts = int(m.group(1))
+        shared_root = Path(f"/SNS/SNAP/IPTS-{ipts}/shared")
+    shared_root = Path(shared_root)
+
+    see_path = shared_root / seemeta_dir / filename_pattern.format(run=run_number)
+    if not see_path.exists():
+        raise FileNotFoundError(f"SEEMeta file not found: {see_path}")
+
+    with see_path.open("r", encoding="utf-8") as fh:
+        seemeta = json.load(fh)
+    return infer_assembly_type_from_seemeta(seemeta)
+
+
 def get_requirement_specs(assembly_type: str) -> list[dict[str, Any]]:
     """Return requirement specs for a normalized assembly type.
 
@@ -211,6 +258,7 @@ def build_requirement_report(
 
     return {
         "assembly_type": normalized,
+        "unsupported": normalized == "OTHER",
         "run_number": run_number,
         "state_id": state_id,
         "requirements": requirements,

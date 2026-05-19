@@ -272,12 +272,17 @@ class TestBuildFromUBFilesHappyPath:
             "snapwrap.maskUtils": MagicMock(swissCheese=MagicMock(return_value=mock_sc)),
         }):
             import snapwrap.reduction_artefacts.masking as _masking
+            import snapwrap.reduction_artefacts.workspace_groups as _wg
+            importlib.reload(_wg)
             importlib.reload(_masking)
+            # Mark the donor ws as present so finalize will delete it.
+            mock_mantid.mtd.getObjectNames.return_value = ["_snapwrap_donor_65891"]
             result = _masking.build_swiss_cheese_from_ub_files(
                 fake_ubs, 65891, [0.02], True,
                 tmp_path / "out", "mask",
                 ipts=33219,
                 nexus_path=fake_nexus,
+                keep_diagnostics=False,
             )
 
         mock_mantid.LoadEventNexus.assert_called_once()
@@ -702,3 +707,334 @@ class TestRegisterPixelMaskArtefact:
                 ws_name="ws",
                 shared_root=shared,
             )
+
+
+# ---------------------------------------------------------------------------
+# T1: detect_notches_in_spectrum — pure-numpy notch finder
+# ---------------------------------------------------------------------------
+
+class TestDetectNotchesInSpectrum:
+    def test_flat_spectrum_yields_no_notches(self):
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+
+        centers = np.linspace(0.5, 5.0, 400)
+        y = np.full(400, 1000.0)
+        notches, diag = detect_notches_in_spectrum(centers, y)
+        assert notches == []
+        for k in ("smoothed", "continuum", "ratio", "below_threshold"):
+            assert k in diag
+
+    def test_finds_single_deep_notch(self):
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+
+        centers = np.linspace(0.5, 5.0, 1000)
+        y = np.full(1000, 1000.0)
+        # Deep dip from index 400..430 (~0.135 Å wide)
+        y[400:430] = 100.0
+        notches, _ = detect_notches_in_spectrum(
+            centers, y, dip_threshold=0.6, continuum_window=151
+        )
+        assert len(notches) == 1
+        lo, hi = notches[0]
+        # The notch must contain the dip centre.
+        assert lo < centers[415] < hi
+
+    def test_merges_close_notches(self):
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+
+        centers = np.linspace(0.5, 5.0, 2000)
+        # Bin width ~ (4.5/1999) ≈ 0.00225 Å
+        y = np.full(2000, 1000.0)
+        y[800:815] = 100.0
+        y[820:835] = 100.0  # gap of 5 bins ≈ 0.011 Å
+        notches, _ = detect_notches_in_spectrum(
+            centers, y, dip_threshold=0.6, continuum_window=151,
+            merge_gap_aa=0.05, min_width_aa=0.001,
+        )
+        assert len(notches) == 1  # merged into one
+
+    def test_drops_too_narrow_notches(self):
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+
+        centers = np.linspace(0.5, 5.0, 200)
+        y = np.full(200, 1000.0)
+        y[100] = 50.0  # 1-bin dip ≈ 0.022 Å width
+        notches, _ = detect_notches_in_spectrum(
+            centers, y, dip_threshold=0.6, min_width_aa=0.5
+        )
+        assert notches == []
+
+    def test_edge_padding_widens_notches(self):
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+
+        centers = np.linspace(0.5, 5.0, 1000)
+        y = np.full(1000, 1000.0)
+        y[400:430] = 100.0
+        n0, _ = detect_notches_in_spectrum(
+            centers, y, dip_threshold=0.6, continuum_window=151, edge_pad_aa=0.0
+        )
+        n1, _ = detect_notches_in_spectrum(
+            centers, y, dip_threshold=0.6, continuum_window=151, edge_pad_aa=0.05
+        )
+        assert len(n0) == 1 and len(n1) == 1
+        assert n1[0][0] == pytest.approx(n0[0][0] - 0.05)
+        assert n1[0][1] == pytest.approx(n0[0][1] + 0.05)
+
+    def test_length_mismatch_raises(self):
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+        with pytest.raises(ValueError, match="same length"):
+            detect_notches_in_spectrum([1, 2, 3], [1, 2])
+
+    def test_unknown_continuum_method_raises(self):
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+        with pytest.raises(ValueError, match="continuum_method"):
+            detect_notches_in_spectrum(
+                np.linspace(0.5, 5.0, 100),
+                np.full(100, 1000.0),
+                continuum_method="bogus",
+            )
+
+    def test_clip_peaks_finds_deep_notch_and_renormalises(self):
+        """clip_peaks: SNIP-based continuum, ratio median == 1, notch found."""
+        import numpy as np
+        from snapwrap.reduction_artefacts.masking import detect_notches_in_spectrum
+
+        centers = np.linspace(0.5, 5.0, 1000)
+        # Slightly noisy continuum (perfectly flat data inverts to identical
+        # zeros, which is a SNIP-pathological edge case unrelated to the
+        # algorithm's intended use).
+        rng = np.random.default_rng(0)
+        y = 1000.0 + rng.normal(0, 5.0, size=1000)
+        # One narrow deep notch
+        y[450:480] *= 0.2
+        notches, diag = detect_notches_in_spectrum(
+            centers, y,
+            continuum_method="clip_peaks",
+            clip_win_size=80,
+            dip_threshold=0.7,
+            min_width_aa=0.005,
+            merge_gap_aa=0.02,
+        )
+        # At least one notch must be found, and one of them must cover the
+        # dip centre (we don't assert exactly one — SNIP can produce small
+        # end-artefacts depending on continuum shape).
+        assert len(notches) >= 1
+        dip_x = centers[465]
+        assert any(lo < dip_x < hi for lo, hi in notches)
+        # Renormalisation guarantee: median of ratio is ≈ 1 (it's the
+        # reciprocal of an inv_ratio whose median is exactly 1, so a small
+        # numerical offset is expected).
+        assert np.median(diag["ratio"]) == pytest.approx(1.0, abs=0.01)
+        # Diagnostic ratio is bounded — no inf / huge values.
+        assert np.isfinite(diag["ratio"]).all()
+        assert diag["ratio"].max() <= 1000.0
+
+
+# ---------------------------------------------------------------------------
+# T2: build_swiss_cheese_from_transmission_monitor — validation + happy-path
+# ---------------------------------------------------------------------------
+
+class TestTransmissionMonitorBuilder:
+    def test_missing_nexus_raises(self, tmp_path: Path):
+        from snapwrap.reduction_artefacts.masking import build_swiss_cheese_from_transmission_monitor
+
+        with pytest.raises(FileNotFoundError):
+            build_swiss_cheese_from_transmission_monitor(
+                run_number=12345,
+                is_lite=True,
+                output_dir=tmp_path / "out",
+                file_prefix="tm_test",
+                ipts=99999,
+                nexus_path=tmp_path / "nope.nxs.h5",
+                lam_min=0.5, lam_max=5.0,
+            )
+
+    @staticmethod
+    def _make_mock_sc(out_dir: Path, prefix: str):
+        """Mock swissCheese instance whose .save() writes a stub JSON file."""
+        mock_sc = MagicMock()
+        mock_sc.notchFromList = MagicMock()
+
+        def _save(odir, pfx):
+            (Path(odir) / f"{pfx}_Wavelength.json").write_text("{}")
+        mock_sc.save.side_effect = _save
+        return mock_sc
+
+    def test_happy_path_with_mantid_mocked(self, tmp_path: Path, fake_nexus: Path):
+        import numpy as np
+        import importlib
+
+        # Build a synthetic spectrum with two clear absorption notches.
+        # x has the same length as y (point data after ConvertToPointData).
+        n_bins = 1000
+        x = np.linspace(0.5, 5.0, n_bins)
+        y = np.full(n_bins, 1000.0)
+        y[200:230] = 100.0   # notch ~ x[215]
+        y[600:640] = 80.0    # notch ~ x[620]
+
+        mock_ws = MagicMock()
+        mock_ws.readX.return_value = x.tolist()
+        mock_ws.readY.return_value = y.tolist()
+
+        mock_mantid = MagicMock()
+        # mtd[spec_ws] must support __getitem__
+        mock_mantid.mtd.__getitem__.return_value = mock_ws
+
+        out_dir = tmp_path / "out"
+        mock_sc = self._make_mock_sc(out_dir, "tm_test")
+        mock_sc_class = MagicMock(return_value=mock_sc)
+
+        with patch.dict(sys.modules, {
+            "mantid.simpleapi": mock_mantid,
+            "snapwrap.maskUtils": MagicMock(swissCheese=mock_sc_class),
+        }):
+            import snapwrap.reduction_artefacts.masking as _m
+            import snapwrap.reduction_artefacts.workspace_groups as _wg
+            importlib.reload(_wg)
+            importlib.reload(_m)
+            # Make `n in present` work for the three intermediate ws.
+            mock_mantid.mtd.getObjectNames.return_value = [
+                "snapwrap_trans_12345_monitors",
+                "snapwrap_trans_12345_rebinned",
+                "snapwrap_trans_12345_spectrum",
+            ]
+            mask_paths, notches = _m.build_swiss_cheese_from_transmission_monitor(
+                run_number=12345,
+                is_lite=True,
+                output_dir=out_dir,
+                file_prefix="tm_test",
+                ipts=99999,
+                nexus_path=fake_nexus,
+                lam_min=0.5,
+                lam_max=5.0,
+                rebin_step=0.0045,
+                dip_threshold=0.6,
+                continuum_window=151,
+                min_width_aa=0.001,
+                keep_diagnostics=False,
+            )
+
+        # Mantid pipeline calls
+        mock_mantid.LoadNexusMonitors.assert_called_once()
+        mock_mantid.ConvertUnits.assert_called_once()
+        mock_mantid.Rebin.assert_called_once()
+        mock_mantid.ConvertToPointData.assert_called_once()
+        mock_mantid.ExtractSingleSpectrum.assert_called_once()
+        # Two notches found, passed to swissCheese, and saved.
+        assert len(notches) == 2
+        mock_sc.notchFromList.assert_called_once_with("Wavelength", notches, True)
+        mock_sc.save.assert_called_once()
+        # Mask file written.
+        assert len(mask_paths) == 1
+        assert mask_paths[0].name == "tm_test_Wavelength.json"
+        # keep_diagnostics=False → cleanup deletes the three intermediates.
+        assert mock_mantid.DeleteWorkspace.call_count == 3
+        # No diagnostic workspace produced when keep_diagnostics=False.
+        mock_mantid.CreateWorkspace.assert_not_called()
+        # And no group should have been created.
+        mock_mantid.GroupWorkspaces.assert_not_called()
+
+    def test_keep_workspaces_creates_diag_and_skips_cleanup(
+        self, tmp_path: Path, fake_nexus: Path
+    ):
+        import numpy as np
+        import importlib
+
+        n_bins = 500
+        x = np.linspace(0.5, 5.0, n_bins)  # point data: same length as y
+        y = np.full(n_bins, 1000.0)
+        y[200:220] = 100.0
+
+        mock_ws = MagicMock()
+        mock_ws.readX.return_value = x.tolist()
+        mock_ws.readY.return_value = y.tolist()
+
+        mock_mantid = MagicMock()
+        mock_mantid.mtd.__getitem__.return_value = mock_ws
+
+        out_dir = tmp_path / "out"
+        mock_sc = self._make_mock_sc(out_dir, "tm_keep")
+        mock_sc_class = MagicMock(return_value=mock_sc)
+
+        with patch.dict(sys.modules, {
+            "mantid.simpleapi": mock_mantid,
+            "snapwrap.maskUtils": MagicMock(swissCheese=mock_sc_class),
+        }):
+            import snapwrap.reduction_artefacts.masking as _m
+            import snapwrap.reduction_artefacts.workspace_groups as _wg
+            importlib.reload(_wg)
+            importlib.reload(_m)
+            # All four diagnostic workspaces should be considered "present"
+            # so the adoption helper will pass them to GroupWorkspaces.
+            mock_mantid.mtd.getObjectNames.return_value = [
+                "myprefix_monitors",
+                "myprefix_rebinned",
+                "myprefix_spectrum",
+                "myprefix_diag",
+                "myprefix_notches",
+                "myprefix_kept",
+            ]
+            # Stub the TableWorkspace produced for _notches so addColumn/addRow
+            # calls are absorbed by the mock.
+            mock_mantid.CreateEmptyTableWorkspace.return_value = MagicMock()
+            # mtd.doesExist must return False so the publishing path proceeds.
+            mock_mantid.mtd.doesExist.return_value = False
+            _m.build_swiss_cheese_from_transmission_monitor(
+                run_number=12345,
+                is_lite=False,
+                output_dir=out_dir,
+                file_prefix="tm_keep",
+                ipts=99999,
+                nexus_path=fake_nexus,
+                lam_min=0.5,
+                lam_max=5.0,
+                rebin_step=0.009,
+                dip_threshold=0.6,
+                continuum_window=101,
+                continuum_method="median",
+                min_width_aa=0.001,
+                keep_diagnostics=True,
+                workspace_prefix="myprefix",
+            )
+
+        # Two CreateWorkspace calls: _diag (4-row stack) and _kept (2-row overlay).
+        assert mock_mantid.CreateWorkspace.call_count == 2
+        create_calls = {
+            c.kwargs["OutputWorkspace"]: c.kwargs
+            for c in mock_mantid.CreateWorkspace.call_args_list
+        }
+        assert set(create_calls) == {"myprefix_diag", "myprefix_kept"}
+        diag_kw = create_calls["myprefix_diag"]
+        assert diag_kw["NSpec"] == 4
+        assert diag_kw["VerticalAxisValues"] == ["raw", "smoothed", "continuum", "ratio"]
+        kept_kw = create_calls["myprefix_kept"]
+        assert kept_kw["NSpec"] == 2
+        assert kept_kw["VerticalAxisValues"] == ["ratio", "kept"]
+        # The notch list is published as a TableWorkspace.
+        mock_mantid.CreateEmptyTableWorkspace.assert_called_once_with(
+            OutputWorkspace="myprefix_notches"
+        )
+        # No DeleteWorkspace when keep_diagnostics=True — intermediates are
+        # adopted into the per-run diagnostics group instead.
+        mock_mantid.DeleteWorkspace.assert_not_called()
+        # The diagnostics group should have been created and contain all six ws.
+        mock_mantid.GroupWorkspaces.assert_called_once()
+        gw_kwargs = mock_mantid.GroupWorkspaces.call_args.kwargs
+        assert gw_kwargs["OutputWorkspace"] == "wrap_diagnostics_12345"
+        assert set(gw_kwargs["InputWorkspaces"]) == {
+            "myprefix_monitors",
+            "myprefix_rebinned",
+            "myprefix_spectrum",
+            "myprefix_diag",
+            "myprefix_notches",
+            "myprefix_kept",
+        }
+        # is_lite=False propagated to notchFromList.
+        mock_sc.notchFromList.assert_called_once()
+        assert mock_sc.notchFromList.call_args.args[2] is False

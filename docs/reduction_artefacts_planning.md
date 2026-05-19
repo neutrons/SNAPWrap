@@ -381,7 +381,7 @@ Scope:
 
 Milestone:
 
-- [ ] deterministic requirement report for DAC and PE runs
+- [x] deterministic requirement report for DAC and PE runs
 
 #### Phase 3 — Asset ingestion workflows
 
@@ -392,7 +392,7 @@ Scope:
 
 Milestone:
 
-- [ ] all v1 asset types can be ingested and indexed
+- [x] all v1 asset types can be ingested and indexed
 
 #### Phase 4 — Artefact creation workflows (v1)
 
@@ -405,7 +405,7 @@ Scope:
 
 Milestone:
 
-- [ ] first-run campaign flow can generate and persist required artefacts
+- [x] first-run campaign flow can generate and persist required artefacts
 
 #### Phase 5 — Reduction-time selection + provenance
 
@@ -417,7 +417,7 @@ Scope:
 
 Milestone:
 
-- [ ] re-reduction can reproduce identical artefact selection
+- [x] re-reduction can reproduce identical artefact selection
 
 #### Phase 6 — Iteration and operator workflow
 
@@ -452,6 +452,12 @@ Update this table whenever phase status changes.
 | 2026-05-11 | Phase 1 | Added multiprocessing contention tests (`tests/test_reduction_artefacts_concurrency.py`) validating `flock` allocator correctness (unique monotonic IDs + same-slug conflict behavior). | Done |
 | 2026-05-11 | Phase 2 | Added assembly-aware requirement resolver (`src/snapwrap/reduction_artefacts/requirements.py`) with deterministic DAC/PE requirement checklist and method preference selection. | In Progress |
 | 2026-05-11 | Phase 2 | Added resolver tests (`tests/test_reduction_artefacts_requirements.py`) covering SEEMeta inference, deterministic ordering, method preference selection, and missing/ready summary. | In Progress |
+| 2026-05-18 | Phase 4 (DAC) | Added clip-peaks (SNIP) continuum option to `detect_notches_in_spectrum` with full pipeline diagnostics (`_diag`, `_pipeline`, `_kept` workspaces) via `scripts/inspect_transmission_notches.py`. Validated on real data: `DIP_THRESHOLD ≈ 0.98` gives near-perfect notch identification. | Done (recipe-level) |
+| 2026-05-18 | Planning | Parked recipe-level follow-ups (adaptive threshold, raw-mask diagnostic, presets, sweep harness, robustness guards, provenance capture) under "Deferred follow-ups — notch_from_monitor recipe" to refocus on Phase 2 closeout + Phase 3 ingestion surface + Phase 5 provenance manifests. | Done |
+| 2026-05-18 | Phase 2 | Added `unsupported: True` flag to requirement report when assembly_type is `OTHER`. Added round-trip tests for `generate_requirement_report_for_run` with `persist=True`/`False`. | Done |
+| 2026-05-18 | Phase 3 | Implemented `ingest_asset(...)`: validates AssetType enum, copies to managed store via `copy_to_asset_store`, computes SHA-256 checksum, auto-increments version, handles supersede semantics (new record carries `provenance.supersedes` list of prior active record_ids). Added `ingest_seemeta_for_run` convenience. Added `scripts/ingest_asset.py` CLI. Extended `asset_record.schema.json` provenance sources to include `"acquired"`. | Done |
+| 2026-05-18 | Phase 4 (PE) | Added `register_attenuation_artefact_planned(...)` to declare PE attenuation requirement with `status="planned"` / `path="PENDING"` without a real generator (R7 mitigation). Extended `artefact_record.schema.json` status enum to include `"planned"`. | Done |
+| 2026-05-18 | Phase 5 | Implemented `build_run_manifest(...)`: resolves assembly type, builds requirement report, selects best active artefact per type using method policy, auto-increments attempt number, writes `manifests/run_<run>_attempt_<n>.json` per `run_manifest.schema.json`, returns manifest dict with `manifest_path`. Added `scripts/show_run_resolution.py` for read-only preview using normative glossary terms. | Done |
 
 ### Risks and assumptions
 
@@ -525,3 +531,76 @@ Tracked so reviewers and future contributors can challenge them explicitly.
 8. Wire Phase 2 resolver into a thin run-facing entry point (e.g., report builder from campaign + run context) and persist requirement report snapshots to `manifests/` for traceability.
 9. Run a real-IPTS shadow pilot (read-only reporting mode) on a mixed DAC/PE dataset to validate campaign segmentation and missing/available requirement outputs before enabling write-back workflows.
 
+### Deferred follow-ups — `bin_mask.from_transmission` (notch_from_monitor) recipe
+
+The clip-peaks (SNIP) continuum path inside
+`detect_notches_in_spectrum` / `build_swiss_cheese_from_transmission_monitor`
+is functionally proven on real data (DIP_THRESHOLD ≈ 0.98 gives near-perfect
+results on the test datasets), and pipeline diagnostics
+(`snapwrap_trans_<RUN>_diag` / `_pipeline` / `_kept` workspaces) are in
+place for tuning. The following recipe-level improvements are **explicitly
+deferred** so we can prioritise the broader asset → artefact → reduction
+architecture. They should be picked up after Phase 5 lands, or earlier if a
+real campaign requires them:
+
+- D1. **Adaptive dip threshold.** Replace the magic `DIP_THRESHOLD` constant
+	with a `dip_threshold_mode` argument supporting `"fixed"` (current),
+	`"mad"` (`baseline - k * MAD(ratio)`), and `"percentile"`. Clamp to a
+	sane band (e.g. `[0.85, 0.995]`) and expose `dip_threshold_k`.
+- D2. **Raw-threshold diagnostic row** in the `_kept` workspace so the raw
+	`ratio < threshold` mask is visible alongside the post-processed
+	(merge / min-width / edge-pad) notches.
+- D3. **Per-instrument / per-assembly presets** for `clip_win_size`,
+	`clip_smoothing`, `dip_threshold` once Phase 5 method-policy resolution
+	exists. These belong with the method record, not in the script.
+- D4. **Parameter-sweep harness** (notebook or script) to calibrate defaults
+	on a curated set of runs and record recommended presets in the campaign.
+- D5. **Robustness guards** in `detect_notches_in_spectrum`: detect
+	pathological SNIP outputs (e.g. `cont <= 0`, ratio baseline far from 1),
+	emit structured warnings, and fall back to the median continuum.
+- D6. **Capture clip-peaks parameters in the artefact record** so a bin
+	mask built via this route can be reproduced byte-for-byte under Phase 5
+	provenance rules.
+
+These items are tracked here (not as TODOs in source) to keep the recipe
+surface stable while the architectural phases are in flight.
+
+### Revised priorities (post clip-peaks excursion)
+
+The clip-peaks work depth-tested one Phase 4 method. The remaining
+architectural backbone is the higher priority. Revised ordering:
+
+1. **Close Phase 2.** Flip the resolver/report entries in the progress log
+	 from *In Progress* to *Done* once (a) the resolver covers `OTHER` /
+	 unknown assembly types with an explicit `unsupported` outcome and (b)
+	 the report snapshot path under `manifests/requirements_run_<run>.json`
+	 is covered by a round-trip test.
+2. **Complete Phase 3 — asset ingestion surface.** A single
+	 `ingest_asset(...)` entry point that: validates the asset against its
+	 `AssetType`, copies into `assets/` via `copy_to_asset_store`, computes
+	 content hash, appends an `AssetRecord` to `assets_index.jsonl`, and
+	 honours supersede semantics. Add a thin `scripts/ingest_asset.py`
+	 wrapper and an `ingest_seemeta_for_run` convenience that registers the
+	 run-specific SEEMeta JSON automatically.
+3. **Fill the PE side of Phase 4.** Wire `pixel_mask.letterbox` and
+	 `pixel_mask.custom` through `register_pixel_mask_artefact`, and land
+	 the `attenuation_workspace` artefact as a `status: "planned"` record
+	 so PE campaigns can declare and resolve the requirement before the
+	 generator exists (per R7).
+4. **Begin Phase 5 — provenance manifests.** Introduce
+	 `build_run_manifest(campaign, run, selections)` that:
+	 - resolves the active artefact record per required type using the
+		 Phase 2 method policy,
+	 - writes `manifests/run_<run>_attempt_<n>.json` per the
+		 `run_manifest.schema.json`,
+	 - records the asset → artefact → method chain plus content hashes so
+		 re-reduction is reproducible.
+5. **Phase 6 — iteration helpers.** A `supersede_artefact(...)` helper plus
+	 a one-screen diagnostic (`scripts/show_run_resolution.py`) that prints
+	 the resolved asset/artefact set per run using the normative glossary
+	 terms (R8 mitigation).
+
+Concretely, the next deliverable I'd recommend is **(2)**: a unified
+`ingest_asset` API plus tests. It unblocks both the PE Phase 4 work and the
+Phase 5 manifest builder, because both consume `AssetRecord` lookups by id
+and hash.

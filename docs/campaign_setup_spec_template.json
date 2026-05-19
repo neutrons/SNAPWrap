@@ -1,0 +1,99 @@
+{
+  "_comment": [
+    "Campaign setup spec template.",
+    "Copy this file to your IPTS shared folder (e.g. /SNS/SNAP/IPTS-XXXXX/shared/campaigns/my_campaign.json)",
+    "and edit to match your experiment.",
+    "All 'path' values are relative to /SNS/SNAP/IPTS-<ipts>/shared/ unless absolute."
+  ],
+
+  "ipts": 99999,
+  "campaign_slug": "my_campaign",
+  "assembly_type": "DAC",
+
+  "description": "One-line description of this campaign",
+  "owners": ["fedid1", "fedid2"],
+
+  "runs": [10001, 10002, 10003],
+
+  "seemeta_dir": "SEE",
+  "seemeta_filename_pattern": "SEE{run:06d}.json",
+
+  "assets": [
+    {
+      "asset_type": "cif",
+      "asset_id": "cif-sample",
+      "path": "cif/MyPhase.cif",
+      "provenance_source": "imported",
+      "notes": "Sample phase CIF"
+    },
+    {
+      "asset_type": "cif",
+      "asset_id": "cif-calibrant",
+      "path": "cif/Calibrant.cif",
+      "provenance_source": "imported",
+      "notes": "Pressure calibrant CIF (e.g. Au, W, Ne ruby)"
+    },
+    {
+      "asset_type": "ub_matrix",
+      "asset_id": "ub1-run10001",
+      "path": "SNAP10001UB1.mat",
+      "run_number": 10001,
+      "provenance_source": "generated",
+      "notes": "Diamond 1 UB matrix from run 10001"
+    },
+    {
+      "asset_type": "ub_matrix",
+      "asset_id": "ub2-run10001",
+      "path": "SNAP10001UB2.mat",
+      "run_number": 10001,
+      "provenance_source": "generated",
+      "notes": "Diamond 2 UB matrix from run 10001"
+    }
+  ],
+
+  "bin_masks": [
+    {
+      "artefact_id": "binmask-dspacing-run10001",
+      "mask_path": "masks/SNAP_10001_dSpacing.json",
+      "source_run": 10001,
+      "ub_mat_paths": [
+        "SNAP10001UB1.mat",
+        "SNAP10001UB2.mat"
+      ],
+      "width_coef": [1.0, 0.0],
+      "is_lite": true,
+      "notes": "dSpacing swiss-cheese mask from run 10001"
+    },
+    {
+      "artefact_id": "binmask-wavelength-run10001",
+      "mask_path": "masks/SNAP_10001_Wavelength.json",
+      "source_run": 10001,
+      "ub_mat_paths": [
+        "SNAP10001UB1.mat",
+        "SNAP10001UB2.mat"
+      ],
+      "width_coef": [1.0, 0.0],
+      "is_lite": true,
+      "notes": "Wavelength swiss-cheese mask from run 10001"
+    }
+  ],
+
+  "_pe_only_examples": {
+    "_comment": "Delete this block for DAC campaigns. For PE campaigns, add pixel_masks and/or planned_attenuations.",
+    "pixel_masks": [
+      {
+        "artefact_id": "pixmask-letterbox",
+        "nxs_path": "PEpressMask.nxs",
+        "method": "pixel_mask.letterbox",
+        "ws_name": "pe_pixel_mask",
+        "notes": "Standard PE letterbox pixel mask"
+      }
+    ],
+    "planned_attenuations": [
+      {
+        "artefact_id": "atten-pe-run10001",
+        "notes": "Attenuation workspace — to be computed once transmission monitor workflow is available"
+      }
+    ]
+  }
+}

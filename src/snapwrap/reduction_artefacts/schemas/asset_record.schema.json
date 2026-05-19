@@ -43,7 +43,7 @@
       "type": "object",
       "required": ["source", "created_by"],
       "properties": {
-        "source": { "type": "string", "enum": ["manual", "imported", "generated"] },
+        "source": { "type": "string", "enum": ["manual", "imported", "generated", "acquired"] },
         "created_by": { "type": "string" },
         "notes": { "type": "string" }
       },

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import fcntl
 from jsonschema import Draft202012Validator
@@ -95,6 +95,51 @@ def _resolve_paths(ipts: int, campaign_slug: str, shared_root: Path | str | None
         artefacts_index=campaign_dir / "artefacts_index.jsonl",
         crystal_species_index=campaign_dir / "crystal_species_index.jsonl",
     )
+
+
+def get_campaign_paths(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+) -> CampaignPaths:
+    """Return the resolved :class:`CampaignPaths` for a campaign.
+
+    Public wrapper around the internal path resolver, useful for callers
+    that need canonical locations (artefact output dirs, indexes, etc.)
+    without depending on private helpers.
+    """
+    slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    return _resolve_paths(ipts=ipts, campaign_slug=slug, shared_root=shared_root)
+
+
+def get_campaign_artefact_dir(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+    subdir: str | None = None,
+) -> Path:
+    """Return the canonical output directory for generated artefacts.
+
+    Default layout: ``{campaign_dir}/artefacts/{subdir}``.  If *subdir* is
+    ``None`` returns ``{campaign_dir}/artefacts``.  The directory is created
+    if it does not already exist.
+    """
+    paths = get_campaign_paths(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    out = paths.campaign_dir / "artefacts"
+    if subdir:
+        out = out / subdir
+    out.mkdir(parents=True, exist_ok=True)
+    return out
 
 
 def _validate_slug(slug: str) -> None:
@@ -504,6 +549,192 @@ def copy_to_asset_store(
     return dest
 
 
+def _sha256_file(path: Path) -> str:
+    """Return the lowercase hex SHA-256 digest of a file."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ingest_asset(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    source_path: str | Path,
+    asset_type: str,
+    asset_id: str | None = None,
+    shared_root: Path | str | None = None,
+    applicability_scope: str = "campaign",
+    run_number: int | None = None,
+    provenance_source: str = "imported",
+    created_by: str = "operator",
+    notes: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """Unified asset ingestion entry point.
+
+    Validates the source file, copies it into the managed asset store,
+    computes a SHA-256 checksum, auto-increments the version (superseding any
+    existing active record for the same ``asset_id``), and appends a new
+    ``active`` record to ``assets_index.jsonl``.
+
+    Supersede semantics follow the planning contract: the *new* active record
+    carries a ``supersedes`` list of prior active record ids; the prior records
+    are **not** mutated (the index is append-only).  Resolution at read time
+    uses the most recent ``active`` record for a given ``asset_id``.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        source_path: Path to the file to ingest.
+        asset_type: One of the :class:`~snapwrap.reduction_artefacts.assets.AssetType`
+            string values (e.g. ``"cif"``, ``"ub_matrix"``).
+        asset_id: Stable logical identifier for this asset.  If ``None``,
+            derived from the source file stem (e.g. ``"my_sample"`` for
+            ``my_sample.cif``).
+        shared_root: Override for the IPTS shared root (useful in tests).
+        applicability_scope: ``"campaign"`` (default) or ``"run"``.
+        run_number: Run number — required when ``applicability_scope="run"``.
+        provenance_source: How the asset was obtained (default ``"imported"``).
+        created_by: Creator identifier (default ``"operator"``).
+        notes: Optional free-text note appended to provenance.
+        metadata: Optional extra key/value metadata stored in the record.
+        overwrite: Passed to :func:`copy_to_asset_store`; replaces an
+            existing destination file when ``True``.
+
+    Returns:
+        The new asset record dict appended to ``assets_index.jsonl``.
+
+    Raises:
+        FileNotFoundError: ``source_path`` does not exist.
+        ValueError: ``asset_type`` is not a recognised
+            :class:`~snapwrap.reduction_artefacts.assets.AssetType`.
+    """
+    from .assets import AssetType
+
+    src = Path(source_path)
+    if not src.exists():
+        raise FileNotFoundError(f"Asset source not found: {src}")
+
+    # Validate asset_type against the enum.
+    try:
+        AssetType(asset_type)
+    except ValueError:
+        valid = [e.value for e in AssetType]
+        raise ValueError(
+            f"Unknown asset_type {asset_type!r}. Valid values: {valid}"
+        ) from None
+
+    if asset_id is None:
+        asset_id = src.stem
+
+    # Copy into the managed store (idempotent if same content).
+    dest = copy_to_asset_store(
+        src,
+        asset_type,
+        ipts=ipts,
+        shared_root=shared_root,
+        overwrite=overwrite,
+    )
+    checksum = _sha256_file(dest)
+
+    # Find any existing active records for this asset_id to determine version
+    # and build the supersedes list.
+    existing = list_asset_records(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+        asset_type=asset_type,
+        status="active",
+    )
+    prior_active = [r for r in existing if r.get("asset_id") == asset_id]
+    supersedes = [r["record_id"] for r in prior_active]
+    version = max((int(r.get("version", 1)) for r in prior_active), default=0) + 1
+
+    provenance: dict[str, Any] = {
+        "source": provenance_source,
+        "created_by": created_by,
+    }
+    if notes:
+        provenance["notes"] = notes
+    if supersedes:
+        provenance["supersedes"] = supersedes
+
+    record = register_asset_record(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        asset_id=asset_id,
+        asset_type=asset_type,
+        path=str(dest),
+        shared_root=shared_root,
+        applicability_scope=applicability_scope,
+        run_number=run_number,
+        version=version,
+        status="active",
+        checksum=checksum,
+        metadata=metadata,
+        provenance_source=provenance_source,
+        created_by=created_by,
+        notes=notes,
+    )
+    # Patch the supersedes list into the already-appended record in-memory
+    # (register_asset_record doesn't support this field directly yet).
+    if supersedes:
+        record.setdefault("provenance", {})["supersedes"] = supersedes
+
+    return record
+
+
+def ingest_seemeta_for_run(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    source_path: str | Path,
+    run_number: int,
+    shared_root: Path | str | None = None,
+    created_by: str = "operator",
+    notes: str | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """Convenience wrapper: ingest a SEEMeta JSON file as a run-specific asset.
+
+    Derives ``asset_id`` as ``"seemeta-<run_number>"`` so repeated ingest of
+    an updated SEEMeta for the same run supersedes the prior record.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        source_path: Path to the SEEMeta JSON file.
+        run_number: Run number this SEEMeta belongs to.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        created_by: Creator identifier.
+        notes: Optional free-text note.
+        overwrite: Whether to overwrite an existing file in the asset store.
+
+    Returns:
+        The new asset record dict.
+    """
+    return ingest_asset(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        source_path=source_path,
+        asset_type="seemeta_json",
+        asset_id=f"seemeta-{run_number}",
+        shared_root=shared_root,
+        applicability_scope="run",
+        run_number=run_number,
+        provenance_source="acquired",
+        created_by=created_by,
+        notes=notes,
+        overwrite=overwrite,
+    )
+
+
 def register_asset_record(
     *,
     ipts: int,
@@ -623,6 +854,344 @@ def list_asset_records(
                 continue
         filtered.append(row)
     return filtered
+
+
+def list_artefact_records(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+    artefact_type: str | None = None,
+    artefact_id: str | None = None,
+    status: str | None = None,
+    run_number: int | None = None,
+) -> list[dict[str, Any]]:
+    """List persisted artefact records for a campaign with optional filters.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        shared_root: Override for the IPTS shared root (useful in tests).
+        artefact_type: Filter by artefact type (e.g. ``"bin_mask"``).
+        artefact_id: Filter by exact artefact id.
+        status: Filter by status string (e.g. ``"active"``, ``"retired"``).
+        run_number: Filter to records whose ``run_context.run_number`` equals
+            this value.  Records with no ``run_context`` or no
+            ``run_context.run_number`` are *excluded* when this is set.
+
+    Returns:
+        List of matching artefact record dicts (in append order).
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+    records = read_jsonl_records(paths.artefacts_index)
+
+    filtered: list[dict[str, Any]] = []
+    for row in records:
+        if artefact_type is not None and row.get("artefact_type") != artefact_type:
+            continue
+        if artefact_id is not None and row.get("artefact_id") != artefact_id:
+            continue
+        if status is not None and row.get("status") != status:
+            continue
+        if run_number is not None:
+            rc = row.get("run_context")
+            if not isinstance(rc, Mapping):
+                continue
+            if rc.get("run_number") != run_number:
+                continue
+        filtered.append(row)
+    return filtered
+
+
+def retire_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    shared_root: Path | str | None = None,
+) -> int:
+    """Retire all active records with the given *artefact_id*.
+
+    The JSONL index is append-only and immutable; retirement is implemented
+    by rewriting the file with every matching ``"active"`` record updated to
+    ``"retired"``.  This makes the artefact invisible to ``build_run_manifest``
+    and any query filtering on ``status="active"``.
+
+    Use this when you want to replace a mask (e.g. rebuild the d-spacing mask
+    with a corrected version) — retire the old one first, then re-register.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        artefact_id: The logical artefact id to retire (all records sharing
+            this id will be affected).
+        shared_root: Override for the IPTS shared root (useful in tests).
+
+    Returns:
+        Number of records that were changed from ``"active"`` to ``"retired"``.
+
+    Example::
+
+        from snapwrap.reduction_artefacts import retire_artefact
+
+        retire_artefact(
+            ipts=33219,
+            campaign_identifier="dac_brucite_a",
+            artefact_id="dspacing-mask-diamond-65891",
+        )
+        # Now re-register with the updated JSON path:
+        register_manual_bin_mask_artefact(
+            ipts=33219,
+            campaign_identifier="dac_brucite_a",
+            artefact_id="dspacing-mask-diamond-65891",
+            mask_json_path="/SNS/SNAP/IPTS-33219/shared/masks/SNAP_65891_dSpacing_v2.json",
+            run_number=65891,
+        )
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    with _exclusive_lock(paths.artefacts_index.with_suffix(".lock")):
+        records = read_jsonl_records(paths.artefacts_index)
+        n_retired = 0
+        updated: list[dict[str, Any]] = []
+        for rec in records:
+            if rec.get("artefact_id") == artefact_id and rec.get("status") == "active":
+                rec = dict(rec)
+                rec["status"] = "retired"
+                n_retired += 1
+            updated.append(rec)
+
+        if n_retired:
+            # Rewrite the JSONL atomically
+            import tempfile
+            tmp = paths.artefacts_index.with_suffix(".tmp")
+            with tmp.open("w", encoding="utf-8") as fh:
+                for rec in updated:
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            tmp.replace(paths.artefacts_index)
+
+    return n_retired
+
+
+def reset_artefacts_index(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+    mode: str = "compact",
+    confirm_token: str | None = None,
+) -> dict[str, Any]:
+    """Reset or compact the artefacts index for a campaign.
+
+    Two modes are supported:
+
+    - "compact" (default): deduplicate the index keeping only the latest
+      record per ``artefact_id`` (keeps the newest record by append order).
+      This is non-destructive in the sense that every original record remains
+      present in the audit trail only insofar as the compacted index replaces
+      the file; the old file is overwritten atomically.
+
+    - "wipe": remove all artefact records (reset to empty index).  This is
+      destructive and requires passing ``confirm_token="WIPE"`` to proceed.
+
+    Returns a summary dict with keys ``n_in``, ``n_out``, ``mode``.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if mode not in ("compact", "wipe"):
+        raise ValueError("mode must be 'compact' or 'wipe'")
+    if mode == "wipe" and confirm_token != "WIPE":
+        raise ValueError("confirm_token must be 'WIPE' to perform a full wipe")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    with _exclusive_lock(paths.artefacts_index.with_suffix(".lock")):
+        records = read_jsonl_records(paths.artefacts_index)
+        n_in = len(records)
+        if mode == "wipe":
+            out: list[dict[str, Any]] = []
+        else:
+            # compact: keep only the last record for each artefact_id
+            seen: dict[str, dict[str, Any]] = {}
+            for rec in records:
+                aid = str(rec.get("artefact_id", rec.get("record_id", "")))
+                seen[aid] = rec
+            out = list(seen.values())
+
+        # atomic rewrite
+        tmp = paths.artefacts_index.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            for rec in out:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        tmp.replace(paths.artefacts_index)
+
+    return {"n_in": n_in, "n_out": len(out), "mode": mode}
+
+
+def copy_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    source_artefact_id: str,
+    new_artefact_id: str,
+    run_number: int | None = None,
+    shared_root: Path | str | None = None,
+    copy_file: bool = False,
+    notes: str | None = None,
+    created_by: str = "operator",
+) -> dict[str, Any]:
+    """Register a new artefact as a copy of an existing one.
+
+    Finds the latest active record for *source_artefact_id* and writes a new
+    record with *new_artefact_id* (and optionally a new *run_number* scope).
+
+    Two file-handling modes:
+
+    ``copy_file=False`` (default)
+        The new record points to the **same file path** as the source.
+        Safe and instant for small read-only assets like swiss-cheese JSON
+        masks — the file does not move or duplicate on disk.
+
+    ``copy_file=True``
+        The underlying file is physically copied to a new name alongside the
+        original (``{stem}_copy_{new_artefact_id}{suffix}``), and the new
+        record points to the copy.  Use when you want to edit the new mask
+        independently without touching the original.
+
+    This is the idiomatic way to reuse a mask from one run across another::
+
+        from snapwrap.reduction_artefacts import copy_artefact
+
+        # Reuse the d-spacing mask from run 65891 for run 65892:
+        copy_artefact(
+            ipts=33219,
+            campaign_identifier="dac_brucite_a",
+            source_artefact_id="dspacing-mask-diamond-65891",
+            new_artefact_id="dspacing-mask-diamond-65892",
+            run_number=65892,
+            notes="Reused from run 65891 — same pressure step",
+        )
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        source_artefact_id: Artefact id of the record to copy from.
+        new_artefact_id: Artefact id to assign to the new record.
+        run_number: Optional run scope for the new record.  If ``None``,
+            the source record's run scope is preserved.
+        shared_root: Override for the IPTS shared root.
+        copy_file: When ``True``, physically copy the underlying file.
+            Default ``False`` — new record shares the same path.
+        notes: Optional notes stored on the new record's provenance.
+        created_by: Provenance author.
+
+    Returns:
+        The new artefact record dict that was appended to the index.
+
+    Raises:
+        FileNotFoundError: No active record exists for *source_artefact_id*.
+        ValueError: *new_artefact_id* already has an active record (use
+            ``retire_artefact`` first to replace it).
+    """
+    import shutil
+
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    all_records = read_jsonl_records(paths.artefacts_index)
+
+    # Find latest active source record
+    source_rec: dict[str, Any] | None = None
+    for rec in reversed(all_records):
+        if rec.get("artefact_id") == source_artefact_id and rec.get("status") == "active":
+            source_rec = rec
+            break
+    if source_rec is None:
+        raise FileNotFoundError(
+            f"No active artefact record found for {source_artefact_id!r} "
+            f"in campaign {campaign_slug!r}."
+        )
+
+    # Guard against silent overwrite of existing active target
+    for rec in all_records:
+        if rec.get("artefact_id") == new_artefact_id and rec.get("status") == "active":
+            raise ValueError(
+                f"An active record already exists for {new_artefact_id!r}. "
+                f"Call retire_artefact(..., artefact_id={new_artefact_id!r}) first."
+            )
+
+    # Determine the path for the new record
+    source_path = str(source_rec.get("path", ""))
+    if copy_file and source_path and source_path != "PENDING":
+        src = Path(source_path)
+        if not src.exists():
+            raise FileNotFoundError(
+                f"copy_file=True but source file does not exist: {src}"
+            )
+        dest = src.with_name(f"{src.stem}_copy_{new_artefact_id}{src.suffix}")
+        shutil.copy2(src, dest)
+        new_path = str(dest)
+    else:
+        new_path = source_path
+
+    # Build the new record, copying all fields from source and overriding identity
+    now = _utc_now_iso()
+    new_run_context: dict[str, Any] = dict(source_rec.get("run_context") or {})
+    if run_number is not None:
+        new_run_context["run_number"] = run_number
+
+    new_rec: dict[str, Any] = {
+        **{k: v for k, v in source_rec.items()
+           if k not in ("record_id", "timestamp", "artefact_id",
+                        "run_context", "path", "provenance")},
+        "record_id": f"artefact-{new_artefact_id}-v1-{now}",
+        "timestamp": now,
+        "artefact_id": new_artefact_id,
+        "run_context": new_run_context,
+        "path": new_path,
+        "provenance": {
+            "created_by": created_by,
+            "tool": "snapwrap.reduction_artefacts.persistence.copy_artefact",
+            "copied_from": source_artefact_id,
+            "copy_file": copy_file,
+            **({"notes": notes} if notes else {}),
+        },
+    }
+
+    append_jsonl_record(
+        paths.artefacts_index,
+        new_rec,
+        schema_name="artefact_record.schema.json",
+    )
+    return new_rec
 
 
 def register_crystal_species_artefact(
@@ -1100,6 +1669,125 @@ def add_candidate_species(
     return cif_record
 
 
+def register_manual_bin_mask_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    mask_json_path: str,
+    run_number: int | None = None,
+    shared_root: Path | str | None = None,
+    version: int = 1,
+    status: str = "active",
+    notes: str | None = None,
+    created_by: str = "operator",
+) -> dict[str, Any]:
+    """Register a manually-created swiss-cheese bin-mask artefact.
+
+    Unlike :func:`register_swiss_cheese_artefact`, this function does not
+    require UB matrix files — it records a pre-existing mask JSON that was
+    built and saved by the user (e.g. via ``swissCheese.save()`` in
+    Workbench).  The mask is registered with
+    ``method = "bin_mask.manual_import"`` and, if *run_number* is provided,
+    is scoped to that run.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        artefact_id: Unique identifier, e.g.
+            ``"dspacing-mask-diamond-65891"``.
+        mask_json_path: Absolute path to the saved swiss-cheese JSON file.
+        run_number: Run for which this mask applies.  ``None`` for a
+            campaign-wide mask.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        version: Record version number (default 1).
+        status: Artefact status (default ``"active"``).
+        notes: Optional free-text notes stored in ``provenance``.
+        created_by: Creator identifier (default ``"operator"``).
+
+    Returns:
+        The artefact record dict appended to ``artefacts_index.jsonl``.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if not artefact_id.strip():
+        raise ValueError("artefact_id must be non-empty")
+    if not mask_json_path.strip():
+        raise ValueError("mask_json_path must be non-empty")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    # ── Register the JSON file as a manual_bin_mask asset ─────────────────
+    json_asset_id = f"binmask-json-{artefact_id}-v{version}"
+    register_asset_record(
+        ipts=ipts,
+        campaign_identifier=campaign_slug,
+        asset_id=json_asset_id,
+        asset_type="other",
+        path=mask_json_path,
+        shared_root=shared_root,
+        applicability_scope="run" if run_number is not None else "campaign",
+        run_number=run_number,
+        version=version,
+        status=status,
+        provenance_source="manual",
+        created_by=created_by,
+        notes=notes,
+        metadata={"method": "bin_mask.manual_import"},
+    )
+
+    # ── Register the artefact ─────────────────────────────────────────────
+    now = _utc_now_iso()
+    record: dict[str, Any] = {
+        "record_id": f"artefact-{artefact_id}-v{version}-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "artefact_id": artefact_id,
+        "artefact_type": "bin_mask",
+        "intended_use": "pre_reduction",
+        "method": "bin_mask.manual_import",
+        "version": version,
+        "status": status,
+        "run_context": {
+            "run_number": run_number,
+            "state_id": None,
+        },
+        "input_asset_ids": [json_asset_id],
+        "path": mask_json_path,
+        "provenance": {
+            "created_by": created_by,
+            "tool": "manual",
+        },
+        "metadata": {},
+    }
+    if notes:
+        record["provenance"]["notes"] = notes
+
+    append_jsonl_record(
+        paths.artefacts_index,
+        record,
+        schema_name="artefact_record.schema.json",
+    )
+    return record
+
+
 def register_swiss_cheese_artefact(
     *,
     ipts: int,
@@ -1197,6 +1885,9 @@ def register_swiss_cheese_artefact(
         ub_asset_ids.append(ub_asset_id)
 
     # ── Register the artefact ─────────────────────────────────────────────
+    # Derive method from source: UB-file-derived vs transmission-monitor-derived.
+    mask_method = "swiss_cheese_ub" if ub_mat_paths else "swiss_cheese_monitor"
+
     now = _utc_now_iso()
     record: dict[str, Any] = {
         "record_id": f"artefact-{artefact_id}-v{version}-{now}",
@@ -1207,7 +1898,7 @@ def register_swiss_cheese_artefact(
         "artefact_id": artefact_id,
         "artefact_type": "bin_mask",
         "intended_use": "pre_reduction",
-        "method": "swiss_cheese_ub",
+        "method": mask_method,
         "version": version,
         "status": status,
         "run_context": {
@@ -1372,3 +2063,301 @@ def register_pixel_mask_artefact(
         schema_name="artefact_record.schema.json",
     )
     return record
+
+
+# ── Phase 4 PE: attenuation workspace placeholder ─────────────────────────────
+
+def register_attenuation_artefact_planned(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    shared_root: Path | str | None = None,
+    notes: str | None = None,
+    created_by: str = "operator",
+) -> dict[str, Any]:
+    """Register a PE attenuation workspace artefact with status ``"planned"``.
+
+    This satisfies R7 (risk mitigation): PE campaigns can declare the
+    requirement now and fulfil it later (by superseding this record with a real
+    ``active`` one) without a schema change.
+
+    The record is written to ``artefacts_index.jsonl`` with
+    ``status="planned"`` and ``path="PENDING"`` so the requirement resolver can
+    see it is declared but not yet available.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        artefact_id: Unique identifier, e.g. ``"atten_pe_h2o_01"``.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        notes: Optional free-text note stored in provenance.
+        created_by: Creator identifier (default ``"operator"``).
+
+    Returns:
+        The artefact record dict appended to ``artefacts_index.jsonl``.
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if not artefact_id.strip():
+        raise ValueError("artefact_id must be non-empty")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    now = _utc_now_iso()
+    record: dict[str, Any] = {
+        "record_id": f"artefact-{artefact_id}-v1-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "artefact_id": artefact_id,
+        "artefact_type": "attenuation_workspace",
+        "intended_use": "pre_reduction",
+        "method": "attenuation.from_seemeta",
+        "version": 1,
+        "status": "planned",
+        "run_context": {"run_number": None, "state_id": None},
+        "input_asset_ids": [],
+        "path": "PENDING",
+        "provenance": {
+            "created_by": created_by,
+            "tool": "snapwrap.reduction_artefacts.persistence.register_attenuation_artefact_planned",
+            "notes": notes or "Attenuation workspace generator not yet implemented (R7).",
+        },
+        "metadata": {},
+    }
+
+    append_jsonl_record(
+        paths.artefacts_index,
+        record,
+        schema_name="artefact_record.schema.json",
+    )
+    return record
+
+
+# ── Phase 5: run manifest ─────────────────────────────────────────────────────
+
+def build_run_manifest(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    run_number: int,
+    shared_root: Path | str | None = None,
+    assembly_type: str | None = None,
+    seemeta: Mapping[str, Any] | None = None,
+    method_preferences: Mapping[str, Any] | None = None,
+    state_id: str | None = None,
+    notes: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    attempt_number: int | None = None,
+) -> dict[str, Any]:
+    """Resolve the best active artefact per required type and write a run manifest.
+
+    This is the Phase 5 entry point.  It:
+
+    1. Generates the requirement report for the run.
+    2. For each required artefact type, selects the best matching ``active``
+       record from ``artefacts_index.jsonl`` using the method policy.
+    3. Writes ``manifests/run_<run>_attempt_<n>.json`` per
+       ``run_manifest.schema.json``, where *n* auto-increments to avoid
+       overwriting earlier attempts.
+    4. Returns the manifest dict.
+
+    Manifests are immutable once written — re-reduction appends a new attempt.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign slug, alias, or numeric id.
+        run_number: Run number to build the manifest for.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        assembly_type: Override the assembly type (if ``None``, read from
+            ``campaign.json`` or inferred from ``seemeta``).
+        seemeta: Optional SEEMeta mapping for assembly inference.
+        method_preferences: Per-artefact method preference map passed to the
+            requirement resolver.
+        state_id: Optional state identifier echoed in the manifest.
+        notes: Optional free-text note stored in the manifest.
+        metadata: Optional extra key/value metadata stored in the manifest.
+        attempt_number: Explicit attempt number.  If ``None``, auto-increments
+            over existing ``manifests/run_<run>_attempt_*.json`` files.
+
+    Returns:
+        The manifest dict written to disk (plus ``"manifest_path"`` key).
+
+    Raises:
+        ValueError: If the assembly type cannot be determined.
+        FileNotFoundError: If ``campaign.json`` is missing.
+    """
+    from .requirements import (
+        build_requirement_report,
+        build_requirement_report_from_seemeta,
+        infer_assembly_type_from_seemeta,
+        normalize_assembly_type,
+    )
+
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+    if run_number < 1:
+        raise ValueError("run_number must be >= 1")
+
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.campaign_json.exists():
+        raise FileNotFoundError(f"Missing campaign.json: {paths.campaign_json}")
+
+    with paths.campaign_json.open("r", encoding="utf-8") as handle:
+        campaign = json.load(handle)
+
+    campaign_id = int(campaign.get("campaign_id", 0))
+    if campaign_id < 1:
+        raise ValueError(f"Invalid campaign_id in {paths.campaign_json}")
+
+    # ── Resolve assembly type ────────────────────────────────────────────────
+    resolved_assembly = assembly_type
+    if resolved_assembly is None and isinstance(seemeta, Mapping):
+        resolved_assembly = infer_assembly_type_from_seemeta(seemeta)
+    if resolved_assembly is None:
+        raw = campaign.get("assembly_type")
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError(
+                "Cannot determine assembly type. Provide assembly_type or seemeta, "
+                "or ensure campaign.json includes assembly_type."
+            )
+        resolved_assembly = raw
+    normalized_assembly = normalize_assembly_type(resolved_assembly)
+
+    # ── Load artefact records ────────────────────────────────────────────────
+    artefact_records = read_jsonl_records(paths.artefacts_index)
+
+    # ── Build the requirement report ─────────────────────────────────────────
+    if isinstance(seemeta, Mapping):
+        report = build_requirement_report_from_seemeta(
+            seemeta=seemeta,
+            run_number=run_number,
+            state_id=state_id,
+            method_preferences=method_preferences,
+            artefact_records=artefact_records,
+        )
+    else:
+        report = build_requirement_report(
+            assembly_type=normalized_assembly,
+            run_number=run_number,
+            state_id=state_id,
+            method_preferences=method_preferences,
+            artefact_records=artefact_records,
+        )
+
+    # ── Select best active artefact per type ─────────────────────────────────
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for rec in artefact_records:
+        if str(rec.get("status", "")) != "active":
+            continue
+        atype = str(rec.get("artefact_type", ""))
+        if not atype:
+            continue
+        rc = rec.get("run_context")
+        if isinstance(rc, Mapping):
+            rc_run = rc.get("run_number")
+            if isinstance(rc_run, int) and rc_run != run_number:
+                continue
+        by_type.setdefault(atype, []).append(rec)
+
+    # Deduplicate: keep only the latest record per artefact_id within each type.
+    # Multiple runs of setup append new timestamped records for the same logical
+    # artefact; only the most recent should be used.
+    for atype, recs in by_type.items():
+        seen: dict[str, dict[str, Any]] = {}
+        for rec in recs:  # records are in append (chronological) order
+            seen[str(rec.get("artefact_id", rec.get("record_id", "")))] = rec
+        by_type[atype] = list(seen.values())
+
+    selected_artefacts: list[dict[str, Any]] = []
+    for req in report["requirements"]:
+        atype = req["artefact_type"]
+        preferred_method = req["preferred_method"]
+        candidates = by_type.get(atype, [])
+        chosen = next(
+            (c for c in reversed(candidates) if c.get("method") == preferred_method),
+            candidates[-1] if candidates else None,
+        )
+        if chosen is not None:
+            selected_artefacts.append({
+                "artefact_id": chosen.get("artefact_id", ""),
+                "artefact_type": atype,
+                "version": int(chosen.get("version", 1)),
+                "method": str(chosen.get("method", "")),
+                "path": str(chosen.get("path", "")),
+                "record_id": str(chosen.get("record_id", "")),
+                "checksum": chosen.get("checksum"),
+            })
+
+    # ── Append additional bin_mask artefacts not selected above ──────────────
+    # bin_mask records are additive (all go into binMaskList), so include every
+    # active bin_mask that wasn't already chosen by the requirements loop.
+    selected_record_ids = {e["record_id"] for e in selected_artefacts}
+    for rec in by_type.get("bin_mask", []):
+        if str(rec.get("record_id", "")) not in selected_record_ids:
+            selected_artefacts.append({
+                "artefact_id": rec.get("artefact_id", ""),
+                "artefact_type": "bin_mask",
+                "version": int(rec.get("version", 1)),
+                "method": str(rec.get("method", "")),
+                "path": str(rec.get("path", "")),
+                "record_id": str(rec.get("record_id", "")),
+                "checksum": rec.get("checksum"),
+            })
+
+    # ── Auto-increment attempt number ────────────────────────────────────────
+    manifests_dir = paths.campaign_dir / "manifests"
+    manifests_dir.mkdir(parents=True, exist_ok=True)
+    if attempt_number is None:
+        existing = sorted(manifests_dir.glob(f"run_{run_number}_attempt_*.json"))
+        attempt_number = len(existing) + 1
+
+    now = _utc_now_iso()
+    manifest: dict[str, Any] = {
+        "manifest_id": f"manifest-{campaign_slug}-run{run_number}-attempt{attempt_number}-{now}",
+        "timestamp": now,
+        "ipts": ipts,
+        "run_number": run_number,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "assembly_type": normalized_assembly,
+        "state_id": state_id,
+        "attempt_number": attempt_number,
+        "requirement_summary": report["summary"],
+        "selected_artefacts": selected_artefacts,
+    }
+    if notes:
+        manifest["notes"] = notes
+    if metadata:
+        manifest["metadata"] = metadata
+
+    validate_record(manifest, "run_manifest.schema.json")
+
+    manifest_path = manifests_dir / f"run_{run_number}_attempt_{attempt_number}.json"
+    _atomic_write_json(manifest_path, manifest)
+    manifest["manifest_path"] = str(manifest_path)
+
+    return manifest

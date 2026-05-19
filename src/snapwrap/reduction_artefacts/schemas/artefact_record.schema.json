@@ -32,7 +32,7 @@
     "intended_use": { "type": "string", "enum": ["pre_reduction", "post_reduction"] },
     "method": { "type": "string" },
     "version": { "type": "integer", "minimum": 1 },
-    "status": { "type": "string", "enum": ["active", "superseded", "failed", "archived"] },
+    "status": { "type": "string", "enum": ["active", "superseded", "failed", "archived", "planned"] },
     "run_context": {
       "type": "object",
       "properties": {

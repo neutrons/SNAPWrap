@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neutrons.org/snapwrap/reduction_artefacts/campaign_setup_spec.schema.json",
+  "title": "Campaign Setup Specification",
+  "description": "Operator-authored input file that describes a campaign and the assets to ingest. Lives in the IPTS shared folder alongside the experiment data.",
+  "type": "object",
+  "required": ["ipts", "campaign_slug"],
+  "additionalProperties": false,
+  "properties": {
+    "ipts": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "IPTS experiment number."
+    },
+    "campaign_slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$",
+      "description": "Short, unique, machine-friendly identifier for this campaign within the IPTS (e.g. 'dac_brucite_a')."
+    },
+    "assembly_type": {
+      "type": "string",
+      "enum": ["DAC", "PE", "OTHER"],
+      "description": "High-pressure assembly type used in this campaign."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the campaign (free text)."
+    },
+    "owners": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "FedID / username list of the campaign owners."
+    },
+    "runs": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "List of run numbers in this campaign. Used for SEEMeta auto-ingestion and for validating run-scoped assets."
+    },
+    "seemeta_dir": {
+      "type": "string",
+      "default": "SEE",
+      "description": "Path (relative to shared_root) of the directory containing per-run SEEMeta JSON files. SEEMeta will be ingested for every run listed in 'runs'. Set to null to suppress SEEMeta ingestion."
+    },
+    "seemeta_filename_pattern": {
+      "type": "string",
+      "default": "SEE{run:06d}.json",
+      "description": "Python format string for building SEEMeta filenames from run numbers. The only available variable is 'run' (integer)."
+    },
+    "assets": {
+      "type": "array",
+      "description": "List of raw assets to ingest into the managed asset store.",
+      "items": {
+        "type": "object",
+        "required": ["asset_type", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "asset_type": {
+            "type": "string",
+            "description": "Asset type recognised by AssetType (e.g. 'cif', 'ub_matrix', 'manual_pixel_mask')."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to the source file. Relative paths are resolved against shared_root."
+          },
+          "asset_id": {
+            "type": "string",
+            "description": "Stable logical identifier. Defaults to the file stem if omitted."
+          },
+          "run_number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Run number for run-scoped assets. Omit for campaign-scoped assets."
+          },
+          "provenance_source": {
+            "type": "string",
+            "enum": ["imported", "generated", "acquired", "manual"],
+            "default": "imported",
+            "description": "How the asset was obtained."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional free-text note stored in provenance."
+          }
+        }
+      }
+    },
+    "bin_masks": {
+      "type": "array",
+      "description": "Swiss-cheese bin-mask artefacts to register. These are already-computed mask JSON files derived from UB matrices.",
+      "items": {
+        "type": "object",
+        "required": ["artefact_id", "mask_path", "source_run", "ub_mat_paths"],
+        "additionalProperties": false,
+        "properties": {
+          "artefact_id": {
+            "type": "string",
+            "description": "Stable identifier for this artefact."
+          },
+          "mask_path": {
+            "type": "string",
+            "description": "Path to the swiss-cheese JSON file. Relative paths are resolved against shared_root."
+          },
+          "source_run": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Run number from which the UB matrices were determined."
+          },
+          "ub_mat_paths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Paths to the ISAW .mat UB matrix files used to build this mask. Relative paths are resolved against shared_root."
+          },
+          "width_coef": {
+            "type": "array",
+            "items": { "type": "number" },
+            "default": [1.0, 0.0],
+            "description": "Polynomial width coefficients used when building the mask."
+          },
+          "is_lite": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether the mask targets Lite (18 432-pixel) mode."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional free-text note."
+          }
+        }
+      }
+    },
+    "manual_bin_masks": {
+      "type": "array",
+      "description": "Manually-created swiss-cheese bin-mask artefacts to register. Use when a mask JSON was built interactively (e.g. d-spacing diamond peaks identified in Workbench) rather than auto-generated from UB matrices or the transmission monitor.",
+      "items": {
+        "type": "object",
+        "required": ["artefact_id", "mask_path"],
+        "additionalProperties": false,
+        "properties": {
+          "artefact_id": {
+            "type": "string",
+            "description": "Stable identifier, e.g. 'dspacing-mask-diamond-65891'."
+          },
+          "mask_path": {
+            "type": "string",
+            "description": "Absolute path to the swiss-cheese JSON file saved by the user."
+          },
+          "run_number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Run number this mask applies to. Omit for a campaign-wide mask."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional free-text note stored in provenance."
+          }
+        }
+      }
+    },
+    "pixel_masks": {
+      "items": {
+        "type": "object",
+        "required": ["artefact_id", "nxs_path", "method", "ws_name"],
+        "additionalProperties": false,
+        "properties": {
+          "artefact_id": {
+            "type": "string",
+            "description": "Stable identifier for this artefact."
+          },
+          "nxs_path": {
+            "type": "string",
+            "description": "Path to the .nxs pixel mask file. Relative paths are resolved against shared_root."
+          },
+          "method": {
+            "type": "string",
+            "enum": ["pixel_mask.letterbox", "pixel_mask.custom"],
+            "description": "Creation method."
+          },
+          "ws_name": {
+            "type": "string",
+            "description": "Mantid workspace name for this mask."
+          },
+          "run_number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Run number for run-scoped masks. Omit for campaign-scoped masks."
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "planned_attenuations": {
+      "type": "array",
+      "description": "PE attenuation workspace artefacts to pre-declare as 'planned' (R7 mitigation).",
+      "items": {
+        "type": "object",
+        "required": ["artefact_id"],
+        "additionalProperties": false,
+        "properties": {
+          "artefact_id": { "type": "string" },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}
