@@ -252,12 +252,15 @@ class CampaignManagerModel:
             raise ValueError(f"Unknown method: {method!r}")
 
         # ── Validate lite/native compatibility ────────────────────────────
+        # Use Load (generic auto-detector) rather than LoadMask: .nxs mask
+        # files (including PEMask.nxs) are Nexus-format workspaces and are
+        # rejected by LoadMask which only handles XML and ISIS .msk files.
         try:
-            from mantid.simpleapi import LoadMask  # type: ignore
+            from mantid.simpleapi import Load  # type: ignore
             from mantid.api import AnalysisDataService as ADS  # type: ignore
 
             _tmp = f"_pixmask_validate_{id(resolved_path)}"
-            LoadMask(Instrument="SNAP", InputFile=resolved_path, OutputWorkspace=_tmp)
+            Load(Filename=resolved_path, OutputWorkspace=_tmp)
             n = ADS.retrieve(_tmp).getNumberHistograms()
             ADS.remove(_tmp)
             expected = _LITE_N if is_lite else _NATIVE_N
