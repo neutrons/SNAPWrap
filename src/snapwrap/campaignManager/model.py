@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from snapwrap.reduction_artefacts import (
+    bootstrap_campaign,
     copy_artefact,
     list_artefact_records,
     list_campaigns,
@@ -85,6 +86,28 @@ class CampaignManagerModel:
                 out.append(ipts)
         out.sort(reverse=True)
         return out
+
+    # ── Campaign mutations ───────────────────────────────────────────
+
+    @staticmethod
+    def createCampaign(
+        *,
+        ipts: int,
+        campaign_slug: str,
+        assembly_type: str,
+        description: str | None = None,
+        owners: list[str] | None = None,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Bootstrap a new campaign under an IPTS."""
+        return bootstrap_campaign(
+            ipts=ipts,
+            campaign_slug=campaign_slug,
+            assembly_type=assembly_type,
+            description=description,
+            owners=owners,
+            shared_root=shared_root,
+        )
 
     # ── Campaign discovery ───────────────────────────────────────────
 

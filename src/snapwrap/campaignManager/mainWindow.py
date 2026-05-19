@@ -30,7 +30,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from snapwrap.campaignManager.dialogs import CopyArtefactDialog
+from snapwrap.campaignManager.dialogs import CopyArtefactDialog, NewCampaignDialog
 from snapwrap.campaignManager.model import CampaignManagerModel
 from snapwrap.campaignManager.panels.artefactsPanel import ArtefactsPanel
 from snapwrap.campaignManager.workers import GenericWorker
@@ -107,6 +107,11 @@ class CampaignManager(QDialog):
         self._campaignCombo.setMinimumWidth(220)
         self._campaignCombo.currentTextChanged.connect(self._onCampaignChanged)
         ctx.addWidget(self._campaignCombo)
+
+        self._newCampaignBtn = QPushButton("+ New…")
+        self._newCampaignBtn.setToolTip("Create a new campaign under the selected IPTS")
+        self._newCampaignBtn.clicked.connect(self._onNewCampaignClicked)
+        ctx.addWidget(self._newCampaignBtn)
 
         ctx.addStretch(1)
 
@@ -292,6 +297,42 @@ class CampaignManager(QDialog):
             return
         self._reloadCurrent()
 
+    def _onNewCampaignClicked(self) -> None:
+        ipts = self._currentIPTS()
+        if ipts is None:
+            QMessageBox.warning(
+                self,
+                "No IPTS selected",
+                "Select an IPTS before creating a campaign.",
+            )
+            return
+
+        dlg = NewCampaignDialog(parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        slug = dlg.slug()
+
+        def _after_success() -> None:
+            self._loadIPTSCampaigns()
+            idx = self._campaignCombo.findData(slug)
+            if idx >= 0:
+                self._campaignCombo.setCurrentIndex(idx)
+
+        self._runMutation(
+            label=f"Creating campaign '{slug}'",
+            fn=self._model.createCampaign,
+            kwargs={
+                "ipts": ipts,
+                "campaign_slug": slug,
+                "assembly_type": dlg.assemblyType(),
+                "description": dlg.description(),
+                "owners": dlg.owners(),
+            },
+            success_msg=lambda _result: f"Campaign '{slug}' created.",
+            after_success=_after_success,
+        )
+
     # ── Data loading (background) ────────────────────────────────────
 
     def _reloadCurrent(self) -> None:
@@ -442,11 +483,15 @@ class CampaignManager(QDialog):
         fn,
         kwargs: dict[str, Any],
         success_msg,
+        after_success=None,
     ) -> None:
         """Dispatch a backend mutation onto a worker thread and refresh on success.
 
         ``success_msg`` is a callable taking the worker result and returning
-        the status-bar message to display.
+        the status-bar message to display.  ``after_success`` is an optional
+        zero-argument callable that replaces the default ``_reloadCurrent()``
+        call — use it when the post-mutation action differs (e.g. refreshing
+        the campaign list instead of the artefacts table).
         """
         if self._loadThread is not None:
             # Don't pile mutations on top of a load.
@@ -463,7 +508,10 @@ class CampaignManager(QDialog):
 
         def _on_done(result):
             self._setStatus(success_msg(result))
-            self._reloadCurrent()
+            if after_success is not None:
+                after_success()
+            else:
+                self._reloadCurrent()
 
         def _on_err(message):
             QMessageBox.warning(self, "Action failed", message)

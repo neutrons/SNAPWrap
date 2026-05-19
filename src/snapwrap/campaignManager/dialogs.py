@@ -17,6 +17,7 @@ from typing import Any
 from qtpy.QtCore import Qt  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -197,3 +198,97 @@ class CopyArtefactDialog(QDialog):
     def notes(self) -> str | None:
         text = self._notesEdit.toPlainText().strip()
         return text or None
+
+
+# ── New-campaign dialog ────────────────────────────────────────────────────
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,62}$")
+_ASSEMBLY_TYPES = ["DAC", "PE", "OTHER"]
+
+
+class NewCampaignDialog(QDialog):
+    """Prompt the operator for parameters to :func:`bootstrap_campaign`.
+
+    The slug field validates against the same regex the backend enforces so
+    the operator gets immediate feedback rather than a server-side error.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("New campaign")
+        self.setMinimumWidth(480)
+
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self._slugEdit = QLineEdit()
+        self._slugEdit.setPlaceholderText(
+            "lowercase letters, digits, hyphens, underscores — min 2 chars"
+        )
+        self._slugEdit.textChanged.connect(self._onSlugChanged)
+        form.addRow("Campaign slug:", self._slugEdit)
+
+        self._slugError = QLabel()
+        self._slugError.setStyleSheet("color: red;")
+        self._slugError.setVisible(False)
+        form.addRow("", self._slugError)
+
+        self._assemblyCombo = QComboBox()
+        for t in _ASSEMBLY_TYPES:
+            self._assemblyCombo.addItem(t)
+        form.addRow("Assembly type:", self._assemblyCombo)
+
+        self._descEdit = QPlainTextEdit()
+        self._descEdit.setPlaceholderText("Optional description")
+        self._descEdit.setFixedHeight(70)
+        form.addRow("Description:", self._descEdit)
+
+        self._ownersEdit = QLineEdit()
+        self._ownersEdit.setPlaceholderText("Optional — comma-separated usernames")
+        form.addRow("Owners:", self._ownersEdit)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.button(QDialogButtonBox.Ok).setText("Create")
+        self._okBtn = buttons.button(QDialogButtonBox.Ok)
+        self._okBtn.setEnabled(False)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._slugEdit.setFocus()
+
+    # ── Internal slots ─────────────────────────────────────────────────
+
+    def _onSlugChanged(self, text: str) -> None:
+        stripped = text.strip()
+        valid = bool(_SLUG_RE.fullmatch(stripped))
+        self._okBtn.setEnabled(valid)
+        if not stripped or valid:
+            self._slugError.setVisible(False)
+        else:
+            self._slugError.setText(
+                "Must match ^[a-z0-9][a-z0-9_-]{1,62}$  (min 2 chars, lowercase)"
+            )
+            self._slugError.setVisible(True)
+
+    # ── Public API ─────────────────────────────────────────────────────
+
+    def slug(self) -> str:
+        return self._slugEdit.text().strip()
+
+    def assemblyType(self) -> str:
+        return self._assemblyCombo.currentText()
+
+    def description(self) -> str | None:
+        text = self._descEdit.toPlainText().strip()
+        return text or None
+
+    def owners(self) -> list[str] | None:
+        text = self._ownersEdit.text().strip()
+        if not text:
+            return None
+        return [o.strip() for o in text.split(",") if o.strip()]

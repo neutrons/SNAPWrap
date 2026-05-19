@@ -226,3 +226,24 @@ def test_copyArtefact_registers_new_record(two_campaign_ipts, tmp_path: Path) ->
     )
     ids = {r.get("artefact_id") for r in actives}
     assert "binmask-src" in ids and "binmask-dst" in ids
+
+
+def test_createCampaign_bootstraps_campaign(tmp_path: Path) -> None:
+    ipts = 77001
+    shared = tmp_path / f"IPTS-{ipts}" / "shared"
+    shared.mkdir(parents=True)
+
+    result = CampaignManagerModel.createCampaign(
+        ipts=ipts,
+        campaign_slug="gamma-test",
+        assembly_type="PE",
+        description="created via UI test",
+        owners=["malcolm"],
+        shared_root=shared,
+    )
+
+    assert result["campaign_slug"] == "gamma-test"
+
+    campaigns = CampaignManagerModel.getCampaigns(ipts=ipts, shared_root=shared)
+    slugs = {c["campaign_slug"] for c in campaigns}
+    assert "gamma-test" in slugs
