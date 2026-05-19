@@ -282,6 +282,10 @@ def test_getRunSummaries_derives_runs_from_artefacts(two_campaign_ipts, tmp_path
     counts = {s["run_number"]: s["artefact_count"] for s in summaries}
     assert counts[100] == 2
     assert counts[200] == 1
+    # artefact_types should be populated
+    types_by_run = {s["run_number"]: s["artefact_types"] for s in summaries}
+    assert "bin_mask" in types_by_run[100]
+    assert "bin_mask" in types_by_run[200]
 
 
 def test_getRunSummaries_empty_when_no_run_context(two_campaign_ipts) -> None:

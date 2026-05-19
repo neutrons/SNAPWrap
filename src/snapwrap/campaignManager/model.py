@@ -129,19 +129,21 @@ class CampaignManagerModel:
         campaign_identifier: int | str,
         shared_root: str | Path | None = None,
     ) -> list[dict[str, Any]]:
-        """Derive a per-run summary from the campaign's artefact records.
+        """Derive a per-run summary from the campaign's *active* artefact records.
 
         Returns one dict per distinct ``run_context.run_number``, sorted
         descending (most recent run first):
 
-        ``{"run_number": int, "artefact_count": int, "latest_date": str}``
+        ``{"run_number": int, "artefact_count": int, "artefact_types": list[str]}``
 
         Records without a ``run_context.run_number`` are skipped.
+        Only ``status == "active"`` records are counted.
         """
         records = list_artefact_records(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
             shared_root=shared_root,
+            status="active",
         )
         runs: dict[int, dict[str, Any]] = {}
         for rec in records:
@@ -150,11 +152,14 @@ class CampaignManagerModel:
             if not isinstance(rn, int):
                 continue
             if rn not in runs:
-                runs[rn] = {"run_number": rn, "artefact_count": 0, "latest_date": ""}
+                runs[rn] = {"run_number": rn, "artefact_count": 0, "artefact_types": set()}
             runs[rn]["artefact_count"] += 1
-            date = rec.get("created_at") or ""
-            if date > runs[rn]["latest_date"]:
-                runs[rn]["latest_date"] = date
+            atype = rec.get("artefact_type")
+            if atype:
+                runs[rn]["artefact_types"].add(atype)
+        # Convert sets to sorted lists for stable display
+        for entry in runs.values():
+            entry["artefact_types"] = sorted(entry["artefact_types"])
         return sorted(runs.values(), key=lambda x: x["run_number"], reverse=True)
 
     # ── Artefact queries ─────────────────────────────────────────────

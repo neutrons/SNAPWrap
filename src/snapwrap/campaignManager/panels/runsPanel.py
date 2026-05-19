@@ -22,7 +22,7 @@ from qtpy.QtWidgets import (  # type: ignore
 )
 
 
-_COLUMNS = ["Run", "Artefacts", "Latest date"]
+_COLUMNS = ["Run", "Active artefacts", "Artefact types"]
 
 
 class _RunTableModel(QAbstractTableModel):
@@ -56,8 +56,7 @@ class _RunTableModel(QAbstractTableModel):
         if col == 1:
             return str(row["artefact_count"])
         if col == 2:
-            date = row.get("latest_date", "") or ""
-            return date[:10]  # ISO date portion only
+            return ", ".join(row.get("artefact_types") or [])
         return None
 
     def runNumberAt(self, row_index: int) -> int | None:

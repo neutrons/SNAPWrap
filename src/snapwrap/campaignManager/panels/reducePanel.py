@@ -183,6 +183,7 @@ class ReducePanel(QWidget):
             f"── Starting reduction: run {run_number}  "
             f"IPTS-{self._ipts} / {self._campaignSlug} ──"
         )
+        self._logActiveArtefacts(run_number)
         self._reduceBtn.setEnabled(False)
         self._installLogHandler()
 
@@ -202,6 +203,31 @@ class ReducePanel(QWidget):
         thread.start()
         self._reduceThread = thread
         self._reduceWorker = worker
+
+    def _logActiveArtefacts(self, run_number: int) -> None:
+        """Log the active artefacts that will be used for this run."""
+        try:
+            from snapwrap.reduction_artefacts import list_artefact_records
+
+            records = list_artefact_records(
+                ipts=self._ipts,
+                campaign_identifier=self._campaignSlug,
+                run_number=run_number,
+                status="active",
+            )
+        except Exception as exc:
+            self._appendLog(f"  (could not list artefacts: {exc})")
+            return
+
+        if not records:
+            self._appendLog(f"  No active artefacts registered for run {run_number}.")
+            return
+
+        self._appendLog(f"  Active artefacts for run {run_number}:")
+        for rec in records:
+            atype = rec.get("artefact_type", "unknown")
+            aid = rec.get("artefact_id", "—")
+            self._appendLog(f"    [{atype}]  {aid}")
 
     def _installLogHandler(self) -> None:
         handler = QtLogHandler()
