@@ -17,8 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from snapwrap.reduction_artefacts import (
+    copy_artefact,
     list_artefact_records,
     list_campaigns,
+    retire_artefact,
 )
 
 
@@ -115,4 +117,51 @@ class CampaignManagerModel:
             artefact_type=artefact_type,
             status=status,
             run_number=run_number,
+        )
+
+    # ── Artefact mutations ───────────────────────────────────────────
+
+    @staticmethod
+    def retireArtefact(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        artefact_id: str,
+        shared_root: str | Path | None = None,
+    ) -> int:
+        """Retire all active records with the given artefact_id.
+
+        Returns the number of records updated from ``active`` → ``retired``.
+        """
+        return retire_artefact(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            artefact_id=artefact_id,
+            shared_root=shared_root,
+        )
+
+    @staticmethod
+    def copyArtefact(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        source_artefact_id: str,
+        new_artefact_id: str,
+        run_number: int | None = None,
+        shared_root: str | Path | None = None,
+        copy_file: bool = False,
+        notes: str | None = None,
+        created_by: str = "operator",
+    ) -> dict[str, Any]:
+        """Register a new artefact as a copy of an existing one."""
+        return copy_artefact(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            source_artefact_id=source_artefact_id,
+            new_artefact_id=new_artefact_id,
+            run_number=run_number,
+            shared_root=shared_root,
+            copy_file=copy_file,
+            notes=notes,
+            created_by=created_by,
         )

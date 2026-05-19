@@ -143,3 +143,86 @@ def test_getArtefacts_filters_pass_through(two_campaign_ipts, tmp_path: Path) ->
     )
     assert len(only_one) == 1
     assert only_one[0]["artefact_id"] == "binmask-1"
+
+
+def test_retireArtefact_marks_records_retired(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    mask = tmp_path / "m.json"
+    mask.write_text(json.dumps({"binMaskList": []}))
+
+    register_swiss_cheese_artefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="binmask-to-retire",
+        mask_json_path=str(mask),
+        source_run=100,
+        ub_mat_paths=[],
+        width_coef=[],
+        is_lite=True,
+        shared_root=shared,
+        created_by="op",
+    )
+
+    n = CampaignManagerModel.retireArtefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="binmask-to-retire",
+        shared_root=shared,
+    )
+    assert n == 1
+
+    actives = CampaignManagerModel.getArtefacts(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        shared_root=shared,
+        status="active",
+    )
+    assert all(r.get("artefact_id") != "binmask-to-retire" for r in actives)
+
+    retireds = CampaignManagerModel.getArtefacts(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        shared_root=shared,
+        status="retired",
+    )
+    assert any(r.get("artefact_id") == "binmask-to-retire" for r in retireds)
+
+
+def test_copyArtefact_registers_new_record(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    mask = tmp_path / "src.json"
+    mask.write_text(json.dumps({"binMaskList": []}))
+
+    register_swiss_cheese_artefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="binmask-src",
+        mask_json_path=str(mask),
+        source_run=100,
+        ub_mat_paths=[],
+        width_coef=[],
+        is_lite=True,
+        shared_root=shared,
+        created_by="op",
+    )
+
+    new_rec = CampaignManagerModel.copyArtefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        source_artefact_id="binmask-src",
+        new_artefact_id="binmask-dst",
+        run_number=200,
+        shared_root=shared,
+        notes="copied via UI test",
+    )
+    assert new_rec["artefact_id"] == "binmask-dst"
+    assert new_rec["run_context"]["run_number"] == 200
+
+    actives = CampaignManagerModel.getArtefacts(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        shared_root=shared,
+        status="active",
+    )
+    ids = {r.get("artefact_id") for r in actives}
+    assert "binmask-src" in ids and "binmask-dst" in ids

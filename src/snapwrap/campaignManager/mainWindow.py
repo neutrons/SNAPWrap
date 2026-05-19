@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 
+from snapwrap.campaignManager.dialogs import CopyArtefactDialog
 from snapwrap.campaignManager.model import CampaignManagerModel
 from snapwrap.campaignManager.panels.artefactsPanel import ArtefactsPanel
 from snapwrap.campaignManager.workers import GenericWorker
@@ -119,6 +120,9 @@ class CampaignManager(QDialog):
         self._tabs = QTabWidget(self)
         self._artefactsPanel = ArtefactsPanel(self)
         self._artefactsPanel.refreshRequested.connect(self._reloadCurrent)
+        self._artefactsPanel.retireRequested.connect(self._onRetireRequested)
+        self._artefactsPanel.copyRequested.connect(self._onCopyRequested)
+        self._artefactsPanel.openFileRequested.connect(self._onOpenFileRequested)
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(_placeholderTab("Runs"), "Runs")
         self._tabs.addTab(_placeholderTab("Reduce"), "Reduce")
@@ -340,3 +344,143 @@ class CampaignManager(QDialog):
         self._loadWorker = None
         self._progress.setVisible(False)
         self._reloadBtn.setEnabled(True)
+
+    # ── Mutations (Retire / Copy / Open file) ────────────────────────
+
+    def _onRetireRequested(self, record: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            return
+
+        artefact_id = record.get("artefact_id", "")
+        confirm = QMessageBox.question(
+            self,
+            "Retire artefact?",
+            (
+                f"Mark <b>{artefact_id}</b> as retired?<br><br>"
+                "Reduction will skip it on the next run.  The JSONL index will be "
+                "rewritten with this record's status set to 'retired'."
+            ),
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        self._runMutation(
+            label=f"Retiring {artefact_id}",
+            fn=self._model.retireArtefact,
+            kwargs={
+                "ipts": ipts,
+                "campaign_identifier": slug,
+                "artefact_id": artefact_id,
+            },
+            success_msg=lambda result: f"Retired {result} record(s) for {artefact_id}.",
+        )
+
+    def _onCopyRequested(self, record: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            return
+
+        dlg = CopyArtefactDialog(record, parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        new_id = dlg.newArtefactId()
+        if not new_id:
+            QMessageBox.warning(self, "Copy artefact", "New artefact id is required.")
+            return
+
+        self._runMutation(
+            label=f"Copying {record.get('artefact_id', '')} → {new_id}",
+            fn=self._model.copyArtefact,
+            kwargs={
+                "ipts": ipts,
+                "campaign_identifier": slug,
+                "source_artefact_id": record.get("artefact_id", ""),
+                "new_artefact_id": new_id,
+                "run_number": dlg.runNumberOverride(),
+                "copy_file": dlg.copyFile(),
+                "notes": dlg.notes(),
+            },
+            success_msg=lambda _result: f"Registered new artefact {new_id}.",
+        )
+
+    def _onOpenFileRequested(self, record: dict[str, Any]) -> None:
+        from pathlib import Path
+
+        from qtpy.QtCore import QUrl  # type: ignore
+        from qtpy.QtGui import QDesktopServices  # type: ignore
+
+        path_str = record.get("file_path") or record.get("mask_json_path") or ""
+        if not path_str:
+            self._setStatus("No file path on this record.")
+            return
+
+        path = Path(path_str)
+        target = path if path.is_dir() else path.parent
+        if not target.exists():
+            QMessageBox.warning(
+                self,
+                "Path not found",
+                f"The artefact's file location does not exist:<br><tt>{target}</tt>",
+            )
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+        self._setStatus(f"Opened {target}")
+
+    # ── Generic mutation runner (background thread) ──────────────────
+
+    def _runMutation(
+        self,
+        *,
+        label: str,
+        fn,
+        kwargs: dict[str, Any],
+        success_msg,
+    ) -> None:
+        """Dispatch a backend mutation onto a worker thread and refresh on success.
+
+        ``success_msg`` is a callable taking the worker result and returning
+        the status-bar message to display.
+        """
+        if self._loadThread is not None:
+            # Don't pile mutations on top of a load.
+            self._setStatus("Busy — try again in a moment.")
+            return
+
+        self._setStatus(f"{label}…")
+        self._progress.setVisible(True)
+
+        thread = QThread(self)
+        worker = GenericWorker(fn, kwargs)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+
+        def _on_done(result):
+            self._setStatus(success_msg(result))
+            self._reloadCurrent()
+
+        def _on_err(message):
+            QMessageBox.warning(self, "Action failed", message)
+            self._setStatus(f"Failed: {message}")
+
+        def _cleanup():
+            self._loadThread = None
+            self._loadWorker = None
+            self._progress.setVisible(False)
+
+        worker.finished.connect(_on_done)
+        worker.error.connect(_on_err)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(_cleanup)
+        thread.start()
+        self._loadThread = thread
+        self._loadWorker = worker

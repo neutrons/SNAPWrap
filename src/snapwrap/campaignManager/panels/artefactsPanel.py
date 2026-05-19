@@ -1,6 +1,10 @@
-"""Artefacts panel — read-only filterable table of campaign artefacts.
+"""Artefacts panel — filterable table of campaign artefacts with mutations.
 
-Phase 1 deliverable.  Mutations (retire / copy) come in Phase 2.
+Phase 1 deliverable: read-only display.
+Phase 2 deliverable: right-click context menu for Retire / Copy / Open file
+and a clipboard copy of the artefact id.  Mutations are *announced* via
+signals; the host (main window) performs the actual backend call on a
+background worker thread and triggers a reload on completion.
 """
 
 from __future__ import annotations
@@ -14,12 +18,14 @@ from qtpy.QtCore import (  # type: ignore
     Qt,
     Signal,
 )
+from qtpy.QtGui import QGuiApplication  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -103,14 +109,20 @@ class ArtefactTableModel(QAbstractTableModel):
 
 
 class ArtefactsPanel(QWidget):
-    """Filterable read-only table of artefacts for the current campaign.
+    """Filterable artefact table with row-action context menu.
 
-    Emits :pyattr:`refreshRequested` when the operator clicks Refresh.
-    The host (main window) is responsible for calling :meth:`setRecords`
-    with the latest result.
+    Signals (the host wires these to backend calls on background workers):
+
+    * :pyattr:`refreshRequested` — operator clicked Refresh.
+    * :pyattr:`retireRequested(record)` — operator chose Retire on a row.
+    * :pyattr:`copyRequested(record)` — operator chose Copy on a row.
+    * :pyattr:`openFileRequested(record)` — operator chose Open file location.
     """
 
     refreshRequested = Signal()
+    retireRequested = Signal(dict)
+    copyRequested = Signal(dict)
+    openFileRequested = Signal(dict)
 
     _TYPE_ALL = "All types"
     _STATUS_ALL = "All statuses"
@@ -176,6 +188,8 @@ class ArtefactsPanel(QWidget):
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self._table.setItemDelegateForColumn(0, StatusPillDelegate(self._table))
+        self._table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._onContextMenu)
         layout.addWidget(self._table, stretch=1)
 
         # Footer.
@@ -227,3 +241,57 @@ class ArtefactsPanel(QWidget):
             f"{len(visible)} record(s)"
             + ("" if len(visible) == len(self._allRecords) else f" (of {len(self._allRecords)})")
         )
+
+    # ── Context menu / row actions ─────────────────────────────────
+
+    def _recordAtPoint(self, pos) -> dict[str, Any] | None:
+        """Resolve the artefact record under the given viewport point."""
+        index = self._table.indexAt(pos)
+        if not index.isValid():
+            return None
+        # Map proxy → source row.
+        src_index = self._proxy.mapToSource(index)
+        return self._model.recordAt(src_index.row())
+
+    def _onContextMenu(self, pos) -> None:
+        record = self._recordAtPoint(pos)
+        if record is None:
+            return
+
+        is_active = str(record.get("status", "")).lower() == "active"
+        has_path = bool(record.get("file_path") or record.get("mask_json_path"))
+
+        menu = QMenu(self._table)
+
+        retire_action = menu.addAction("Retire…")
+        retire_action.setEnabled(is_active)
+        retire_action.setToolTip(
+            "Mark this artefact retired (reduction will skip it)."
+            if is_active
+            else "Already retired."
+        )
+
+        copy_action = menu.addAction("Copy…")
+        copy_action.setEnabled(is_active)
+        copy_action.setToolTip(
+            "Register a new artefact pointing at this one."
+            if is_active
+            else "Cannot copy a retired artefact."
+        )
+
+        menu.addSeparator()
+
+        open_action = menu.addAction("Show file location")
+        open_action.setEnabled(has_path)
+
+        copyid_action = menu.addAction("Copy artefact id to clipboard")
+
+        chosen = menu.exec_(self._table.viewport().mapToGlobal(pos))
+        if chosen is retire_action:
+            self.retireRequested.emit(record)
+        elif chosen is copy_action:
+            self.copyRequested.emit(record)
+        elif chosen is open_action:
+            self.openFileRequested.emit(record)
+        elif chosen is copyid_action:
+            QGuiApplication.clipboard().setText(str(record.get("artefact_id", "")))
