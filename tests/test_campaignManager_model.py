@@ -57,6 +57,30 @@ def test_discoverIPTSList_handles_missing_root(tmp_path: Path) -> None:
     assert CampaignManagerModel.discoverIPTSList(root=tmp_path / "nope") == []
 
 
+def test_discoverIPTSList_skips_unreadable_iptses(tmp_path: Path) -> None:
+    """IPTS folders whose shared/ is not readable must be silently skipped."""
+    import os
+    import sys
+
+    if sys.platform == "win32":
+        pytest.skip("POSIX permission semantics")
+    if os.geteuid() == 0:
+        pytest.skip("root bypasses permission checks")
+
+    (tmp_path / "IPTS-1111" / "shared").mkdir(parents=True)
+    forbidden = tmp_path / "IPTS-2222" / "shared"
+    forbidden.mkdir(parents=True)
+    # Strip all permissions from the shared dir — its parent IPTS folder
+    # is still listable, but `_is_readable_dir(shared)` must return False.
+    forbidden.chmod(0o000)
+    try:
+        out = CampaignManagerModel.discoverIPTSList(root=tmp_path)
+        assert out == [1111]
+    finally:
+        # Restore so pytest's tmp_path cleanup can succeed.
+        forbidden.chmod(0o755)
+
+
 def test_getCampaigns_returns_registered(two_campaign_ipts) -> None:
     ipts, shared = two_campaign_ipts
     out = CampaignManagerModel.getCampaigns(ipts=ipts, shared_root=shared)

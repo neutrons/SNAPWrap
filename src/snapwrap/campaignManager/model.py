@@ -11,6 +11,7 @@ QApplication.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,26 @@ from snapwrap.reduction_artefacts import (
 _IPTS_RE = re.compile(r"^/SNS/SNAP/IPTS-(\d+)/shared/?$")
 
 
+def _is_readable_dir(path: Path) -> bool:
+    """Return True iff *path* is a directory the current process can list.
+
+    Survives :class:`PermissionError` raised by ``is_dir`` / ``access`` on
+    folders the user cannot stat — these are simply treated as
+    inaccessible.  Most IPTS folders fall in this category for non-team
+    members on SNS analysis nodes.
+    """
+    try:
+        if not path.is_dir():
+            return False
+    except (PermissionError, OSError):
+        return False
+    # R_OK + X_OK is the POSIX combination required to ``ls`` a directory.
+    try:
+        return os.access(path, os.R_OK | os.X_OK)
+    except OSError:
+        return False
+
+
 class CampaignManagerModel:
     """Pure-Python data model for the Campaign Manager."""
 
@@ -31,18 +52,26 @@ class CampaignManagerModel:
 
     @staticmethod
     def discoverIPTSList(root: str | Path = "/SNS/SNAP") -> list[int]:
-        """Return IPTS numbers that have an existing ``shared`` directory.
+        """Return IPTS numbers that have a *readable* ``shared`` directory.
 
-        Used by the IPTS picker; returns a sorted descending list so the
-        most recent (highest-numbered) IPTS appears first.
+        IPTS folders the current user cannot access are silently skipped
+        — this is the normal case on SNS analysis nodes where a typical
+        user only has read access to the proposals they are listed on.
+
+        Returns a sorted descending list so the most recent
+        (highest-numbered) IPTS appears first.
         """
         root_path = Path(root)
-        if not root_path.exists():
+        if not _is_readable_dir(root_path):
             return []
+
         out: list[int] = []
-        for child in root_path.iterdir():
-            if not child.is_dir():
-                continue
+        try:
+            children = list(root_path.iterdir())
+        except (PermissionError, OSError):
+            return []
+
+        for child in children:
             name = child.name
             if not name.startswith("IPTS-"):
                 continue
@@ -50,7 +79,7 @@ class CampaignManagerModel:
                 ipts = int(name.split("-", 1)[1])
             except (IndexError, ValueError):
                 continue
-            if (child / "shared").is_dir():
+            if _is_readable_dir(child / "shared"):
                 out.append(ipts)
         out.sort(reverse=True)
         return out
