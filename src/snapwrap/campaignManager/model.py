@@ -120,6 +120,43 @@ class CampaignManagerModel:
         """List campaigns registered under an IPTS."""
         return list_campaigns(ipts=ipts, shared_root=shared_root)
 
+    # ── Run queries ──────────────────────────────────────────────────
+
+    @staticmethod
+    def getRunSummaries(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        shared_root: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Derive a per-run summary from the campaign's artefact records.
+
+        Returns one dict per distinct ``run_context.run_number``, sorted
+        descending (most recent run first):
+
+        ``{"run_number": int, "artefact_count": int, "latest_date": str}``
+
+        Records without a ``run_context.run_number`` are skipped.
+        """
+        records = list_artefact_records(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        runs: dict[int, dict[str, Any]] = {}
+        for rec in records:
+            rc = rec.get("run_context") or {}
+            rn = rc.get("run_number")
+            if not isinstance(rn, int):
+                continue
+            if rn not in runs:
+                runs[rn] = {"run_number": rn, "artefact_count": 0, "latest_date": ""}
+            runs[rn]["artefact_count"] += 1
+            date = rec.get("created_at") or ""
+            if date > runs[rn]["latest_date"]:
+                runs[rn]["latest_date"] = date
+        return sorted(runs.values(), key=lambda x: x["run_number"], reverse=True)
+
     # ── Artefact queries ─────────────────────────────────────────────
 
     @staticmethod

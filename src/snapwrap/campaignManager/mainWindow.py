@@ -33,6 +33,8 @@ from qtpy.QtWidgets import (  # type: ignore
 from snapwrap.campaignManager.dialogs import CopyArtefactDialog, NewCampaignDialog
 from snapwrap.campaignManager.model import CampaignManagerModel
 from snapwrap.campaignManager.panels.artefactsPanel import ArtefactsPanel
+from snapwrap.campaignManager.panels.reducePanel import ReducePanel
+from snapwrap.campaignManager.panels.runsPanel import RunsPanel
 from snapwrap.campaignManager.workers import GenericWorker
 
 
@@ -128,9 +130,17 @@ class CampaignManager(QDialog):
         self._artefactsPanel.retireRequested.connect(self._onRetireRequested)
         self._artefactsPanel.copyRequested.connect(self._onCopyRequested)
         self._artefactsPanel.openFileRequested.connect(self._onOpenFileRequested)
+        self._runsPanel = RunsPanel(self)
+        self._runsPanel.refreshRequested.connect(self._reloadRunSummaries)
+
+        self._reducePanel = ReducePanel(self)
+        self._runsPanel.runSelected.connect(self._reducePanel.setRunNumber)
+        self._runsPanel.runSelected.connect(lambda _: self._tabs.setCurrentWidget(self._reducePanel))
+        self._reducePanel.reduceFinished.connect(self._reloadRunSummaries)
+
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
-        self._tabs.addTab(_placeholderTab("Runs"), "Runs")
-        self._tabs.addTab(_placeholderTab("Reduce"), "Reduce")
+        self._tabs.addTab(self._runsPanel, "Runs")
+        self._tabs.addTab(self._reducePanel, "Reduce")
         self._tabs.addTab(_placeholderTab("Setup"), "Setup")
         layout.addWidget(self._tabs, stretch=1)
 
@@ -293,9 +303,14 @@ class CampaignManager(QDialog):
         self._setStatus(f"IPTS-{ipts}: {len(campaigns)} campaign(s).")
 
     def _onCampaignChanged(self, _text: str) -> None:
-        if self._currentIPTS() is None or self._currentCampaign() is None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            self._reducePanel.setContext(None, None)
             return
+        self._reducePanel.setContext(ipts, slug)
         self._reloadCurrent()
+        self._reloadRunSummaries()
 
     def _onNewCampaignClicked(self) -> None:
         ipts = self._currentIPTS()
@@ -369,6 +384,22 @@ class CampaignManager(QDialog):
         thread.start()
         self._loadThread = thread
         self._loadWorker = worker
+
+    def _reloadRunSummaries(self) -> None:
+        """Refresh the Runs panel from artefact records (synchronous — fast)."""
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            self._runsPanel.setRows([])
+            return
+        try:
+            summaries = self._model.getRunSummaries(
+                ipts=ipts, campaign_identifier=slug
+            )
+        except Exception as exc:
+            self._setStatus(f"Run summary failed: {exc}")
+            return
+        self._runsPanel.setRows(summaries)
 
     def _onLoadFinished(self, records: Any) -> None:
         if not isinstance(records, list):

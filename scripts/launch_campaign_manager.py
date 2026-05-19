@@ -16,7 +16,10 @@ import snapwrap.campaignManager.model
 import snapwrap.campaignManager.workers
 import snapwrap.campaignManager.delegates
 import snapwrap.campaignManager.dialogs
+import snapwrap.campaignManager.logHandler
 import snapwrap.campaignManager.panels.artefactsPanel
+import snapwrap.campaignManager.panels.runsPanel
+import snapwrap.campaignManager.panels.reducePanel
 import snapwrap.campaignManager.mainWindow
 import snapwrap.campaignManager
 
@@ -26,7 +29,10 @@ importlib.reload(snapwrap.campaignManager.model)
 importlib.reload(snapwrap.campaignManager.workers)
 importlib.reload(snapwrap.campaignManager.delegates)
 importlib.reload(snapwrap.campaignManager.dialogs)
+importlib.reload(snapwrap.campaignManager.logHandler)
 importlib.reload(snapwrap.campaignManager.panels.artefactsPanel)
+importlib.reload(snapwrap.campaignManager.panels.runsPanel)
+importlib.reload(snapwrap.campaignManager.panels.reducePanel)
 importlib.reload(snapwrap.campaignManager.mainWindow)
 importlib.reload(snapwrap.campaignManager)
 

@@ -228,6 +228,70 @@ def test_copyArtefact_registers_new_record(two_campaign_ipts, tmp_path: Path) ->
     assert "binmask-src" in ids and "binmask-dst" in ids
 
 
+def test_getRunSummaries_derives_runs_from_artefacts(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    mask1 = tmp_path / "m1.json"
+    mask1.write_text(json.dumps({"binMaskList": []}))
+    mask2 = tmp_path / "m2.json"
+    mask2.write_text(json.dumps({"binMaskList": []}))
+
+    register_swiss_cheese_artefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="mask-100",
+        mask_json_path=str(mask1),
+        source_run=100,
+        ub_mat_paths=[],
+        width_coef=[],
+        is_lite=True,
+        shared_root=shared,
+        created_by="op",
+    )
+    register_swiss_cheese_artefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="mask-200",
+        mask_json_path=str(mask2),
+        source_run=200,
+        ub_mat_paths=[],
+        width_coef=[],
+        is_lite=True,
+        shared_root=shared,
+        created_by="op",
+    )
+    # Second artefact for run 100
+    register_swiss_cheese_artefact(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="mask-100b",
+        mask_json_path=str(mask1),
+        source_run=100,
+        ub_mat_paths=[],
+        width_coef=[],
+        is_lite=True,
+        shared_root=shared,
+        created_by="op",
+    )
+
+    summaries = CampaignManagerModel.getRunSummaries(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+
+    run_numbers = [s["run_number"] for s in summaries]
+    assert run_numbers == [200, 100]  # descending
+    counts = {s["run_number"]: s["artefact_count"] for s in summaries}
+    assert counts[100] == 2
+    assert counts[200] == 1
+
+
+def test_getRunSummaries_empty_when_no_run_context(two_campaign_ipts) -> None:
+    ipts, shared = two_campaign_ipts
+    summaries = CampaignManagerModel.getRunSummaries(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+    assert summaries == []
+
+
 def test_createCampaign_bootstraps_campaign(tmp_path: Path) -> None:
     ipts = 77001
     shared = tmp_path / f"IPTS-{ipts}" / "shared"
