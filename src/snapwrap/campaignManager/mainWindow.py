@@ -17,6 +17,7 @@ from typing import Any
 from qtpy.QtCore import QThread, Qt  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QComboBox,
+    QCompleter,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -78,10 +79,26 @@ class CampaignManager(QDialog):
         # Context bar.
         ctx = QHBoxLayout()
         ctx.addWidget(QLabel("IPTS:"))
+
+        # Editable combo: operator can pick from the discovered list OR
+        # type a number directly (handy when there are 200+ proposals,
+        # or when picking an IPTS the user has access to but which isn't
+        # listed under /SNS/SNAP from this machine).
         self._iptsCombo = QComboBox()
-        self._iptsCombo.setMinimumWidth(140)
-        self._iptsCombo.currentTextChanged.connect(self._onIPTSChanged)
+        self._iptsCombo.setEditable(True)
+        self._iptsCombo.setInsertPolicy(QComboBox.NoInsert)
+        self._iptsCombo.setMinimumWidth(180)
+        self._iptsCombo.lineEdit().setPlaceholderText("type or pick (e.g. 33219)")
+        # Pick on selection from the list.
+        self._iptsCombo.activated.connect(self._onIPTSPicked)
+        # Submit on Enter inside the line edit.
+        self._iptsCombo.lineEdit().returnPressed.connect(self._onIPTSSubmitted)
         ctx.addWidget(self._iptsCombo)
+
+        self._iptsGoBtn = QPushButton("Go")
+        self._iptsGoBtn.setToolTip("Load the typed IPTS")
+        self._iptsGoBtn.clicked.connect(self._onIPTSSubmitted)
+        ctx.addWidget(self._iptsGoBtn)
 
         ctx.addSpacing(12)
         ctx.addWidget(QLabel("Campaign:"))
@@ -125,9 +142,17 @@ class CampaignManager(QDialog):
     # ── IPTS / campaign pickers ──────────────────────────────────────
 
     def _populateIPTSList(self) -> None:
+        """Fill the combo with discovered IPTSs and wire up a substring completer.
+
+        The combo stays editable so an operator can type a number that
+        isn't in the discovered list (or that they don't want to scroll
+        for, given ~200 proposals).
+        """
         self._iptsCombo.blockSignals(True)
         self._iptsCombo.clear()
-        self._iptsCombo.addItem(self._IPTS_PLACEHOLDER)
+        # First item is the placeholder; userData=None marks "no selection".
+        self._iptsCombo.addItem(self._IPTS_PLACEHOLDER, userData=None)
+
         try:
             ipts_list = self._model.discoverIPTSList()
         except Exception as exc:  # pragma: no cover - filesystem-dependent
@@ -137,12 +162,53 @@ class CampaignManager(QDialog):
             ipts_list = []
         for ipts in ipts_list:
             self._iptsCombo.addItem(f"IPTS-{ipts}", userData=ipts)
+
+        # Substring completer over the visible labels — typing "332"
+        # narrows the popup to anything containing "332".
+        completer = QCompleter([f"IPTS-{i}" for i in ipts_list], self._iptsCombo)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        self._iptsCombo.setCompleter(completer)
+
+        # Reset the line edit so the placeholder is visible at startup.
+        self._iptsCombo.setCurrentIndex(0)
+        self._iptsCombo.lineEdit().clear()
         self._iptsCombo.blockSignals(False)
-        self._setStatus(f"Discovered {len(ipts_list)} IPTS folder(s).")
+
+        self._setStatus(
+            f"Discovered {len(ipts_list)} IPTS folder(s) — "
+            "you can also type any IPTS number you have access to."
+        )
+
+    @staticmethod
+    def _parseIPTS(text: str) -> int | None:
+        """Convert a user-entered string into an IPTS number, or None."""
+        if text is None:
+            return None
+        t = text.strip()
+        if not t or t.startswith("—"):
+            return None
+        if t.upper().startswith("IPTS-"):
+            t = t[5:].strip()
+        if t.isdigit():
+            return int(t)
+        return None
 
     def _currentIPTS(self) -> int | None:
+        """Resolve the IPTS that should drive the current view.
+
+        Preference order:
+
+        1. ``userData`` on the selected combo item (if a known entry is
+           selected — the most common case).
+        2. The number parsed out of the line-edit text (covers the
+           "operator typed a value not in the discovered list" case).
+        """
         data = self._iptsCombo.currentData()
-        return int(data) if data is not None else None
+        if data is not None:
+            return int(data)
+        return self._parseIPTS(self._iptsCombo.currentText())
 
     def _currentCampaign(self) -> str | None:
         text = self._campaignCombo.currentText()
@@ -150,7 +216,30 @@ class CampaignManager(QDialog):
             return None
         return text
 
-    def _onIPTSChanged(self, _text: str) -> None:
+    def _onIPTSPicked(self, _index: int) -> None:
+        """Triggered when the operator selects an item from the popup."""
+        self._loadIPTSCampaigns()
+
+    def _onIPTSSubmitted(self) -> None:
+        """Triggered by Enter in the line edit or clicking 'Go'."""
+        ipts = self._parseIPTS(self._iptsCombo.currentText())
+        if ipts is None:
+            QMessageBox.warning(
+                self,
+                "Invalid IPTS",
+                "Type an IPTS number (e.g. 33219) or 'IPTS-33219'.",
+            )
+            return
+        # Try to align the combo with an existing entry so userData is set;
+        # if not present, the line-edit text still carries the value and
+        # _currentIPTS() falls back to parsing it.
+        idx = self._iptsCombo.findData(ipts)
+        if idx >= 0:
+            self._iptsCombo.setCurrentIndex(idx)
+        self._loadIPTSCampaigns()
+
+    def _loadIPTSCampaigns(self) -> None:
+        """Fetch and display the campaign list for the currently-selected IPTS."""
         ipts = self._currentIPTS()
         self._campaignCombo.blockSignals(True)
         self._campaignCombo.clear()
@@ -163,6 +252,16 @@ class CampaignManager(QDialog):
 
         try:
             campaigns = self._model.getCampaigns(ipts=ipts)
+        except FileNotFoundError:
+            self._setStatus(
+                f"IPTS-{ipts}: shared root not accessible from this machine."
+            )
+            return
+        except PermissionError:
+            self._setStatus(
+                f"IPTS-{ipts}: permission denied (you are not on this proposal)."
+            )
+            return
         except Exception as exc:
             QMessageBox.warning(
                 self,
