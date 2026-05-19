@@ -328,6 +328,31 @@ def test_ingestAsset_registers_and_getAssets_sees_it(two_campaign_ipts, tmp_path
     assert any(a["asset_id"] == "sample-cif" for a in assets)
 
 
+def test_getAssets_deduplicates_by_asset_id(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    cif_file = tmp_path / "sample.cif"
+    cif_file.write_text("# dummy cif v1")
+    cif_file2 = tmp_path / "sample2.cif"
+    cif_file2.write_text("# dummy cif v2")
+
+    CampaignManagerModel.ingestAsset(
+        ipts=ipts, campaign_identifier="alpha", source_path=cif_file,
+        asset_type="cif", asset_id="my-cif", shared_root=shared,
+    )
+    # Re-ingest the same logical asset_id from a different source file.
+    # ingest_asset stores files by content hash so use distinct content.
+    CampaignManagerModel.ingestAsset(
+        ipts=ipts, campaign_identifier="alpha", source_path=cif_file2,
+        asset_type="cif", asset_id="my-cif", shared_root=shared,
+    )
+
+    assets = CampaignManagerModel.getAssets(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+    matching = [a for a in assets if a["asset_id"] == "my-cif"]
+    assert len(matching) == 1  # only one row despite two ingests
+
+
 def test_createCampaign_bootstraps_campaign(tmp_path: Path) -> None:
     ipts = 77001
     shared = tmp_path / f"IPTS-{ipts}" / "shared"

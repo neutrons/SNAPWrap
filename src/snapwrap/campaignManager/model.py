@@ -131,12 +131,28 @@ class CampaignManagerModel:
         campaign_identifier: int | str,
         shared_root: str | Path | None = None,
     ) -> list[dict[str, Any]]:
-        """List asset records for a campaign (all statuses, all types)."""
-        return list_asset_records(
+        """Return one active record per asset_id — the most recently ingested.
+
+        The backend index is append-only: re-ingesting the same asset_id
+        adds a new record with a ``supersedes`` pointer rather than mutating
+        the old one.  The backend contract says "resolution at read time uses
+        the most recent active record for a given asset_id", so we apply that
+        deduplication here so the UI shows one row per logical asset.
+        """
+        records = list_asset_records(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
             shared_root=shared_root,
+            status="active",
         )
+        # Iterate in append order; later records overwrite earlier ones for
+        # the same asset_id, leaving only the most recent active entry.
+        seen: dict[str, dict[str, Any]] = {}
+        for rec in records:
+            aid = rec.get("asset_id")
+            if aid is not None:
+                seen[aid] = rec
+        return list(seen.values())
 
     @staticmethod
     def ingestAsset(
