@@ -28,8 +28,6 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-_STANDARD_PE_MASK_PATH = "/SNS/SNAP/shared/autoreduce/masks/PEMask.nxs"
-
 _ASSET_COLUMNS = ["Asset ID", "Type", "Scope", "Status"]
 
 # Artefact-type combo indices
@@ -235,6 +233,94 @@ class _PixelMaskForm(QWidget):
         return None
 
 
+# ── Crystal phase form ────────────────────────────────────────────────────────
+
+class _CrystalPhaseForm(QWidget):
+    """Inline form for registering a crystal species artefact."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        layout = QFormLayout(self)
+        layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        # Species name
+        self._nameEdit = QLineEdit()
+        self._nameEdit.setPlaceholderText('e.g. "ice-VII" or "Si-calibrant"')
+        layout.addRow("Species name:", self._nameEdit)
+
+        # Role
+        self._roleCombo = QComboBox()
+        self._roleCombo.addItem("Sample", userData="sample")
+        self._roleCombo.addItem("Calibrant", userData="calibrant")
+        layout.addRow("Role:", self._roleCombo)
+
+        # CIF file (required)
+        cif_row = QWidget()
+        cif_layout = QHBoxLayout(cif_row)
+        cif_layout.setContentsMargins(0, 0, 0, 0)
+        self._cifEdit = QLineEdit()
+        self._cifEdit.setPlaceholderText("Path to .cif file (required)")
+        cif_layout.addWidget(self._cifEdit)
+        cif_btn = QPushButton("Browse…")
+        cif_btn.clicked.connect(self._onBrowseCif)
+        cif_layout.addWidget(cif_btn)
+        layout.addRow("CIF file:", cif_row)
+
+        # EOS file (optional)
+        eos_row = QWidget()
+        eos_layout = QHBoxLayout(eos_row)
+        eos_layout.setContentsMargins(0, 0, 0, 0)
+        self._eosEdit = QLineEdit()
+        self._eosEdit.setPlaceholderText("Path to EOS .json file (optional)")
+        eos_layout.addWidget(self._eosEdit)
+        eos_btn = QPushButton("Browse…")
+        eos_btn.clicked.connect(self._onBrowseEos)
+        eos_layout.addWidget(eos_btn)
+        layout.addRow("EOS file:", eos_row)
+
+        # Run number (optional)
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("optional — leave blank for campaign-wide")
+        layout.addRow("Run number:", self._runEdit)
+
+    def _onBrowseCif(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select CIF file", "", "CIF files (*.cif);;All files (*)"
+        )
+        if path:
+            self._cifEdit.setText(path)
+
+    def _onBrowseEos(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select EOS description file", "", "JSON files (*.json);;All files (*)"
+        )
+        if path:
+            self._eosEdit.setText(path)
+
+    def params(self) -> dict[str, Any]:
+        run_text = self._runEdit.text().strip()
+        try:
+            source_run: int | None = int(run_text) if run_text else None
+        except ValueError:
+            source_run = None
+        eos = self._eosEdit.text().strip() or None
+        return {
+            "species_name": self._nameEdit.text().strip(),
+            "role": self._roleCombo.currentData(),
+            "cif_path": self._cifEdit.text().strip(),
+            "eos_path": eos,
+            "source_run": source_run,
+        }
+
+    def validate(self) -> str | None:
+        p = self.params()
+        if not p["species_name"]:
+            return "Species name is required."
+        if not p["cif_path"]:
+            return "A CIF file is required."
+        return None
+
+
 # ── Setup panel ───────────────────────────────────────────────────────────────
 
 class SetupPanel(QWidget):
@@ -254,6 +340,7 @@ class SetupPanel(QWidget):
     ingestRequested = Signal()
     refreshRequested = Signal()
     pixelMaskRegistrationRequested = Signal(dict)
+    crystalSpeciesRegistrationRequested = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -294,7 +381,7 @@ class SetupPanel(QWidget):
         type_row.addWidget(QLabel("Type:"))
         self._typeCombo = QComboBox()
         self._typeCombo.addItem("Pixel mask")
-        self._typeCombo.addItem("Crystal phase  (coming in Phase 4c)")
+        self._typeCombo.addItem("Crystal phase")
         self._typeCombo.currentIndexChanged.connect(self._onTypeChanged)
         type_row.addWidget(self._typeCombo)
         type_row.addStretch(1)
@@ -304,12 +391,10 @@ class SetupPanel(QWidget):
         self._stack = QStackedWidget()
 
         self._pixelMaskForm = _PixelMaskForm()
-        self._stack.addWidget(self._pixelMaskForm)  # index 0 = _TYPE_PIXEL_MASK
+        self._stack.addWidget(self._pixelMaskForm)   # index 0 = _TYPE_PIXEL_MASK
 
-        phase_placeholder = QLabel("Crystal phase builder — Phase 4c.")
-        phase_placeholder.setAlignment(Qt.AlignCenter)
-        phase_placeholder.setStyleSheet("color: gray; font-style: italic;")
-        self._stack.addWidget(phase_placeholder)     # index 1 = _TYPE_CRYSTAL_PHASE
+        self._crystalPhaseForm = _CrystalPhaseForm()
+        self._stack.addWidget(self._crystalPhaseForm)  # index 1 = _TYPE_CRYSTAL_PHASE
 
         cg_layout.addWidget(self._stack)
 
@@ -331,13 +416,19 @@ class SetupPanel(QWidget):
 
     def _onTypeChanged(self, index: int) -> None:
         self._stack.setCurrentIndex(index)
-        self._createBtn.setVisible(index != _TYPE_CRYSTAL_PHASE)
 
     def _onRegister(self) -> None:
-        if self._typeCombo.currentIndex() == _TYPE_PIXEL_MASK:
+        from qtpy.QtWidgets import QMessageBox  # type: ignore
+        index = self._typeCombo.currentIndex()
+        if index == _TYPE_PIXEL_MASK:
             error = self._pixelMaskForm.validate()
             if error:
-                from qtpy.QtWidgets import QMessageBox  # type: ignore
                 QMessageBox.warning(self, "Invalid form", error)
                 return
             self.pixelMaskRegistrationRequested.emit(self._pixelMaskForm.params())
+        elif index == _TYPE_CRYSTAL_PHASE:
+            error = self._crystalPhaseForm.validate()
+            if error:
+                QMessageBox.warning(self, "Invalid form", error)
+                return
+            self.crystalSpeciesRegistrationRequested.emit(self._crystalPhaseForm.params())

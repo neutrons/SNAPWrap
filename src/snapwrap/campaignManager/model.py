@@ -24,6 +24,7 @@ from snapwrap.reduction_artefacts import (
     list_artefact_records,
     list_asset_records,
     list_campaigns,
+    register_crystal_species_artefact,
     register_pixel_mask_artefact,
     retire_artefact,
 )
@@ -393,6 +394,30 @@ class CampaignManagerModel:
             ipts=ipts,
             campaign_identifier=campaign_identifier,
             artefact_id=artefact_id,
+            shared_root=shared_root,
+        )
+
+    @staticmethod
+    def registerCrystalSpecies(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        species_name: str,
+        cif_path: str,
+        role: str = "sample",
+        eos_path: str | None = None,
+        source_run: int | None = None,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Register a crystal species artefact from a CIF (+ optional EOS) file."""
+        return register_crystal_species_artefact(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            species_name=species_name,
+            cif_path=cif_path,
+            role=role,
+            eos_path=eos_path,
+            source_run=source_run,
             shared_root=shared_root,
         )
 

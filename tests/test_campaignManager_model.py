@@ -426,3 +426,45 @@ def test_createCampaign_bootstraps_campaign(tmp_path: Path) -> None:
     campaigns = CampaignManagerModel.getCampaigns(ipts=ipts, shared_root=shared)
     slugs = {c["campaign_slug"] for c in campaigns}
     assert "gamma-test" in slugs
+
+
+def test_registerCrystalSpecies_registers_artefact(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    cif = tmp_path / "si.cif"
+    cif.write_text("# dummy cif")
+
+    rec = CampaignManagerModel.registerCrystalSpecies(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        species_name="silicon",
+        cif_path=str(cif),
+        role="calibrant",
+        source_run=65900,
+        shared_root=shared,
+    )
+
+    assert rec["species_name"] == "silicon"
+    assert rec["role"] == "calibrant"
+    assert rec["source_run"] == 65900
+    assert rec["cifPath"] == str(cif)
+    assert rec["eosPath"] is None
+
+
+def test_registerCrystalSpecies_with_eos(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    cif = tmp_path / "ice.cif"
+    cif.write_text("# dummy cif")
+    eos = tmp_path / "ice_eos.json"
+    eos.write_text("{}")
+
+    rec = CampaignManagerModel.registerCrystalSpecies(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        species_name="ice-VII",
+        cif_path=str(cif),
+        eos_path=str(eos),
+        shared_root=shared,
+    )
+
+    assert rec["species_name"] == "ice-VII"
+    assert rec["eosPath"] == str(eos)

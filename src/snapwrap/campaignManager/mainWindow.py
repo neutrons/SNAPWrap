@@ -143,6 +143,7 @@ class CampaignManager(QDialog):
         self._setupPanel.ingestRequested.connect(self._onIngestRequested)
         self._setupPanel.refreshRequested.connect(self._reloadSetup)
         self._setupPanel.pixelMaskRegistrationRequested.connect(self._onPixelMaskRegistrationRequested)
+        self._setupPanel.crystalSpeciesRegistrationRequested.connect(self._onCrystalSpeciesRegistrationRequested)
 
         self._tabs.addTab(self._setupPanel, "Setup")
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
@@ -522,6 +523,28 @@ class CampaignManager(QDialog):
                 **params,
             },
             success_msg=lambda r: f"Pixel mask '{r.get('artefact_id', '')}' registered.",
+            after_success=_after_success,
+        )
+
+    def _onCrystalSpeciesRegistrationRequested(self, params: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
+            return
+
+        def _after_success() -> None:
+            self._reloadCurrent()
+
+        self._runMutation(
+            label=f"Registering crystal species '{params.get('species_name', '')}'…",
+            fn=self._model.registerCrystalSpecies,
+            kwargs={
+                "ipts": ipts,
+                "campaign_identifier": slug,
+                **params,
+            },
+            success_msg=lambda r: f"Crystal species '{r.get('species_name', '')}' registered.",
             after_success=_after_success,
         )
 
