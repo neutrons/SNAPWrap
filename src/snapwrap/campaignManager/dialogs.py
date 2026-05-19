@@ -20,10 +20,13 @@ from qtpy.QtWidgets import (  # type: ignore
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -292,3 +295,134 @@ class NewCampaignDialog(QDialog):
         if not text:
             return None
         return [o.strip() for o in text.split(",") if o.strip()]
+
+
+# ── Ingest-asset dialog ────────────────────────────────────────────────────
+
+_ASSET_TYPES = [
+    "cif",
+    "ub_matrix",
+    "seemeta_json",
+    "manual_pixel_mask",
+    "eos_description",
+    "phase_description",
+    "other",
+]
+
+
+class IngestAssetDialog(QDialog):
+    """Prompt the operator for the parameters needed to ingest a file as an asset.
+
+    The asset_id field defaults to the file stem but can be overridden.
+    The run-number field is shown only when scope is 'run'.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Ingest asset")
+        self.setMinimumWidth(520)
+
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        # File picker
+        file_row = QHBoxLayout()
+        self._fileEdit = QLineEdit()
+        self._fileEdit.setPlaceholderText("Path to file on disk")
+        self._fileEdit.textChanged.connect(self._onFileChanged)
+        file_row.addWidget(self._fileEdit)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._onBrowse)
+        file_row.addWidget(browse_btn)
+        form.addRow("File:", file_row)
+
+        # Asset type
+        self._typeCombo = QComboBox()
+        for t in _ASSET_TYPES:
+            self._typeCombo.addItem(t)
+        form.addRow("Asset type:", self._typeCombo)
+
+        # Asset ID (optional)
+        self._idEdit = QLineEdit()
+        self._idEdit.setPlaceholderText("defaults to filename stem")
+        form.addRow("Asset ID:", self._idEdit)
+
+        # Scope
+        self._scopeCombo = QComboBox()
+        self._scopeCombo.addItem("Campaign-wide", userData="campaign")
+        self._scopeCombo.addItem("Run-specific", userData="run")
+        self._scopeCombo.currentIndexChanged.connect(self._onScopeChanged)
+        form.addRow("Scope:", self._scopeCombo)
+
+        # Run number (shown only for run scope)
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("e.g. 65891")
+        self._runEdit.setMaximumWidth(180)
+        self._runRow_label = QLabel("Run number:")
+        form.addRow(self._runRow_label, self._runEdit)
+        self._runRow_label.setVisible(False)
+        self._runEdit.setVisible(False)
+
+        # Notes
+        self._notesEdit = QPlainTextEdit()
+        self._notesEdit.setPlaceholderText("Optional notes")
+        self._notesEdit.setFixedHeight(60)
+        form.addRow("Notes:", self._notesEdit)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.button(QDialogButtonBox.Ok).setText("Ingest")
+        self._okBtn = buttons.button(QDialogButtonBox.Ok)
+        self._okBtn.setEnabled(False)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    # ── Internal slots ─────────────────────────────────────────────────
+
+    def _onBrowse(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Select asset file")
+        if path:
+            self._fileEdit.setText(path)
+
+    def _onFileChanged(self, text: str) -> None:
+        self._okBtn.setEnabled(bool(text.strip()))
+        # Auto-fill asset ID from stem if operator hasn't typed anything
+        if not self._idEdit.text().strip():
+            from pathlib import Path
+            stem = Path(text.strip()).stem if text.strip() else ""
+            self._idEdit.setPlaceholderText(stem or "defaults to filename stem")
+
+    def _onScopeChanged(self, _index: int) -> None:
+        is_run = self._scopeCombo.currentData() == "run"
+        self._runRow_label.setVisible(is_run)
+        self._runEdit.setVisible(is_run)
+
+    # ── Public API ─────────────────────────────────────────────────────
+
+    def filePath(self) -> str:
+        return self._fileEdit.text().strip()
+
+    def assetType(self) -> str:
+        return self._typeCombo.currentText()
+
+    def assetId(self) -> str | None:
+        text = self._idEdit.text().strip()
+        return text or None
+
+    def scope(self) -> str:
+        return self._scopeCombo.currentData()
+
+    def runNumber(self) -> int | None:
+        text = self._runEdit.text().strip()
+        try:
+            return int(text) if text else None
+        except ValueError:
+            return None
+
+    def notes(self) -> str | None:
+        text = self._notesEdit.toPlainText().strip()
+        return text or None

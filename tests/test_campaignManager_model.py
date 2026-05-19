@@ -296,6 +296,38 @@ def test_getRunSummaries_empty_when_no_run_context(two_campaign_ipts) -> None:
     assert summaries == []
 
 
+def test_getAssets_returns_empty_for_new_campaign(two_campaign_ipts) -> None:
+    ipts, shared = two_campaign_ipts
+    assets = CampaignManagerModel.getAssets(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+    assert assets == []
+
+
+def test_ingestAsset_registers_and_getAssets_sees_it(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    cif_file = tmp_path / "sample.cif"
+    cif_file.write_text("# dummy cif")
+
+    rec = CampaignManagerModel.ingestAsset(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        source_path=cif_file,
+        asset_type="cif",
+        asset_id="sample-cif",
+        notes="test ingest",
+        shared_root=shared,
+    )
+    assert rec["asset_id"] == "sample-cif"
+    assert rec["asset_type"] == "cif"
+    assert rec["status"] == "active"
+
+    assets = CampaignManagerModel.getAssets(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+    assert any(a["asset_id"] == "sample-cif" for a in assets)
+
+
 def test_createCampaign_bootstraps_campaign(tmp_path: Path) -> None:
     ipts = 77001
     shared = tmp_path / f"IPTS-{ipts}" / "shared"

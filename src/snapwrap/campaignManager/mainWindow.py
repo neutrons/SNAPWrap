@@ -30,11 +30,12 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from snapwrap.campaignManager.dialogs import CopyArtefactDialog, NewCampaignDialog
+from snapwrap.campaignManager.dialogs import CopyArtefactDialog, IngestAssetDialog, NewCampaignDialog
 from snapwrap.campaignManager.model import CampaignManagerModel
 from snapwrap.campaignManager.panels.artefactsPanel import ArtefactsPanel
 from snapwrap.campaignManager.panels.reducePanel import ReducePanel
 from snapwrap.campaignManager.panels.runsPanel import RunsPanel
+from snapwrap.campaignManager.panels.setupPanel import SetupPanel
 from snapwrap.campaignManager.workers import GenericWorker
 
 
@@ -138,10 +139,14 @@ class CampaignManager(QDialog):
         self._runsPanel.runSelected.connect(lambda _: self._tabs.setCurrentWidget(self._reducePanel))
         self._reducePanel.reduceFinished.connect(self._reloadRunSummaries)
 
+        self._setupPanel = SetupPanel(self)
+        self._setupPanel.ingestRequested.connect(self._onIngestRequested)
+        self._setupPanel.refreshRequested.connect(self._reloadSetup)
+
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(self._runsPanel, "Runs")
         self._tabs.addTab(self._reducePanel, "Reduce")
-        self._tabs.addTab(_placeholderTab("Setup"), "Setup")
+        self._tabs.addTab(self._setupPanel, "Setup")
         layout.addWidget(self._tabs, stretch=1)
 
         # Status bar with embedded progress bar.
@@ -311,6 +316,7 @@ class CampaignManager(QDialog):
         self._reducePanel.setContext(ipts, slug)
         self._reloadCurrent()
         self._reloadRunSummaries()
+        self._reloadSetup()
 
     def _onNewCampaignClicked(self) -> None:
         ipts = self._currentIPTS()
@@ -384,6 +390,20 @@ class CampaignManager(QDialog):
         thread.start()
         self._loadThread = thread
         self._loadWorker = worker
+
+    def _reloadSetup(self) -> None:
+        """Refresh the Setup panel's assets table (synchronous — fast)."""
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            self._setupPanel.setRows([])
+            return
+        try:
+            assets = self._model.getAssets(ipts=ipts, campaign_identifier=slug)
+        except Exception as exc:
+            self._setStatus(f"Assets load failed: {exc}")
+            return
+        self._setupPanel.setRows(assets)
 
     def _reloadRunSummaries(self) -> None:
         """Refresh the Runs panel from artefact records (synchronous — fast)."""
@@ -479,6 +499,36 @@ class CampaignManager(QDialog):
                 "notes": dlg.notes(),
             },
             success_msg=lambda _result: f"Registered new artefact {new_id}.",
+        )
+
+    def _onIngestRequested(self) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
+            return
+
+        dlg = IngestAssetDialog(parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        run_number = dlg.runNumber() if dlg.scope() == "run" else None
+
+        self._runMutation(
+            label=f"Ingesting {dlg.assetType()} asset",
+            fn=self._model.ingestAsset,
+            kwargs={
+                "ipts": ipts,
+                "campaign_identifier": slug,
+                "source_path": dlg.filePath(),
+                "asset_type": dlg.assetType(),
+                "asset_id": dlg.assetId(),
+                "applicability_scope": dlg.scope(),
+                "run_number": run_number,
+                "notes": dlg.notes(),
+            },
+            success_msg=lambda rec: f"Ingested asset '{rec.get('asset_id', '')}'.",
+            after_success=self._reloadSetup,
         )
 
     def _onOpenFileRequested(self, record: dict[str, Any]) -> None:

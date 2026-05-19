@@ -19,7 +19,9 @@ from typing import Any
 from snapwrap.reduction_artefacts import (
     bootstrap_campaign,
     copy_artefact,
+    ingest_asset,
     list_artefact_records,
+    list_asset_records,
     list_campaigns,
     retire_artefact,
 )
@@ -119,6 +121,48 @@ class CampaignManagerModel:
     ) -> list[dict[str, Any]]:
         """List campaigns registered under an IPTS."""
         return list_campaigns(ipts=ipts, shared_root=shared_root)
+
+    # ── Asset queries and mutations ──────────────────────────────────
+
+    @staticmethod
+    def getAssets(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        shared_root: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """List asset records for a campaign (all statuses, all types)."""
+        return list_asset_records(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+
+    @staticmethod
+    def ingestAsset(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        source_path: str | Path,
+        asset_type: str,
+        asset_id: str | None = None,
+        applicability_scope: str = "campaign",
+        run_number: int | None = None,
+        notes: str | None = None,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Copy a file into the managed asset store and register it."""
+        return ingest_asset(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            source_path=source_path,
+            asset_type=asset_type,
+            asset_id=asset_id or None,
+            applicability_scope=applicability_scope,
+            run_number=run_number,
+            notes=notes,
+            shared_root=shared_root,
+        )
 
     # ── Run queries ──────────────────────────────────────────────────
 
