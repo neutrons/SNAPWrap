@@ -509,21 +509,19 @@ class CampaignManager(QDialog):
             QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
             return
 
-        artefact_id = params.get("artefact_id", "")
-
         def _after_success() -> None:
             self._reloadCurrent()
             self._reloadSetup()
 
         self._runMutation(
-            label=f"Registering pixel mask '{artefact_id}'",
+            label="Registering pixel mask…",
             fn=self._model.registerPixelMask,
             kwargs={
                 "ipts": ipts,
                 "campaign_identifier": slug,
                 **params,
             },
-            success_msg=lambda _r: f"Pixel mask '{artefact_id}' registered.",
+            success_msg=lambda r: f"Pixel mask '{r.get('artefact_id', '')}' registered.",
             after_success=_after_success,
         )
 

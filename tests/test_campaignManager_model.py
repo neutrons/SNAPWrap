@@ -229,28 +229,57 @@ def test_copyArtefact_registers_new_record(two_campaign_ipts, tmp_path: Path) ->
 
 
 def test_registerPixelMask_registers_artefact(two_campaign_ipts, tmp_path: Path) -> None:
+    from unittest.mock import patch
+
     ipts, shared = two_campaign_ipts
     nxs = tmp_path / "mask.nxs"
     nxs.write_bytes(b"fake nexus content")
 
-    rec = CampaignManagerModel.registerPixelMask(
-        ipts=ipts,
-        campaign_identifier="alpha",
-        artefact_id="pixmask-test-01",
-        nxs_path=str(nxs),
-        method="pixel_mask.custom",
-        ws_name="pixmask_test",
-        run_number=65891,
-        notes="test registration",
-        shared_root=shared,
-    )
-    assert rec["artefact_id"] == "pixmask-test-01"
+    # Patch mantid out so the histogram-count validation is skipped — this
+    # unit test covers registration logic only, not Mantid algorithm behaviour.
+    with patch.dict("sys.modules", {"mantid.simpleapi": None, "mantid.api": None}):
+        rec = CampaignManagerModel.registerPixelMask(
+            ipts=ipts,
+            campaign_identifier="alpha",
+            nxs_path=str(nxs),
+            method="pixel_mask.custom",
+            is_lite=True,
+            ws_name="pixmask_test",
+            run_number=65891,
+            notes="test registration",
+            shared_root=shared,
+        )
+
     assert rec["artefact_type"] == "pixel_mask"
+    # ID is auto-generated: pixmask-<stem>-lite
+    assert rec["artefact_id"].startswith("pixmask-")
+    assert rec["artefact_id"].endswith("-lite")
 
     artefacts = CampaignManagerModel.getArtefacts(
         ipts=ipts, campaign_identifier="alpha", shared_root=shared, status="active"
     )
-    assert any(a["artefact_id"] == "pixmask-test-01" for a in artefacts)
+    assert any(a["artefact_id"] == rec["artefact_id"] for a in artefacts)
+
+
+def test_registerPixelMask_auto_versions_duplicate_id(two_campaign_ipts, tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    ipts, shared = two_campaign_ipts
+    nxs = tmp_path / "mask.nxs"
+    nxs.write_bytes(b"fake nexus content")
+
+    with patch.dict("sys.modules", {"mantid.simpleapi": None, "mantid.api": None}):
+        rec1 = CampaignManagerModel.registerPixelMask(
+            ipts=ipts, campaign_identifier="alpha", nxs_path=str(nxs),
+            method="pixel_mask.custom", is_lite=True, ws_name="pm1", shared_root=shared,
+        )
+        rec2 = CampaignManagerModel.registerPixelMask(
+            ipts=ipts, campaign_identifier="alpha", nxs_path=str(nxs),
+            method="pixel_mask.custom", is_lite=True, ws_name="pm2", shared_root=shared,
+        )
+
+    assert rec1["artefact_id"] != rec2["artefact_id"]
+    assert rec2["artefact_id"].endswith("-v2")
 
 
 def test_getRunSummaries_derives_runs_from_artefacts(two_campaign_ipts, tmp_path: Path) -> None:

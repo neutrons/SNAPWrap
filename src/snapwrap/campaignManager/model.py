@@ -19,6 +19,7 @@ from typing import Any
 from snapwrap.reduction_artefacts import (
     bootstrap_campaign,
     copy_artefact,
+    get_campaign_artefact_dir,
     ingest_asset,
     list_artefact_records,
     list_asset_records,
@@ -188,20 +189,118 @@ class CampaignManagerModel:
         *,
         ipts: int,
         campaign_identifier: int | str,
-        artefact_id: str,
-        nxs_path: str,
         method: str,
         ws_name: str,
+        is_lite: bool,
+        nxs_path: str | None = None,
+        ads_workspace: str | None = None,
         run_number: int | None = None,
         notes: str | None = None,
         shared_root: str | Path | None = None,
     ) -> dict[str, Any]:
-        """Register a pixel mask artefact from an existing .nxs file."""
+        """Register a pixel mask artefact, auto-generating a versioned artefact ID.
+
+        Three sources are supported via *method*:
+
+        ``"pixel_mask.letterbox"``
+            Uses the standard PE mask at the canonical path.  No extra
+            inputs required.
+        ``"pixel_mask.custom"``
+            Registers an existing ``.nxs`` file given by *nxs_path*.
+        ``"pixel_mask.workspace"``
+            Saves the named ADS workspace (*ads_workspace*) into the
+            campaign artefact directory as ``.nxs`` then registers it.
+
+        For all methods the workspace is (or will be) loaded into
+        *ws_name* during reduction.  The histogram count of the mask is
+        validated against the expected lite (18 432) or native (1 179 648)
+        pixel count and an error is raised on mismatch.
+
+        The artefact ID is auto-generated as
+        ``pixmask-{source}-{lite|native}[-vN]`` where ``-vN`` is appended
+        if the base ID is already taken.
+        """
+        from snapwrap.reduction_artefacts.masking import STANDARD_PE_MASK_PATH
+
+        _LITE_N = 18_432
+        _NATIVE_N = 1_179_648
+        lite_tag = "lite" if is_lite else "native"
+
+        # ── Resolve / save the .nxs file ─────────────────────────────────
+        if method == "pixel_mask.letterbox":
+            resolved_path = str(STANDARD_PE_MASK_PATH)
+        elif method == "pixel_mask.custom":
+            if not nxs_path:
+                raise ValueError("nxs_path is required for pixel_mask.custom")
+            resolved_path = nxs_path
+        elif method == "pixel_mask.workspace":
+            if not ads_workspace:
+                raise ValueError("ads_workspace is required for pixel_mask.workspace")
+            artefact_dir = get_campaign_artefact_dir(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                shared_root=shared_root,
+            )
+            safe_stem = re.sub(r"[^a-z0-9_-]", "_", ads_workspace.lower())
+            save_path = artefact_dir / f"pixmask_ws_{safe_stem}_{lite_tag}.nxs"
+            from mantid.simpleapi import SaveNexus  # type: ignore
+            SaveNexus(InputWorkspace=ads_workspace, Filename=str(save_path))
+            resolved_path = str(save_path)
+            # Switch method to custom for the registration call
+            method = "pixel_mask.custom"
+        else:
+            raise ValueError(f"Unknown method: {method!r}")
+
+        # ── Validate lite/native compatibility ────────────────────────────
+        try:
+            from mantid.simpleapi import LoadMask  # type: ignore
+            from mantid.api import AnalysisDataService as ADS  # type: ignore
+
+            _tmp = f"_pixmask_validate_{id(resolved_path)}"
+            LoadMask(Instrument="SNAP", InputFile=resolved_path, OutputWorkspace=_tmp)
+            n = ADS.retrieve(_tmp).getNumberHistograms()
+            ADS.remove(_tmp)
+            expected = _LITE_N if is_lite else _NATIVE_N
+            if n != expected:
+                actual_mode = "lite" if n == _LITE_N else ("native" if n == _NATIVE_N else f"{n}-pixel")
+                raise ValueError(
+                    f"Mask has {n} pixels ({actual_mode}) but isLite={is_lite} "
+                    f"({lite_tag}, expected {expected}). "
+                    "Lite and native masks are incompatible."
+                )
+        except ImportError:
+            pass  # Not in a Mantid environment — skip validation
+
+        # ── Auto-generate versioned artefact ID ───────────────────────────
+        if method == "pixel_mask.letterbox":
+            base_id = f"pixmask-pe-{lite_tag}"
+        elif method == "pixel_mask.custom":
+            stem = re.sub(r"[^a-z0-9-]", "-", Path(resolved_path).stem.lower())
+            base_id = f"pixmask-{stem}-{lite_tag}"
+        else:  # workspace (already reassigned to custom above)
+            safe_stem = re.sub(r"[^a-z0-9-]", "-", (ads_workspace or "ws").lower())
+            base_id = f"pixmask-ws-{safe_stem}-{lite_tag}"
+
+        existing_ids = {
+            rec.get("artefact_id")
+            for rec in list_artefact_records(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_type="pixel_mask",
+                shared_root=shared_root,
+            )
+        }
+        artefact_id = base_id
+        version = 2
+        while artefact_id in existing_ids:
+            artefact_id = f"{base_id}-v{version}"
+            version += 1
+
         return register_pixel_mask_artefact(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
             artefact_id=artefact_id,
-            nxs_path=nxs_path,
+            nxs_path=resolved_path,
             method=method,
             ws_name=ws_name,
             run_number=run_number,
