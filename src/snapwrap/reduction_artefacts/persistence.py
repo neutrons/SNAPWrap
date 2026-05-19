@@ -304,6 +304,46 @@ def resolve_campaign_slug(
     raise KeyError(f"Unknown campaign identifier: {campaign_identifier!r}")
 
 
+def list_campaigns(
+    *,
+    ipts: int,
+    shared_root: Path | str | None = None,
+) -> list[dict[str, Any]]:
+    """Return all campaigns registered under an IPTS.
+
+    Reads the ``_state.json`` file in the reduction-artefacts root and
+    returns one dict per campaign with keys ``campaign_slug``,
+    ``campaign_id``, plus any additional fields stored in the state
+    record (e.g. ``description``, ``created_at``).
+
+    Returns an empty list when no state file exists yet (a fresh IPTS).
+
+    Args:
+        ipts: IPTS experiment number.
+        shared_root: Override for the IPTS shared root (useful in tests).
+    """
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    state_path = _reduction_artefacts_root(ipts=ipts, shared_root=shared_root) / "_state.json"
+    if not state_path.exists():
+        return []
+
+    with state_path.open("r", encoding="utf-8") as handle:
+        state = json.load(handle)
+
+    campaigns = state.get("campaigns", {})
+    out: list[dict[str, Any]] = []
+    for slug, rec in campaigns.items():
+        entry: dict[str, Any] = {"campaign_slug": slug}
+        if isinstance(rec, Mapping):
+            entry.update(dict(rec))
+        out.append(entry)
+    # Stable ordering: by campaign_id when present, else by slug
+    out.sort(key=lambda e: (e.get("campaign_id", 1 << 30), e["campaign_slug"]))
+    return out
+
+
 def rename_campaign_slug(
     *,
     ipts: int,
