@@ -142,6 +142,7 @@ class CampaignManager(QDialog):
         self._setupPanel = SetupPanel(self)
         self._setupPanel.ingestRequested.connect(self._onIngestRequested)
         self._setupPanel.refreshRequested.connect(self._reloadSetup)
+        self._setupPanel.pixelMaskRegistrationRequested.connect(self._onPixelMaskRegistrationRequested)
 
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(self._runsPanel, "Runs")
@@ -499,6 +500,31 @@ class CampaignManager(QDialog):
                 "notes": dlg.notes(),
             },
             success_msg=lambda _result: f"Registered new artefact {new_id}.",
+        )
+
+    def _onPixelMaskRegistrationRequested(self, params: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
+            return
+
+        artefact_id = params.get("artefact_id", "")
+
+        def _after_success() -> None:
+            self._reloadCurrent()
+            self._reloadSetup()
+
+        self._runMutation(
+            label=f"Registering pixel mask '{artefact_id}'",
+            fn=self._model.registerPixelMask,
+            kwargs={
+                "ipts": ipts,
+                "campaign_identifier": slug,
+                **params,
+            },
+            success_msg=lambda _r: f"Pixel mask '{artefact_id}' registered.",
+            after_success=_after_success,
         )
 
     def _onIngestRequested(self) -> None:

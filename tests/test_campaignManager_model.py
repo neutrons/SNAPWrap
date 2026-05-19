@@ -228,6 +228,31 @@ def test_copyArtefact_registers_new_record(two_campaign_ipts, tmp_path: Path) ->
     assert "binmask-src" in ids and "binmask-dst" in ids
 
 
+def test_registerPixelMask_registers_artefact(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    nxs = tmp_path / "mask.nxs"
+    nxs.write_bytes(b"fake nexus content")
+
+    rec = CampaignManagerModel.registerPixelMask(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        artefact_id="pixmask-test-01",
+        nxs_path=str(nxs),
+        method="pixel_mask.custom",
+        ws_name="pixmask_test",
+        run_number=65891,
+        notes="test registration",
+        shared_root=shared,
+    )
+    assert rec["artefact_id"] == "pixmask-test-01"
+    assert rec["artefact_type"] == "pixel_mask"
+
+    artefacts = CampaignManagerModel.getArtefacts(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared, status="active"
+    )
+    assert any(a["artefact_id"] == "pixmask-test-01" for a in artefacts)
+
+
 def test_getRunSummaries_derives_runs_from_artefacts(two_campaign_ipts, tmp_path: Path) -> None:
     ipts, shared = two_campaign_ipts
     mask1 = tmp_path / "m1.json"

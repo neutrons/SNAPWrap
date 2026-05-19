@@ -23,6 +23,7 @@ from snapwrap.reduction_artefacts import (
     list_artefact_records,
     list_asset_records,
     list_campaigns,
+    register_pixel_mask_artefact,
     retire_artefact,
 )
 
@@ -175,6 +176,34 @@ class CampaignManagerModel:
             asset_type=asset_type,
             asset_id=asset_id or None,
             applicability_scope=applicability_scope,
+            run_number=run_number,
+            notes=notes,
+            shared_root=shared_root,
+        )
+
+    # ── Artefact creation ────────────────────────────────────────────
+
+    @staticmethod
+    def registerPixelMask(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        artefact_id: str,
+        nxs_path: str,
+        method: str,
+        ws_name: str,
+        run_number: int | None = None,
+        notes: str | None = None,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Register a pixel mask artefact from an existing .nxs file."""
+        return register_pixel_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            artefact_id=artefact_id,
+            nxs_path=nxs_path,
+            method=method,
+            ws_name=ws_name,
             run_number=run_number,
             notes=notes,
             shared_root=shared_root,
