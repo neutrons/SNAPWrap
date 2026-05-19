@@ -11,6 +11,7 @@ from typing import Any
 
 from qtpy.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
