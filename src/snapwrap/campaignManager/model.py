@@ -25,6 +25,7 @@ from snapwrap.reduction_artefacts import (
     list_artefact_records,
     list_asset_records,
     list_campaigns,
+    list_crystal_species_records,
     read_jsonl_records,
     register_crystal_species_artefact,
     register_pixel_mask_artefact,
@@ -400,8 +401,13 @@ class CampaignManagerModel:
         status: str | None = None,
         run_number: int | None = None,
     ) -> list[dict[str, Any]]:
-        """List artefacts for a campaign with optional filters."""
-        return list_artefact_records(
+        """List artefacts for a campaign with optional filters.
+
+        Crystal species are stored in a separate index (`crystal_species_index.jsonl`)
+        but are surfaced here normalised to the same record shape as regular artefacts
+        so the Artefacts panel can display them in one table.
+        """
+        records = list_artefact_records(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
             shared_root=shared_root,
@@ -409,6 +415,34 @@ class CampaignManagerModel:
             status=status,
             run_number=run_number,
         )
+
+        # Crystal species live in a separate index — include them unless the
+        # caller explicitly asked for a type that isn't crystal_species.
+        if artefact_type is None or artefact_type == "crystal_species":
+            # status filter: crystal species have no status field; treat them
+            # as always "active" and exclude only when the caller wants retired.
+            if status is None or status == "active":
+                cs_records = list_crystal_species_records(
+                    ipts=ipts,
+                    campaign_identifier=campaign_identifier,
+                    shared_root=shared_root,
+                    source_run=run_number,
+                )
+                for rec in cs_records:
+                    records.append({
+                        "artefact_id": rec.get("record_id", ""),
+                        "artefact_type": "crystal_species",
+                        "status": "active",
+                        "run_context": {"run_number": rec.get("source_run")},
+                        "method": "crystal_species.register",
+                        "created_at": rec.get("timestamp", ""),
+                        "created_by": rec.get("created_by", ""),
+                        "notes": rec.get("species_name", ""),
+                        # Preserve full original record for detail views.
+                        "_crystal_species": rec,
+                    })
+
+        return records
 
     # ── Artefact mutations ───────────────────────────────────────────
 

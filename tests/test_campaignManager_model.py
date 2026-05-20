@@ -505,3 +505,43 @@ def test_registerCrystalSpecies_with_eos(two_campaign_ipts, tmp_path: Path) -> N
     written = json.loads(Path(rec["eosPath"]).read_text())
     assert written["eos_type"] == "birch-murnaghan"
     assert written["stability_pressure"] == [2.1, None]
+
+
+def test_getArtefacts_includes_crystal_species(two_campaign_ipts, tmp_path: Path) -> None:
+    """Crystal species registered in crystal_species_index.jsonl must appear
+    in getArtefacts() with artefact_type == 'crystal_species'."""
+    ipts, shared = two_campaign_ipts
+    cif = tmp_path / "si.cif"
+    cif.write_text("# dummy cif")
+
+    CampaignManagerModel.registerCrystalSpecies(
+        ipts=ipts,
+        campaign_identifier="alpha",
+        species_name="silicon",
+        cif_path=str(cif),
+        role="calibrant",
+        source_run=65900,
+        shared_root=shared,
+    )
+
+    artefacts = CampaignManagerModel.getArtefacts(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+    cs_rows = [a for a in artefacts if a.get("artefact_type") == "crystal_species"]
+    assert len(cs_rows) == 1
+    assert cs_rows[0]["status"] == "active"
+    assert cs_rows[0]["notes"] == "silicon"  # species_name stored in notes
+
+    # type filter: requesting a different type must exclude crystal_species
+    bin_artefacts = CampaignManagerModel.getArtefacts(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared,
+        artefact_type="bin_mask",
+    )
+    assert all(a.get("artefact_type") != "crystal_species" for a in bin_artefacts)
+
+    # status filter: retired must exclude crystal_species (they are always active)
+    retired = CampaignManagerModel.getArtefacts(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared,
+        status="retired",
+    )
+    assert all(a.get("artefact_type") != "crystal_species" for a in retired)

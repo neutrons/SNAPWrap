@@ -501,7 +501,12 @@ def _cif_preview_text(path: str) -> str:
 # ── Crystal phase form ────────────────────────────────────────────────────────
 
 class _CrystalPhaseForm(QWidget):
-    """Inline form for registering a crystal species artefact."""
+    """Inline form for registering a crystal species artefact.
+
+    The CIF file is chosen from the campaign's ingested CIF assets (populated
+    via :meth:`refreshCifAssets`).  A small preview panel shows the crystal
+    structure summary of the currently selected CIF.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -522,16 +527,18 @@ class _CrystalPhaseForm(QWidget):
         self._roleCombo.addItem("Calibrant", userData="calibrant")
         form.addRow("Role:", self._roleCombo)
 
-        cif_row = QWidget()
-        cif_layout = QHBoxLayout(cif_row)
-        cif_layout.setContentsMargins(0, 0, 0, 0)
-        self._cifEdit = QLineEdit()
-        self._cifEdit.setPlaceholderText("Path to .cif file (required)")
-        cif_layout.addWidget(self._cifEdit)
-        cif_btn = QPushButton("Browse…")
-        cif_btn.clicked.connect(self._onBrowseCif)
-        cif_layout.addWidget(cif_btn)
-        form.addRow("CIF file:", cif_row)
+        # CIF picker — populated from ingested CIF assets
+        self._cifCombo = QComboBox()
+        self._cifCombo.setMinimumWidth(200)
+        self._cifCombo.currentIndexChanged.connect(self._onCifChanged)
+        form.addRow("CIF asset:", self._cifCombo)
+
+        # Crystal structure preview for the selected CIF
+        self._cifPreview = QLabel()
+        self._cifPreview.setWordWrap(True)
+        self._cifPreview.setStyleSheet("color: gray;")
+        self._cifPreview.setTextFormat(Qt.PlainText)
+        form.addRow("", self._cifPreview)
 
         self._runEdit = QLineEdit()
         self._runEdit.setPlaceholderText("optional — leave blank for campaign-wide")
@@ -543,16 +550,52 @@ class _CrystalPhaseForm(QWidget):
         self._eosForm = _EosSubForm()
         layout.addWidget(self._eosForm)
 
-    def _onBrowseCif(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select CIF file", "", "CIF files (*.cif);;All files (*)"
-        )
-        if path:
-            self._cifEdit.setText(path)
-            preview = _cif_preview_text(path)
-            self._cifEdit.setToolTip(preview if preview else path)
+        # Seed with empty state (no assets yet)
+        self._populateNoCif()
+
+    def _populateNoCif(self) -> None:
+        self._cifCombo.clear()
+        self._cifCombo.addItem("No CIF assets — ingest a CIF file first")
+        self._cifCombo.setEnabled(False)
+        self._cifPreview.clear()
+
+    def refreshCifAssets(self, assets: list[dict[str, Any]]) -> None:
+        """Repopulate the CIF picker from the current asset list.
+
+        Called by :class:`SetupPanel` whenever the asset table is refreshed.
+        Only records whose ``asset_type == "cif"`` are shown.
+        """
+        cif_assets = [a for a in assets if a.get("asset_type") == "cif"]
+        self._cifCombo.blockSignals(True)
+        self._cifCombo.clear()
+        if not cif_assets:
+            self._populateNoCif()
+        else:
+            self._cifCombo.setEnabled(True)
+            for rec in cif_assets:
+                label = rec.get("asset_id") or Path(rec.get("path", "?")).name
+                self._cifCombo.addItem(label, userData=rec)
+                path = rec.get("path", "")
+                if path:
+                    preview = _cif_preview_text(path)
+                    if preview:
+                        self._cifCombo.setItemData(
+                            self._cifCombo.count() - 1, preview, Qt.ToolTipRole
+                        )
+        self._cifCombo.blockSignals(False)
+        self._onCifChanged(self._cifCombo.currentIndex())
+
+    def _onCifChanged(self, index: int) -> None:
+        rec = self._cifCombo.itemData(index)
+        if not isinstance(rec, dict):
+            self._cifPreview.clear()
+            return
+        path = rec.get("path", "")
+        self._cifPreview.setText(_cif_preview_text(path) if path else "")
 
     def params(self) -> dict[str, Any]:
+        rec = self._cifCombo.currentData()
+        cif_path = rec.get("path", "") if isinstance(rec, dict) else ""
         run_text = self._runEdit.text().strip()
         try:
             source_run: int | None = int(run_text) if run_text else None
@@ -561,7 +604,7 @@ class _CrystalPhaseForm(QWidget):
         return {
             "species_name": self._nameEdit.text().strip(),
             "role": self._roleCombo.currentData(),
-            "cif_path": self._cifEdit.text().strip(),
+            "cif_path": cif_path,
             "eos_params": self._eosForm.params(),
             "source_run": source_run,
         }
@@ -571,7 +614,7 @@ class _CrystalPhaseForm(QWidget):
         if not p["species_name"]:
             return "Species name is required."
         if not p["cif_path"]:
-            return "A CIF file is required."
+            return "No CIF asset selected — ingest a CIF file in the Assets section first."
         return self._eosForm.validate()
 
 
@@ -672,6 +715,7 @@ class SetupPanel(QWidget):
 
     def setRows(self, rows: list[dict[str, Any]]) -> None:
         self._assetModel.setRows(rows)
+        self._crystalPhaseForm.refreshCifAssets(rows)
 
     # ── Internal slots ─────────────────────────────────────────────────
 
