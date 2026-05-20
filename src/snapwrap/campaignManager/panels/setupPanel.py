@@ -233,6 +233,198 @@ class _PixelMaskForm(QWidget):
         return None
 
 
+# ── EOS sub-form ──────────────────────────────────────────────────────────────
+
+_V0_UNIT_CELL = "Å³/unit cell"
+_V0_UNIT_ATOM = "Å³/atom"
+_V0_UNIT_MOL  = "cm³/mol"
+
+# 1 cm³/mol → Å³ per formula unit (Z=1):  1e24 Å³ / 6.02214076e23
+_CM3_MOL_TO_A3 = 1e24 / 6.02214076e23  # ≈ 1.66054
+
+
+class _EosSubForm(QGroupBox):
+    """Optional checkable EOS group for _CrystalPhaseForm.
+
+    Unchecked by default (EOS is optional).  When checked the operator
+    provides EOS type, V₀ (with unit conversion), K₀, K', a mandatory
+    literature reference, and optional stability bounds.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("Equation of state", parent)
+        self.setCheckable(True)
+        self.setChecked(False)
+        self.setToolTip("Tick to provide EOS parameters for pressure work.")
+
+        layout = QFormLayout(self)
+        layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        # EOS type
+        self._typeCombo = QComboBox()
+        self._typeCombo.addItem("Birch-Murnaghan", userData="birch-murnaghan")
+        self._typeCombo.addItem("Vinet", userData="vinet")
+        self._typeCombo.addItem("Murnaghan", userData="murnaghan")
+        layout.addRow("EOS type:", self._typeCombo)
+
+        # V₀ with unit selector
+        v0_row = QWidget()
+        v0_layout = QHBoxLayout(v0_row)
+        v0_layout.setContentsMargins(0, 0, 0, 0)
+        self._v0Edit = QLineEdit()
+        self._v0Edit.setPlaceholderText("e.g. 15.862")
+        v0_layout.addWidget(self._v0Edit, stretch=2)
+        self._v0UnitCombo = QComboBox()
+        self._v0UnitCombo.addItem(_V0_UNIT_CELL)
+        self._v0UnitCombo.addItem(_V0_UNIT_ATOM)
+        self._v0UnitCombo.addItem(_V0_UNIT_MOL)
+        self._v0UnitCombo.currentIndexChanged.connect(self._onUnitChanged)
+        v0_layout.addWidget(self._v0UnitCombo, stretch=1)
+        layout.addRow("V₀:", v0_row)
+
+        # Z — shown only when unit requires conversion
+        self._zLabel = QLabel("Z (formula units/cell):")
+        self._zEdit = QLineEdit()
+        self._zEdit.setPlaceholderText("positive integer, e.g. 2")
+        self._zEdit.setToolTip(
+            "Number of formula units per unit cell.\n"
+            "Required to convert from per-atom or per-mol units."
+        )
+        layout.addRow(self._zLabel, self._zEdit)
+        self._zLabel.setVisible(False)
+        self._zEdit.setVisible(False)
+
+        # K₀
+        self._k0Edit = QLineEdit()
+        self._k0Edit.setPlaceholderText("bulk modulus in GPa, e.g. 295.2")
+        layout.addRow("K₀ (GPa):", self._k0Edit)
+
+        # K'
+        self._kpEdit = QLineEdit()
+        self._kpEdit.setPlaceholderText("pressure derivative, e.g. 4.32")
+        layout.addRow("K′ (dimensionless):", self._kpEdit)
+
+        # Reference (mandatory when EOS enabled)
+        self._sourceEdit = QLineEdit()
+        self._sourceEdit.setPlaceholderText(
+            "e.g. Dewaele et al., PRB 70 094112 (2004)"
+        )
+        layout.addRow("Reference (required):", self._sourceEdit)
+
+        # Stability bounds header
+        stab_label = QLabel(
+            "<i>Approximate stability bounds for your experimental conditions</i> (all optional):"
+        )
+        stab_label.setWordWrap(True)
+        layout.addRow(stab_label)
+
+        # Pressure bounds
+        p_row = QWidget()
+        p_layout = QHBoxLayout(p_row)
+        p_layout.setContentsMargins(0, 0, 0, 0)
+        self._pMinEdit = QLineEdit()
+        self._pMinEdit.setPlaceholderText("P_min")
+        self._pMaxEdit = QLineEdit()
+        self._pMaxEdit.setPlaceholderText("P_max")
+        p_layout.addWidget(QLabel("P_min:"))
+        p_layout.addWidget(self._pMinEdit)
+        p_layout.addSpacing(8)
+        p_layout.addWidget(QLabel("P_max:"))
+        p_layout.addWidget(self._pMaxEdit)
+        layout.addRow("Pressure (GPa):", p_row)
+
+        # Temperature bounds
+        t_row = QWidget()
+        t_layout = QHBoxLayout(t_row)
+        t_layout.setContentsMargins(0, 0, 0, 0)
+        self._tMinEdit = QLineEdit()
+        self._tMinEdit.setPlaceholderText("T_min")
+        self._tMaxEdit = QLineEdit()
+        self._tMaxEdit.setPlaceholderText("T_max")
+        t_layout.addWidget(QLabel("T_min:"))
+        t_layout.addWidget(self._tMinEdit)
+        t_layout.addSpacing(8)
+        t_layout.addWidget(QLabel("T_max:"))
+        t_layout.addWidget(self._tMaxEdit)
+        layout.addRow("Temperature (K):", t_row)
+
+    def _onUnitChanged(self, _index: int) -> None:
+        needs_z = self._v0UnitCombo.currentText() != _V0_UNIT_CELL
+        self._zLabel.setVisible(needs_z)
+        self._zEdit.setVisible(needs_z)
+
+    @staticmethod
+    def _opt_float(edit: QLineEdit) -> float | None:
+        t = edit.text().strip()
+        if not t:
+            return None
+        try:
+            return float(t)
+        except ValueError:
+            return None
+
+    def _v0_in_cell_units(self) -> float | None:
+        v0 = self._opt_float(self._v0Edit)
+        if v0 is None:
+            return None
+        unit = self._v0UnitCombo.currentText()
+        if unit == _V0_UNIT_CELL:
+            return v0
+        try:
+            z = int(self._zEdit.text().strip())
+        except ValueError:
+            return None
+        if z <= 0:
+            return None
+        if unit == _V0_UNIT_ATOM:
+            return v0 * z
+        return v0 * z * _CM3_MOL_TO_A3  # cm³/mol
+
+    def params(self) -> dict[str, Any] | None:
+        """Return EOS params dict, or None if the group is unchecked."""
+        if not self.isChecked():
+            return None
+        p_min = self._opt_float(self._pMinEdit)
+        p_max = self._opt_float(self._pMaxEdit)
+        t_min = self._opt_float(self._tMinEdit)
+        t_max = self._opt_float(self._tMaxEdit)
+        return {
+            "eos_type": self._typeCombo.currentData(),
+            "V_0": self._v0_in_cell_units(),
+            "K_0": self._opt_float(self._k0Edit),
+            "K_prime": self._opt_float(self._kpEdit),
+            "source": self._sourceEdit.text().strip(),
+            "stability_pressure": [p_min, p_max] if (p_min is not None or p_max is not None) else None,
+            "stability_temperature": [t_min, t_max] if (t_min is not None or t_max is not None) else None,
+        }
+
+    def validate(self) -> str | None:
+        if not self.isChecked():
+            return None
+        v0_raw = self._opt_float(self._v0Edit)
+        if v0_raw is None:
+            return "V₀ is required."
+        if v0_raw <= 0:
+            return "V₀ must be positive."
+        if self._v0UnitCombo.currentText() != _V0_UNIT_CELL:
+            try:
+                z = int(self._zEdit.text().strip())
+                if z <= 0:
+                    raise ValueError
+            except ValueError:
+                return "Z (formula units/cell) must be a positive integer for the selected unit."
+        k0 = self._opt_float(self._k0Edit)
+        if k0 is None:
+            return "K₀ is required."
+        if k0 <= 0:
+            return "K₀ must be positive (GPa)."
+        if self._opt_float(self._kpEdit) is None:
+            return "K′ is required."
+        if not self._sourceEdit.text().strip():
+            return "A literature reference is required for the EOS."
+        return None
+
+
 # ── Crystal phase form ────────────────────────────────────────────────────────
 
 class _CrystalPhaseForm(QWidget):
@@ -240,21 +432,23 @@ class _CrystalPhaseForm(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        layout = QFormLayout(self)
-        layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        # Species name
+        # ── Basic fields ───────────────────────────────────────────────
+        basic = QWidget()
+        form = QFormLayout(basic)
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
         self._nameEdit = QLineEdit()
         self._nameEdit.setPlaceholderText('e.g. "ice-VII" or "Si-calibrant"')
-        layout.addRow("Species name:", self._nameEdit)
+        form.addRow("Species name:", self._nameEdit)
 
-        # Role
         self._roleCombo = QComboBox()
         self._roleCombo.addItem("Sample", userData="sample")
         self._roleCombo.addItem("Calibrant", userData="calibrant")
-        layout.addRow("Role:", self._roleCombo)
+        form.addRow("Role:", self._roleCombo)
 
-        # CIF file (required)
         cif_row = QWidget()
         cif_layout = QHBoxLayout(cif_row)
         cif_layout.setContentsMargins(0, 0, 0, 0)
@@ -264,24 +458,17 @@ class _CrystalPhaseForm(QWidget):
         cif_btn = QPushButton("Browse…")
         cif_btn.clicked.connect(self._onBrowseCif)
         cif_layout.addWidget(cif_btn)
-        layout.addRow("CIF file:", cif_row)
+        form.addRow("CIF file:", cif_row)
 
-        # EOS file (optional)
-        eos_row = QWidget()
-        eos_layout = QHBoxLayout(eos_row)
-        eos_layout.setContentsMargins(0, 0, 0, 0)
-        self._eosEdit = QLineEdit()
-        self._eosEdit.setPlaceholderText("Path to EOS .json file (optional)")
-        eos_layout.addWidget(self._eosEdit)
-        eos_btn = QPushButton("Browse…")
-        eos_btn.clicked.connect(self._onBrowseEos)
-        eos_layout.addWidget(eos_btn)
-        layout.addRow("EOS file:", eos_row)
-
-        # Run number (optional)
         self._runEdit = QLineEdit()
         self._runEdit.setPlaceholderText("optional — leave blank for campaign-wide")
-        layout.addRow("Run number:", self._runEdit)
+        form.addRow("Run number:", self._runEdit)
+
+        layout.addWidget(basic)
+
+        # ── EOS sub-form ───────────────────────────────────────────────
+        self._eosForm = _EosSubForm()
+        layout.addWidget(self._eosForm)
 
     def _onBrowseCif(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -290,25 +477,17 @@ class _CrystalPhaseForm(QWidget):
         if path:
             self._cifEdit.setText(path)
 
-    def _onBrowseEos(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select EOS description file", "", "JSON files (*.json);;All files (*)"
-        )
-        if path:
-            self._eosEdit.setText(path)
-
     def params(self) -> dict[str, Any]:
         run_text = self._runEdit.text().strip()
         try:
             source_run: int | None = int(run_text) if run_text else None
         except ValueError:
             source_run = None
-        eos = self._eosEdit.text().strip() or None
         return {
             "species_name": self._nameEdit.text().strip(),
             "role": self._roleCombo.currentData(),
             "cif_path": self._cifEdit.text().strip(),
-            "eos_path": eos,
+            "eos_params": self._eosForm.params(),
             "source_run": source_run,
         }
 
@@ -318,7 +497,7 @@ class _CrystalPhaseForm(QWidget):
             return "Species name is required."
         if not p["cif_path"]:
             return "A CIF file is required."
-        return None
+        return self._eosForm.validate()
 
 
 # ── Setup panel ───────────────────────────────────────────────────────────────

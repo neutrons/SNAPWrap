@@ -405,11 +405,31 @@ class CampaignManagerModel:
         species_name: str,
         cif_path: str,
         role: str = "sample",
-        eos_path: str | None = None,
+        eos_params: dict | None = None,
         source_run: int | None = None,
         shared_root: str | Path | None = None,
     ) -> dict[str, Any]:
-        """Register a crystal species artefact from a CIF (+ optional EOS) file."""
+        """Register a crystal species artefact from a CIF (+ optional inline EOS).
+
+        If *eos_params* is provided the dict is written as a ``.eos.json``
+        file to the campaign artefact directory.  ``stability_pressure`` and
+        ``stability_temperature`` keys are preserved in the file for future
+        post-reduction use but are not consumed by the backend today.
+        """
+        import json as _json
+
+        eos_path: str | None = None
+        if eos_params:
+            artefact_dir = get_campaign_artefact_dir(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                shared_root=shared_root,
+            )
+            safe_name = re.sub(r"[^a-z0-9_-]", "_", species_name.lower())
+            eos_file = artefact_dir / f"eos_{safe_name}.json"
+            eos_file.write_text(_json.dumps(eos_params, indent=2), encoding="utf-8")
+            eos_path = str(eos_file)
+
         return register_crystal_species_artefact(
             ipts=ipts,
             campaign_identifier=campaign_identifier,

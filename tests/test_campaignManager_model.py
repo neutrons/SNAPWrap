@@ -454,17 +454,30 @@ def test_registerCrystalSpecies_with_eos(two_campaign_ipts, tmp_path: Path) -> N
     ipts, shared = two_campaign_ipts
     cif = tmp_path / "ice.cif"
     cif.write_text("# dummy cif")
-    eos = tmp_path / "ice_eos.json"
-    eos.write_text("{}")
+
+    eos_params = {
+        "eos_type": "birch-murnaghan",
+        "V_0": 40.85,
+        "K_0": 23.7,
+        "K_prime": 4.15,
+        "source": "Hemley et al., Nature 330 (1987)",
+        "stability_pressure": [2.1, None],
+        "stability_temperature": None,
+    }
 
     rec = CampaignManagerModel.registerCrystalSpecies(
         ipts=ipts,
         campaign_identifier="alpha",
         species_name="ice-VII",
         cif_path=str(cif),
-        eos_path=str(eos),
+        eos_params=eos_params,
         shared_root=shared,
     )
 
     assert rec["species_name"] == "ice-VII"
-    assert rec["eosPath"] == str(eos)
+    # eos_path should point to a written .eos.json file in the artefact dir
+    assert rec["eosPath"] is not None
+    import json
+    written = json.loads(Path(rec["eosPath"]).read_text())
+    assert written["eos_type"] == "birch-murnaghan"
+    assert written["stability_pressure"] == [2.1, None]
