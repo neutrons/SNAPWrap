@@ -537,6 +537,45 @@ def detect_notches_in_spectrum(
     return final, diagnostics
 
 
+def _save_notch_diagnostic_plot(
+    *,
+    x: "np.ndarray",
+    ratio: "np.ndarray",
+    notches: list[list[float]],
+    dip_threshold: float,
+    output_path: "Path",
+    run_number: int,
+) -> "Path | None":
+    """Save a PNG showing the ratio spectrum with detected notches shaded.
+
+    Returns the saved path on success, None on failure (e.g. matplotlib
+    unavailable in the current environment).
+    """
+    try:
+        import numpy as _np
+        from matplotlib.backends.backend_agg import FigureCanvasAgg  # type: ignore
+        from matplotlib.figure import Figure  # type: ignore
+
+        fig = Figure(figsize=(8, 3), dpi=100)
+        FigureCanvasAgg(fig)
+        ax = fig.add_subplot(111)
+        ax.plot(x, ratio, color="#60aaff", lw=0.8, label="ratio")
+        ax.axhline(dip_threshold, color="#ff8844", lw=0.9, ls="--",
+                   label=f"threshold ({dip_threshold})")
+        for lo, hi in notches:
+            ax.axvspan(lo, hi, alpha=0.25, color="#ff4444")
+        ax.set_xlabel("Wavelength (Å)", fontsize=8)
+        ax.set_ylabel("Ratio", fontsize=8)
+        ax.set_title(f"Notch detection — run {run_number}", fontsize=9)
+        ax.tick_params(labelsize=7)
+        ax.legend(fontsize=7, loc="lower right")
+        fig.tight_layout()
+        fig.savefig(str(output_path), dpi=100)
+        return output_path
+    except Exception:
+        return None
+
+
 def build_swiss_cheese_from_transmission_monitor(
     run_number: int,
     is_lite: bool,
@@ -802,7 +841,19 @@ def build_swiss_cheese_from_transmission_monitor(
         sc.notchFromList(suffix_units, notches, is_lite)
         sc.save(str(output_dir), file_prefix)
         mask_paths = sorted(output_dir.glob(f"{file_prefix}_*.json"))
-        return mask_paths, notches
+
+        diag_png_path: Path | None = None
+        if keep_diagnostics:
+            diag_png_path = _save_notch_diagnostic_plot(
+                x=centers,
+                ratio=diag["ratio"],
+                notches=notches,
+                dip_threshold=dip_threshold,
+                output_path=output_dir / f"{file_prefix}_diag.png",
+                run_number=run_number,
+            )
+
+        return mask_paths, notches, diag_png_path
     finally:
         from .workspace_groups import finalize_builder_workspaces
 

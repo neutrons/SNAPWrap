@@ -37,6 +37,7 @@ _ASSET_COLUMNS = ["Asset ID", "Type", "Scope", "Status"]
 # Artefact-type combo indices
 _TYPE_PIXEL_MASK = 0
 _TYPE_CRYSTAL_PHASE = 1
+_TYPE_BIN_MASK_MONITOR = 2
 
 
 # ── Assets table ──────────────────────────────────────────────────────────────
@@ -450,6 +451,120 @@ class _EosSubForm(QGroupBox):
         return None
 
 
+# ── Bin mask from transmission monitor form ───────────────────────────────────
+
+class _BinMaskFromMonitorForm(QWidget):
+    """Form for building a bin mask from the transmission monitor spectrum.
+
+    Runs ``build_swiss_cheese_from_transmission_monitor`` (Mantid required)
+    to auto-detect notch positions, then registers the result.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        layout = QFormLayout(self)
+        layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("e.g. 65923")
+        layout.addRow("Run number:", self._runEdit)
+
+        # Wavelength bounds — optional; leave blank to auto-detect from
+        # instrument state via SNAPRed.
+        lam_row = QWidget()
+        lam_layout = QHBoxLayout(lam_row)
+        lam_layout.setContentsMargins(0, 0, 0, 0)
+        self._lamMinEdit = QLineEdit()
+        self._lamMinEdit.setPlaceholderText("auto")
+        self._lamMaxEdit = QLineEdit()
+        self._lamMaxEdit.setPlaceholderText("auto")
+        lam_layout.addWidget(QLabel("min:"))
+        lam_layout.addWidget(self._lamMinEdit)
+        lam_layout.addSpacing(8)
+        lam_layout.addWidget(QLabel("max:"))
+        lam_layout.addWidget(self._lamMaxEdit)
+        lam_layout.addWidget(QLabel("Å"))
+        layout.addRow("Wavelength range:", lam_row)
+        layout.labelForField(lam_row).setToolTip(
+            "Leave blank to auto-detect from the instrument state."
+        )
+
+        self._dipEdit = QLineEdit()
+        self._dipEdit.setText("0.98")
+        self._dipEdit.setToolTip(
+            "Fraction of the continuum below which a dip is flagged as a notch. "
+            "Lower values find more (shallower) notches."
+        )
+        layout.addRow("Dip threshold:", self._dipEdit)
+
+        self._keepDiagCheck = QCheckBox("Retain diagnostic workspaces")
+        self._keepDiagCheck.setChecked(True)
+        self._keepDiagCheck.setToolTip(
+            "Keep intermediate workspaces (monitor, rebinned, ratio, SNIP continuum) "
+            "in the Mantid ADS so you can inspect the notch detection result. "
+            "Disable once the detection parameters are tuned."
+        )
+        layout.addRow("Diagnostics:", self._keepDiagCheck)
+
+        self._l2OverrideCheck = QCheckBox("Override default monitor position")
+        self._l2OverrideCheck.setChecked(False)
+        self._l2OverrideCheck.setToolTip(
+            "Normally not needed. Enable when the monitor L2 value embedded "
+            "in the NeXus file is incorrect (e.g. missing calibration)."
+        )
+        layout.addRow("Monitor L2:", self._l2OverrideCheck)
+
+        self._l2Edit = QLineEdit()
+        self._l2Edit.setPlaceholderText("e.g. 4.910")
+        self._l2Edit.setToolTip("Monitor 2 flight-path length (m) to use instead of the NeXus value.")
+        self._l2Edit.setEnabled(False)
+        layout.addRow("L2 (m):", self._l2Edit)
+
+        self._l2OverrideCheck.toggled.connect(self._l2Edit.setEnabled)
+
+    @staticmethod
+    def _opt_float(edit: QLineEdit) -> float | None:
+        t = edit.text().strip()
+        return float(t) if t else None
+
+    def params(self) -> dict[str, Any]:
+        try:
+            run_number: int | None = int(self._runEdit.text().strip())
+        except ValueError:
+            run_number = None
+        try:
+            dip = float(self._dipEdit.text().strip())
+        except ValueError:
+            dip = 0.98
+        return {
+            "run_number": run_number,
+            "lam_min": self._opt_float(self._lamMinEdit),
+            "lam_max": self._opt_float(self._lamMaxEdit),
+            "dip_threshold": dip,
+            "keep_diagnostics": self._keepDiagCheck.isChecked(),
+            "monitor2_l2": self._opt_float(self._l2Edit) if self._l2OverrideCheck.isChecked() else None,
+        }
+
+    def validate(self) -> str | None:
+        p = self.params()
+        if p["run_number"] is None:
+            return "A valid run number is required."
+        lam_min = p["lam_min"]
+        lam_max = p["lam_max"]
+        if (lam_min is not None) != (lam_max is not None):
+            return "Provide both wavelength bounds or leave both blank."
+        if lam_min is not None and lam_max is not None and lam_min >= lam_max:
+            return "Wavelength min must be less than max."
+        dip = p["dip_threshold"]
+        if not (0 < dip < 1):
+            return "Dip threshold must be between 0 and 1."
+        if self._l2OverrideCheck.isChecked():
+            l2 = self._opt_float(self._l2Edit)
+            if l2 is None or l2 <= 0:
+                return "Monitor L2 override requires a positive value in metres."
+        return None
+
+
 # ── CIF preview helper ────────────────────────────────────────────────────────
 
 def _cif_preview_text(path: str) -> str:
@@ -644,6 +759,7 @@ class SetupPanel(QWidget):
     assetDeleteRequested = Signal(str)   # emits asset_id
     pixelMaskRegistrationRequested = Signal(dict)
     crystalSpeciesRegistrationRequested = Signal(dict)
+    binMaskFromMonitorRequested = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -691,6 +807,7 @@ class SetupPanel(QWidget):
         self._typeCombo = QComboBox()
         self._typeCombo.addItem("Pixel mask")
         self._typeCombo.addItem("Crystal phase")
+        self._typeCombo.addItem("Bin mask (transmission monitor)")
         self._typeCombo.currentIndexChanged.connect(self._onTypeChanged)
         type_row.addWidget(self._typeCombo)
         type_row.addStretch(1)
@@ -704,6 +821,9 @@ class SetupPanel(QWidget):
 
         self._crystalPhaseForm = _CrystalPhaseForm()
         self._stack.addWidget(self._crystalPhaseForm)  # index 1 = _TYPE_CRYSTAL_PHASE
+
+        self._binMaskMonitorForm = _BinMaskFromMonitorForm()
+        self._stack.addWidget(self._binMaskMonitorForm)  # index 2 = _TYPE_BIN_MASK_MONITOR
 
         cg_layout.addWidget(self._stack)
 
@@ -760,3 +880,9 @@ class SetupPanel(QWidget):
                 QMessageBox.warning(self, "Invalid form", error)
                 return
             self.crystalSpeciesRegistrationRequested.emit(self._crystalPhaseForm.params())
+        elif index == _TYPE_BIN_MASK_MONITOR:
+            error = self._binMaskMonitorForm.validate()
+            if error:
+                QMessageBox.warning(self, "Invalid form", error)
+                return
+            self.binMaskFromMonitorRequested.emit(self._binMaskMonitorForm.params())

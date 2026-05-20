@@ -203,6 +203,93 @@ class CopyArtefactDialog(QDialog):
         return text or None
 
 
+# ── Copy crystal species to campaign dialog ────────────────────────────────────
+
+class CopyCrystalSpeciesDialog(QDialog):
+    """Pick a target IPTS + campaign to copy a crystal species into.
+
+    The model is passed so campaigns can be reloaded when the IPTS changes.
+    """
+
+    def __init__(self, cs_record: dict, current_ipts: int, current_slug: str, model, parent=None) -> None:
+        super().__init__(parent)
+        self._model = model
+        self._current_ipts = current_ipts
+        self._current_slug = current_slug
+
+        self.setWindowTitle("Copy crystal species to campaign")
+        self.setMinimumWidth(480)
+
+        layout = QVBoxLayout(self)
+
+        species_name = cs_record.get("species_name", "?")
+        role = cs_record.get("role", "?")
+        has_eos = bool(cs_record.get("eosPath"))
+        summary = QLabel(
+            f"<b>Species:</b> {species_name} &nbsp; <b>Role:</b> {role}"
+            + (" &nbsp; <i>(includes EOS)</i>" if has_eos else "")
+        )
+        summary.setTextFormat(Qt.RichText)
+        layout.addWidget(summary)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        ipts_row = QHBoxLayout()
+        self._iptsEdit = QLineEdit(str(current_ipts))
+        self._iptsEdit.setMaximumWidth(140)
+        ipts_row.addWidget(self._iptsEdit)
+        load_btn = QPushButton("Load campaigns")
+        load_btn.clicked.connect(self._loadCampaigns)
+        ipts_row.addWidget(load_btn)
+        ipts_row.addStretch(1)
+        form.addRow("Target IPTS:", ipts_row)
+
+        self._campaignCombo = QComboBox()
+        self._campaignCombo.setMinimumWidth(240)
+        form.addRow("Target campaign:", self._campaignCombo)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.button(QDialogButtonBox.Ok).setText("Copy")
+        self._okBtn = buttons.button(QDialogButtonBox.Ok)
+        self._okBtn.setEnabled(False)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._loadCampaigns()
+
+    def _loadCampaigns(self) -> None:
+        ipts = self.targetIpts()
+        if ipts is None:
+            self._okBtn.setEnabled(False)
+            return
+        try:
+            campaigns = self._model.getCampaigns(ipts=ipts)
+        except Exception:
+            campaigns = []
+        self._campaignCombo.clear()
+        for c in campaigns:
+            slug = c.get("campaign_slug", "")
+            cid = c.get("campaign_id", "")
+            label = f"{slug}  (id={cid})" if cid != "" else slug
+            if slug == self._current_slug and ipts == self._current_ipts:
+                label += "  [current]"
+            self._campaignCombo.addItem(label, userData=slug)
+        self._okBtn.setEnabled(bool(campaigns))
+
+    def targetIpts(self) -> int | None:
+        try:
+            return int(self._iptsEdit.text().strip())
+        except ValueError:
+            return None
+
+    def targetCampaign(self) -> str | None:
+        return self._campaignCombo.currentData()
+
+
 # ── New-campaign dialog ────────────────────────────────────────────────────
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,62}$")

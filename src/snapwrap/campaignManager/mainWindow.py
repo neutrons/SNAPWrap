@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QCompleter,
     QDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QProgressBar,
@@ -30,7 +31,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QWidget,
 )
 
-from snapwrap.campaignManager.dialogs import CopyArtefactDialog, IngestAssetDialog, NewCampaignDialog
+from snapwrap.campaignManager.dialogs import CopyArtefactDialog, CopyCrystalSpeciesDialog, IngestAssetDialog, NewCampaignDialog
 from snapwrap.campaignManager.model import CampaignManagerModel
 from snapwrap.campaignManager.panels.artefactsPanel import ArtefactsPanel
 from snapwrap.campaignManager.panels.reducePanel import ReducePanel
@@ -116,6 +117,18 @@ class CampaignManager(QDialog):
         self._newCampaignBtn.clicked.connect(self._onNewCampaignClicked)
         ctx.addWidget(self._newCampaignBtn)
 
+        self._renameCampaignBtn = QPushButton("Rename…")
+        self._renameCampaignBtn.setToolTip("Rename the selected campaign slug")
+        self._renameCampaignBtn.setEnabled(False)
+        self._renameCampaignBtn.clicked.connect(self._onRenameCampaignClicked)
+        ctx.addWidget(self._renameCampaignBtn)
+
+        self._deleteCampaignBtn = QPushButton("Delete…")
+        self._deleteCampaignBtn.setToolTip("Permanently delete this campaign and all its artefacts")
+        self._deleteCampaignBtn.setEnabled(False)
+        self._deleteCampaignBtn.clicked.connect(self._onDeleteCampaignClicked)
+        ctx.addWidget(self._deleteCampaignBtn)
+
         ctx.addStretch(1)
 
         self._reloadBtn = QPushButton("Reload")
@@ -130,6 +143,7 @@ class CampaignManager(QDialog):
         self._artefactsPanel.refreshRequested.connect(self._reloadCurrent)
         self._artefactsPanel.retireRequested.connect(self._onRetireRequested)
         self._artefactsPanel.copyRequested.connect(self._onCopyRequested)
+        self._artefactsPanel.copyCrystalSpeciesRequested.connect(self._onCopyCrystalSpeciesRequested)
         self._artefactsPanel.openFileRequested.connect(self._onOpenFileRequested)
         self._runsPanel = RunsPanel(self)
         self._runsPanel.refreshRequested.connect(self._reloadRunSummaries)
@@ -144,12 +158,14 @@ class CampaignManager(QDialog):
         self._setupPanel.refreshRequested.connect(self._reloadSetup)
         self._setupPanel.pixelMaskRegistrationRequested.connect(self._onPixelMaskRegistrationRequested)
         self._setupPanel.crystalSpeciesRegistrationRequested.connect(self._onCrystalSpeciesRegistrationRequested)
+        self._setupPanel.binMaskFromMonitorRequested.connect(self._onBinMaskFromMonitorRequested)
         self._setupPanel.assetDeleteRequested.connect(self._onAssetDeleteRequested)
 
         self._tabs.addTab(self._setupPanel, "Setup")
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(self._runsPanel, "Runs")
         self._tabs.addTab(self._reducePanel, "Reduce")
+        self._tabs.setCurrentWidget(self._artefactsPanel)
         self._tabs.currentChanged.connect(self._onTabChanged)
         layout.addWidget(self._tabs, stretch=1)
 
@@ -314,7 +330,10 @@ class CampaignManager(QDialog):
     def _onCampaignChanged(self, _text: str) -> None:
         ipts = self._currentIPTS()
         slug = self._campaignCombo.currentData()
-        if ipts is None or not slug:
+        has_campaign = ipts is not None and bool(slug)
+        self._renameCampaignBtn.setEnabled(has_campaign)
+        self._deleteCampaignBtn.setEnabled(has_campaign)
+        if not has_campaign:
             self._reducePanel.setContext(None, None)
             return
         self._reducePanel.setContext(ipts, slug)
@@ -355,6 +374,71 @@ class CampaignManager(QDialog):
                 "owners": dlg.owners(),
             },
             success_msg=lambda _result: f"Campaign '{slug}' created.",
+            after_success=_after_success,
+        )
+
+    def _onRenameCampaignClicked(self) -> None:
+        ipts = self._currentIPTS()
+        old_slug = self._campaignCombo.currentData()
+        if ipts is None or not old_slug:
+            return
+
+        new_slug, ok = QInputDialog.getText(
+            self,
+            "Rename campaign",
+            f"New slug for <b>{old_slug}</b>:<br>"
+            "<small>(lowercase letters, digits, hyphens/underscores, 2–63 chars)</small>",
+            text=old_slug,
+        )
+        if not ok or not new_slug.strip():
+            return
+        new_slug = new_slug.strip()
+        if new_slug == old_slug:
+            return
+
+        def _after_success() -> None:
+            self._loadIPTSCampaigns()
+            idx = self._campaignCombo.findData(new_slug)
+            if idx >= 0:
+                self._campaignCombo.setCurrentIndex(idx)
+
+        self._runMutation(
+            label=f"Renaming '{old_slug}' → '{new_slug}'…",
+            fn=self._model.renameCampaign,
+            kwargs={"ipts": ipts, "old_slug": old_slug, "new_slug": new_slug},
+            success_msg=lambda r: f"Campaign renamed to '{r.get('campaign_slug', new_slug)}'.",
+            after_success=_after_success,
+        )
+
+    def _onDeleteCampaignClicked(self) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            return
+
+        confirm = QMessageBox.warning(
+            self,
+            "Delete campaign?",
+            (
+                f"<b>Permanently delete campaign '{slug}'</b> from IPTS-{ipts}?<br><br>"
+                "This will remove the campaign directory and <b>all its contents</b>: "
+                "artefact records, asset records, thumbnails, and any generated files.<br><br>"
+                "This cannot be undone."
+            ),
+            QMessageBox.Ok | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if confirm != QMessageBox.Ok:
+            return
+
+        def _after_success() -> None:
+            self._loadIPTSCampaigns()
+
+        self._runMutation(
+            label=f"Deleting campaign '{slug}'…",
+            fn=self._model.deleteCampaign,
+            kwargs={"ipts": ipts, "campaign_identifier": slug},
+            success_msg=lambda _r: f"Campaign '{slug}' deleted.",
             after_success=_after_success,
         )
 
@@ -418,8 +502,11 @@ class CampaignManager(QDialog):
         """Refresh the Runs panel from artefact records (synchronous — fast)."""
         ipts = self._currentIPTS()
         slug = self._campaignCombo.currentData()
+        runs_idx = self._tabs.indexOf(self._runsPanel)
         if ipts is None or not slug:
             self._runsPanel.setRows([])
+            self._tabs.setTabEnabled(runs_idx, False)
+            self._tabs.setTabToolTip(runs_idx, "No runs with artefacts yet — use Reduce to start.")
             return
         try:
             summaries = self._model.getRunSummaries(
@@ -429,6 +516,12 @@ class CampaignManager(QDialog):
             self._setStatus(f"Run summary failed: {exc}")
             return
         self._runsPanel.setRows(summaries)
+        has_runs = bool(summaries)
+        self._tabs.setTabEnabled(runs_idx, has_runs)
+        self._tabs.setTabToolTip(
+            runs_idx,
+            "" if has_runs else "No runs with artefacts yet — use Reduce to start.",
+        )
 
     def _onLoadFinished(self, records: Any) -> None:
         if not isinstance(records, list):
@@ -534,6 +627,27 @@ class CampaignManager(QDialog):
             success_msg=lambda _result: f"Registered new artefact {new_id}.",
         )
 
+    def _onCopyCrystalSpeciesRequested(self, record: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            return
+        cs = record.get("_crystal_species", {})
+        dlg = CopyCrystalSpeciesDialog(cs, ipts, slug, self._model, parent=self)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        target_ipts = dlg.targetIpts()
+        target_campaign = dlg.targetCampaign()
+        if target_ipts is None or not target_campaign:
+            return
+        species = cs.get("species_name", "?")
+        self._runMutation(
+            label=f"Copying '{species}' to {target_campaign}…",
+            fn=self._model.copyCrystalSpeciesToCampaign,
+            kwargs={"cs_record": cs, "target_ipts": target_ipts, "target_campaign": target_campaign},
+            success_msg=lambda _r: f"Copied '{species}' to campaign '{target_campaign}'.",
+        )
+
     def _onPixelMaskRegistrationRequested(self, params: dict[str, Any]) -> None:
         ipts = self._currentIPTS()
         slug = self._campaignCombo.currentData()
@@ -603,6 +717,29 @@ class CampaignManager(QDialog):
             after_success=_after_success,
         )
 
+    def _onBinMaskFromMonitorRequested(self, params: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
+            return
+
+        def _after_success() -> None:
+            self._reloadCurrent()
+            self._reloadRunSummaries()
+
+        run = params.get("run_number", "?")
+        self._runMutation(
+            label=f"Building bin mask from transmission monitor (run {run})…",
+            fn=self._model.registerBinMaskFromTransmission,
+            kwargs={"ipts": ipts, "campaign_identifier": slug, **params},
+            success_msg=lambda recs: (
+                f"Registered {len(recs)} bin mask artefact(s) from run {run}."
+                if isinstance(recs, list) else "Bin mask registered."
+            ),
+            after_success=_after_success,
+        )
+
     def _onIngestRequested(self) -> None:
         ipts = self._currentIPTS()
         slug = self._campaignCombo.currentData()
@@ -639,7 +776,13 @@ class CampaignManager(QDialog):
         from qtpy.QtCore import QUrl  # type: ignore
         from qtpy.QtGui import QDesktopServices  # type: ignore
 
-        path_str = record.get("file_path") or record.get("mask_json_path") or ""
+        path_str = (
+            record.get("path")
+            or record.get("file_path")
+            or record.get("mask_json_path")
+            or (record.get("_crystal_species") or {}).get("cifPath")
+            or ""
+        )
         if not path_str:
             self._setStatus("No file path on this record.")
             return
@@ -696,6 +839,11 @@ class CampaignManager(QDialog):
             if self._loadThread is thread:
                 self._loadThread = None
                 self._loadWorker = None
+            # Always hide progress here.  If after_success triggers a new
+            # background load (e.g. _reloadCurrent) that load will re-show it.
+            # If after_success is synchronous (e.g. _loadIPTSCampaigns) the
+            # _cleanup guard will be False by now and would never hide it.
+            self._progress.setVisible(False)
             self._setStatus(success_msg(result))
             if after_success is not None:
                 after_success()

@@ -19,6 +19,7 @@ from typing import Any
 from snapwrap.reduction_artefacts import (
     bootstrap_campaign,
     copy_artefact,
+    delete_campaign,
     get_campaign_artefact_dir,
     get_campaign_paths,
     ingest_asset,
@@ -28,12 +29,83 @@ from snapwrap.reduction_artefacts import (
     list_crystal_species_records,
     read_jsonl_records,
     register_crystal_species_artefact,
+    register_manual_bin_mask_artefact,
     register_pixel_mask_artefact,
+    rename_campaign_slug,
     retire_artefact,
 )
 
 
 _IPTS_RE = re.compile(r"^/SNS/SNAP/IPTS-(\d+)/shared/?$")
+
+
+def _generate_pixel_mask_thumbnail(
+    nxs_path: str,
+    artefact_id: str,
+    artefact_dir: Path,
+) -> str | None:
+    """Render a 96×192 PNG showing masked pixels for a lite pixel mask.
+
+    Inlines rowCol from maskUtils to avoid that module's top-level Mantid
+    imports.  Uses the matplotlib Agg backend directly (no pyplot.show/use)
+    so it doesn't interfere with Workbench's live plot backend.
+
+    Returns the PNG path on success, None on any failure (wrong mode,
+    missing deps, bad workspace, etc.).
+    """
+    def _rowcol(spec_id: int) -> tuple[int, int]:
+        n_row_mod, n_col_mod = 3, 3
+        n_row_pix, n_col_pix = 32, 32
+        n_pix = n_row_pix * n_col_pix
+        id_mod = spec_id // n_pix
+        j_mod = id_mod // n_col_mod
+        i_mod = id_mod % n_row_mod
+        id_pix = spec_id - id_mod * n_pix
+        j_pix = id_pix // n_col_pix
+        i_pix = spec_id % n_row_pix
+        j_mod = [3, 4, 5, 0, 1, 2].index(j_mod)
+        j = j_mod * n_col_pix + j_pix
+        i = i_mod * n_row_pix + i_pix
+        i = n_row_pix * n_row_mod - i - 1
+        return i, j
+
+    try:
+        import numpy as np  # type: ignore
+        from mantid.simpleapi import Load  # type: ignore
+        from mantid.api import AnalysisDataService as ADS  # type: ignore
+
+        ws_name = f"_thumb_{artefact_id}"
+        Load(Filename=nxs_path, OutputWorkspace=ws_name)
+        ws = ADS.retrieve(ws_name)
+        n = ws.getNumberHistograms()
+        if n != 18_432:
+            ADS.remove(ws_name)
+            return None  # rowCol is lite-only
+
+        img = np.zeros((96, 192), dtype=np.float32)
+        for spec in range(n):
+            if ws.readY(spec)[0] > 0.5:
+                row, col = _rowcol(spec)
+                img[row, col] = 1.0
+        ADS.remove(ws_name)
+
+        # Use the Agg backend directly — avoids calling matplotlib.use()
+        # which would clobber Workbench's interactive backend.
+        from matplotlib.backends.backend_agg import FigureCanvasAgg  # type: ignore
+        from matplotlib.figure import Figure  # type: ignore
+
+        fig = Figure(figsize=(4, 2), dpi=72)
+        FigureCanvasAgg(fig)
+        ax = fig.add_subplot(111)
+        ax.imshow(img, cmap="binary", vmin=0, vmax=1,
+                  interpolation="nearest", aspect="equal")
+        ax.axis("off")
+
+        png_path = artefact_dir / f"{artefact_id}_thumbnail.png"
+        fig.savefig(str(png_path), bbox_inches="tight", pad_inches=0.05, dpi=72)
+        return str(png_path)
+    except Exception:
+        return None
 
 
 def _is_readable_dir(path: Path) -> bool:
@@ -117,6 +189,36 @@ class CampaignManagerModel:
             shared_root=shared_root,
         )
 
+    @staticmethod
+    def deleteCampaign(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Permanently delete a campaign and its entire directory tree."""
+        return delete_campaign(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+
+    @staticmethod
+    def renameCampaign(
+        *,
+        ipts: int,
+        old_slug: str,
+        new_slug: str,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Rename a campaign slug (preserves aliases for backwards lookup)."""
+        return rename_campaign_slug(
+            ipts=ipts,
+            old_slug=old_slug,
+            new_slug=new_slug,
+            shared_root=shared_root,
+        )
+
     # ── Campaign discovery ───────────────────────────────────────────
 
     @staticmethod
@@ -151,10 +253,17 @@ class CampaignManagerModel:
             shared_root=shared_root,
             status="active",
         )
+        # Exclude asset types that are auto-created as provenance side-effects
+        # of artefact registration (e.g. the .nxs source file recorded when a
+        # pixel mask artefact is registered).  Users never intentionally ingest
+        # these — showing them in the Assets panel only causes confusion.
+        _SYSTEM_ASSET_TYPES = {"manual_pixel_mask"}
         # Iterate in append order; later records overwrite earlier ones for
         # the same asset_id, leaving only the most recent active entry.
         seen: dict[str, dict[str, Any]] = {}
         for rec in records:
+            if rec.get("asset_type") in _SYSTEM_ASSET_TYPES:
+                continue
             aid = rec.get("asset_id")
             if aid is not None:
                 seen[aid] = rec
@@ -335,7 +444,7 @@ class CampaignManagerModel:
             artefact_id = f"{base_id}-v{version}"
             version += 1
 
-        return register_pixel_mask_artefact(
+        record = register_pixel_mask_artefact(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
             artefact_id=artefact_id,
@@ -346,6 +455,108 @@ class CampaignManagerModel:
             notes=notes,
             shared_root=shared_root,
         )
+
+        # Generate thumbnail for lite masks (rowCol is lite-only).
+        if is_lite:
+            artefact_dir_p = get_campaign_artefact_dir(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                shared_root=shared_root,
+            )
+            thumb = _generate_pixel_mask_thumbnail(resolved_path, artefact_id, artefact_dir_p)
+            if thumb:
+                record["thumbnail_path"] = thumb
+
+        return record
+
+    @staticmethod
+    def registerBinMaskFromTransmission(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        run_number: int,
+        lam_min: float | None = None,
+        lam_max: float | None = None,
+        dip_threshold: float = 0.98,
+        keep_diagnostics: bool = True,
+        monitor2_l2: float | None = None,
+        shared_root: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Build a bin mask from the transmission monitor and register it.
+
+        Monitor data lives in the native NeXus file; the resulting mask encodes
+        wavelength-space notch positions that are independent of lite/native
+        detector binning.  ``is_lite=True`` is passed to the backend so the
+        spectraLst covers the standard SNAP DAC lite-mode pixel set.
+
+        Calls ``build_swiss_cheese_from_transmission_monitor`` (Mantid
+        required) to detect notch positions, saves the mask JSON to the
+        campaign artefact directory, then registers each output file as an
+        artefact.  Returns a list of registered artefact records (one per
+        saved JSON file).
+        """
+        from snapwrap.reduction_artefacts.masking import (  # type: ignore
+            build_swiss_cheese_from_transmission_monitor,
+        )
+
+        artefact_dir = get_campaign_artefact_dir(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        file_prefix = f"binmask_monitor_run{run_number}"
+
+        json_paths, notches, diag_png = build_swiss_cheese_from_transmission_monitor(
+            run_number=run_number,
+            is_lite=True,
+            output_dir=artefact_dir,
+            file_prefix=file_prefix,
+            ipts=ipts,
+            lam_min=lam_min,
+            lam_max=lam_max,
+            dip_threshold=dip_threshold,
+            keep_diagnostics=keep_diagnostics,
+            monitor2_l2=monitor2_l2,
+        )
+
+        # Collect existing artefact IDs to drive version bump.
+        existing_ids = {
+            rec.get("artefact_id")
+            for rec in list_artefact_records(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_type="bin_mask",
+                shared_root=shared_root,
+            )
+        }
+
+        records = []
+        base_id = f"binmask-monitor-run{run_number}"
+        for json_path in json_paths:
+            artefact_id = base_id
+            version = 2
+            while artefact_id in existing_ids:
+                artefact_id = f"{base_id}-v{version}"
+                version += 1
+            existing_ids.add(artefact_id)
+
+            record = register_manual_bin_mask_artefact(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_id=artefact_id,
+                mask_json_path=str(json_path),
+                run_number=run_number,
+                shared_root=shared_root,
+                method="bin_mask.from_transmission",
+                metadata={
+                    "notches": [[float(lo), float(hi)] for lo, hi in notches],
+                    **({"monitor2_l2_override": float(monitor2_l2)} if monitor2_l2 is not None else {}),
+                },
+                thumbnail_path=str(diag_png) if diag_png is not None else None,
+            )
+            records.append(record)
+
+        return records
 
     # ── Run queries ──────────────────────────────────────────────────
 
@@ -384,6 +595,22 @@ class CampaignManagerModel:
             atype = rec.get("artefact_type")
             if atype:
                 runs[rn]["artefact_types"].add(atype)
+
+        # Crystal species are in a separate index — include run-scoped ones.
+        cs_records = list_crystal_species_records(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        for rec in cs_records:
+            rn = rec.get("source_run")
+            if not isinstance(rn, int):
+                continue
+            if rn not in runs:
+                runs[rn] = {"run_number": rn, "artefact_count": 0, "artefact_types": set()}
+            runs[rn]["artefact_count"] += 1
+            runs[rn]["artefact_types"].add("crystal_species")
+
         # Convert sets to sorted lists for stable display
         for entry in runs.values():
             entry["artefact_types"] = sorted(entry["artefact_types"])
@@ -442,6 +669,25 @@ class CampaignManagerModel:
                         "_crystal_species": rec,
                     })
 
+        # Attach thumbnail_path to pixel_mask records where the PNG exists.
+        # Thumbnails are stored at a predictable path in the artefact dir,
+        # so this works for records registered in previous sessions too.
+        try:
+            artefact_dir_p = get_campaign_artefact_dir(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                shared_root=shared_root,
+            )
+            for rec in records:
+                if rec.get("artefact_type") == "pixel_mask" and "thumbnail_path" not in rec:
+                    aid = rec.get("artefact_id", "")
+                    if aid:
+                        thumb = artefact_dir_p / f"{aid}_thumbnail.png"
+                        if thumb.exists():
+                            rec["thumbnail_path"] = str(thumb)
+        except Exception:
+            pass
+
         return records
 
     # ── Artefact mutations ───────────────────────────────────────────
@@ -497,6 +743,59 @@ class CampaignManagerModel:
                     fh.write(_json.dumps(rec) + "\n")
             tmp.replace(paths.crystal_species_index)
         return removed
+
+    @staticmethod
+    def copyCrystalSpeciesToCampaign(
+        *,
+        cs_record: dict[str, Any],
+        target_ipts: int,
+        target_campaign: str,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Copy a crystal species to another campaign.
+
+        Ingests the CIF file into the target campaign's asset store, reads
+        the source EOS JSON (if present), then registers a new species record
+        in the target campaign.  The ``source_run`` is not carried over —
+        the copied species is campaign-wide in the target.
+        """
+        import json as _json
+
+        cif_path = cs_record.get("cifPath", "")
+        eos_path_src = cs_record.get("eosPath")
+        species_name = cs_record.get("species_name", "")
+        role = cs_record.get("role", "sample")
+
+        new_cif_path = cif_path
+        if cif_path:
+            cif_rec = ingest_asset(
+                ipts=target_ipts,
+                campaign_identifier=target_campaign,
+                source_path=cif_path,
+                asset_type="cif",
+                shared_root=shared_root,
+            )
+            new_cif_path = cif_rec.get("path", cif_path)
+
+        eos_params: dict[str, Any] | None = None
+        if eos_path_src:
+            try:
+                eos_params = _json.loads(
+                    Path(eos_path_src).read_text(encoding="utf-8")
+                )
+            except Exception:
+                pass
+
+        return CampaignManagerModel.registerCrystalSpecies(
+            ipts=target_ipts,
+            campaign_identifier=target_campaign,
+            species_name=species_name,
+            cif_path=new_cif_path,
+            role=role,
+            eos_params=eos_params,
+            source_run=None,
+            shared_root=shared_root,
+        )
 
     @staticmethod
     def registerCrystalSpecies(

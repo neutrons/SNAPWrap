@@ -44,7 +44,7 @@ ARTEFACT_COLUMNS: list[tuple[str, str, str]] = [
     ("Status",       "status",                       "Active or retired"),
     ("Type",         "artefact_type",                "e.g. bin_mask, pixel_mask, crystal_species"),
     ("ID",           "artefact_id",                  "Artefact identifier (unique per campaign)"),
-    ("Run",          "run_context.run_number",       "Run number this artefact applies to (if scoped)"),
+    ("Scope",        "run_context.run_number",       "Run number, or 'all' for campaign-wide artefacts"),
     ("Method",       "method",                       "How the artefact was produced"),
     ("Created",      "created_at",                   "ISO timestamp"),
     ("By",           "created_by",                   "Provenance author"),

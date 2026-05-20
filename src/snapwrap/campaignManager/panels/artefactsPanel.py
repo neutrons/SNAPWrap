@@ -9,6 +9,8 @@ background worker thread and triggers a reload on completion.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 from qtpy.QtCore import (  # type: ignore
@@ -18,16 +20,19 @@ from qtpy.QtCore import (  # type: ignore
     Qt,
     Signal,
 )
-from qtpy.QtGui import QGuiApplication  # type: ignore
+from qtpy.QtGui import QGuiApplication, QPixmap  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMenu,
     QPushButton,
+    QSplitter,
     QTableView,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -39,6 +44,268 @@ from snapwrap.campaignManager.constants import (
     lookup,
 )
 from snapwrap.campaignManager.delegates import StatusPillDelegate
+
+
+# ── CIF preview helper (mirrors setupPanel._cif_preview_text) ─────────────────
+
+def _cif_preview_text(path: str) -> str:
+    """Return a brief crystal summary from a CIF file (regex, no Mantid)."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    def _get(*keys: str) -> str:
+        for key in keys:
+            m = re.search(
+                rf"^{re.escape(key)}\s+['\"]?([^'\"\n]+)['\"]?",
+                text, re.MULTILINE | re.IGNORECASE,
+            )
+            if m:
+                return m.group(1).strip()
+        return "?"
+
+    sg = _get("_symmetry_space_group_name_H-M", "_space_group_name_H-M_alt",
+               "_symmetry_space_group_name_h-m")
+    formula = _get("_chemical_formula_sum", "_chemical_name_mineral",
+                   "_chemical_formula_structural")
+    a = _get("_cell_length_a")
+    b = _get("_cell_length_b")
+    c = _get("_cell_length_c")
+    alpha = _get("_cell_angle_alpha")
+    beta  = _get("_cell_angle_beta")
+    gamma = _get("_cell_angle_gamma")
+
+    lines: list[str] = []
+    if formula != "?":
+        lines.append(f"Formula: {formula}")
+    lines.append(f"Space group: {sg}")
+    lines.append(f"a={a}  b={b}  c={c} Å")
+    lines.append(f"α={alpha}  β={beta}  γ={gamma}°")
+    return "\n".join(lines)
+
+
+# ── Detail panel ──────────────────────────────────────────────────────────────
+
+class _DetailPanel(QGroupBox):
+    """Type-specific artefact inspector shown below the artefacts table.
+
+    Populated by :meth:`showRecord` when a table row is selected.  Each
+    artefact type gets its own rendering:
+
+    * **pixel_mask** — thumbnail PNG (if generated at registration) + metadata
+    * **crystal_species** — unit cell summary from the CIF + EOS parameters
+    * **other** — generic metadata summary
+    """
+
+    _THUMB_W, _THUMB_H = 192, 96  # display size — 1:1 with the 192×96 detector grid
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("Detail", parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 4, 6, 4)
+
+        # Thumbnail area — only visible for pixel_mask records with a PNG.
+        self._thumbLabel = QLabel()
+        self._thumbLabel.setFixedSize(self._THUMB_W, self._THUMB_H)
+        self._thumbLabel.setAlignment(Qt.AlignCenter)
+        self._thumbLabel.setStyleSheet(
+            "background: #1a1a1a; border: 1px solid #555; color: #888;"
+        )
+        self._thumbLabel.setText("no thumbnail")
+        self._thumbLabel.hide()
+        layout.addWidget(self._thumbLabel)
+
+        self._text = QTextBrowser()
+        self._text.setReadOnly(True)
+        self._text.setOpenLinks(False)
+        layout.addWidget(self._text, stretch=1)
+
+        self.clear()
+
+    # ── Public API ─────────────────────────────────────────────────────
+
+    def clear(self) -> None:
+        self._thumbLabel.hide()
+        self._text.setHtml("<i style='color:gray'>Select a row to inspect the artefact.</i>")
+
+    def showRecord(self, record: dict[str, Any]) -> None:
+        atype = record.get("artefact_type", "")
+        if atype == "pixel_mask":
+            self._showPixelMask(record)
+        elif atype == "bin_mask":
+            self._showBinMask(record)
+        elif atype == "crystal_species":
+            self._showCrystalSpecies(record)
+        else:
+            self._showGeneric(record)
+
+    # ── Type-specific renderers ────────────────────────────────────────
+
+    def _showPixelMask(self, record: dict[str, Any]) -> None:
+        thumb_path = record.get("thumbnail_path", "")
+        if thumb_path:
+            pix = QPixmap(thumb_path)
+            if not pix.isNull():
+                self._thumbLabel.setPixmap(
+                    pix.scaled(self._THUMB_W, self._THUMB_H,
+                               Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+                self._thumbLabel.setText("")
+                self._thumbLabel.show()
+            else:
+                self._thumbLabel.setText("thumbnail\nnot found")
+                self._thumbLabel.show()
+        else:
+            self._thumbLabel.hide()
+
+        aid = record.get("artefact_id", "—")
+        mode = "lite" if "lite" in aid else ("native" if "native" in aid else "—")
+        method = record.get("method", "—").replace("pixel_mask.", "")
+        ws = (record.get("metadata") or {}).get("ws_name", "—")
+        path = record.get("path", "—")
+        created = record.get("timestamp", record.get("created_at", "—"))
+
+        self._text.setHtml(
+            f"<b>Pixel mask</b>: {aid}<br>"
+            f"Mode: <b>{mode}</b> &nbsp;&nbsp; Method: {method}<br>"
+            f"Workspace name: <tt>{ws}</tt><br>"
+            f"File: <tt>{path}</tt><br>"
+            f"Registered: {created}"
+        )
+
+    def _showBinMask(self, record: dict[str, Any]) -> None:
+        thumb_path = record.get("thumbnail_path", "")
+        if thumb_path:
+            pix = QPixmap(thumb_path)
+            if not pix.isNull():
+                self._thumbLabel.setPixmap(
+                    pix.scaled(self._THUMB_W, self._THUMB_H,
+                               Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+                self._thumbLabel.setText("")
+                self._thumbLabel.show()
+            else:
+                self._thumbLabel.setText("diagnostic\nnot found")
+                self._thumbLabel.show()
+        else:
+            self._thumbLabel.hide()
+
+        aid = record.get("artefact_id", "—")
+        method = record.get("method", "—").replace("bin_mask.", "")
+        path = record.get("path", "—")
+        rc = record.get("run_context") or {}
+        rn = rc.get("run_number")
+        scope = f"run {rn}" if rn is not None else "campaign-wide"
+        created = record.get("timestamp", record.get("created_at", "—"))
+        notes = (record.get("provenance") or {}).get("notes", "") or record.get("notes", "")
+
+        # Parse the JSON mask file for units and row count.
+        units = "—"
+        n_rows = "—"
+        is_lite = "—"
+        if path and path != "—":
+            try:
+                import json as _json
+                mask_data = _json.loads(Path(path).read_text(encoding="utf-8"))
+                units = mask_data.get("units", "—")
+                xmins = mask_data.get("xmins", [])
+                n_rows = str(len(xmins))
+                lite_val = mask_data.get("isLite")
+                if lite_val is True:
+                    is_lite = "lite"
+                elif lite_val is False:
+                    is_lite = "native"
+            except Exception:
+                pass
+
+        meta = record.get("metadata") or {}
+        l2_override = meta.get("monitor2_l2_override")
+        l2_note = f" &nbsp;&nbsp; <span style='color:#f90'>L2 override: {l2_override} m</span>" if l2_override is not None else ""
+
+        parts = [
+            f"<b>Bin mask</b>: {aid}",
+            f"Units: <b>{units}</b> &nbsp;&nbsp; Rows: <b>{n_rows}</b> &nbsp;&nbsp; Mode: {is_lite}",
+            f"Method: {method} &nbsp;&nbsp; Scope: {scope}{l2_note}",
+            f"JSON: <tt>{path}</tt>",
+            f"Registered: {created}",
+        ]
+
+        notches = meta.get("notches")
+        if notches:
+            rows_html = "".join(
+                f"<tr><td align='right'>{lo:.4f}</td><td align='right'>{hi:.4f}</td>"
+                f"<td align='right'>{hi - lo:.4f}</td></tr>"
+                for lo, hi in notches
+            )
+            parts.append(
+                "<br><b>Detected notches</b> (Å):"
+                "<table style='font-size:small; margin-top:2px'>"
+                "<tr><th align='right'>λ_min</th><th align='right'>λ_max</th>"
+                "<th align='right'>width</th></tr>"
+                f"{rows_html}</table>"
+            )
+
+        if notes:
+            parts.append(f"Notes: {notes}")
+        self._text.setHtml("<br>".join(parts))
+
+    def _showCrystalSpecies(self, record: dict[str, Any]) -> None:
+        self._thumbLabel.hide()
+        cs = record.get("_crystal_species", {})
+        species = cs.get("species_name") or record.get("notes", "?")
+        role = cs.get("role", "?")
+
+        parts = [f"<b>Crystal species</b>: {species} &nbsp;({role})"]
+
+        cif_path = cs.get("cifPath", "")
+        if cif_path:
+            preview = _cif_preview_text(cif_path)
+            if preview:
+                parts.append(preview.replace("\n", "<br>"))
+
+        eos_path = cs.get("eosPath", "")
+        if eos_path:
+            try:
+                import json as _json
+                eos = _json.loads(Path(eos_path).read_text(encoding="utf-8"))
+                parts.append("<br><b>EOS</b>: " + eos.get("eos_type", "?"))
+                v0 = eos.get("V_0")
+                if v0 is not None:
+                    parts.append(f"V₀ = {v0:.5g} Å³/unit cell")
+                k0 = eos.get("K_0")
+                if k0 is not None:
+                    parts.append(f"K₀ = {k0:.5g} GPa")
+                kp = eos.get("K_prime")
+                if kp is not None:
+                    parts.append(f"K′ = {kp:.4g}")
+                src = eos.get("source", "")
+                if src:
+                    parts.append(f"Ref: {src}")
+                sp = eos.get("stability_pressure")
+                if sp:
+                    p0, p1 = sp[0], sp[1]
+                    bounds = f"{p0 if p0 is not None else '∞−'} – {p1 if p1 is not None else '∞'} GPa"
+                    parts.append(f"Stability P: {bounds}")
+            except Exception:
+                parts.append("<i>(EOS file not readable)</i>")
+        else:
+            parts.append("<i>No EOS data</i>")
+
+        self._text.setHtml("<br>".join(parts))
+
+    def _showGeneric(self, record: dict[str, Any]) -> None:
+        self._thumbLabel.hide()
+        atype = record.get("artefact_type", "?")
+        aid = record.get("artefact_id", "?")
+        method = record.get("method", "")
+        notes = (record.get("provenance") or {}).get("notes", "") or record.get("notes", "")
+        parts = [f"<b>{atype}</b>: {aid}"]
+        if method:
+            parts.append(f"Method: {method}")
+        if notes:
+            parts.append(f"Notes: {notes}")
+        self._text.setHtml("<br>".join(parts))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -97,6 +364,8 @@ class ArtefactTableModel(QAbstractTableModel):
 
         value = lookup(row, key)
         if role == Qt.DisplayRole:
+            if key == "run_context.run_number":
+                return str(value) if value != "" else "all"
             return str(value) if value != "" else ""
         if role == Qt.ToolTipRole:
             return ARTEFACT_COLUMNS[index.column()][2]
@@ -122,6 +391,7 @@ class ArtefactsPanel(QWidget):
     refreshRequested = Signal()
     retireRequested = Signal(dict)
     copyRequested = Signal(dict)
+    copyCrystalSpeciesRequested = Signal(dict)
     openFileRequested = Signal(dict)
 
     _TYPE_ALL = "All types"
@@ -161,6 +431,7 @@ class ArtefactsPanel(QWidget):
         filterRow.addWidget(QLabel("Status:"))
         self._statusCombo = QComboBox()
         self._statusCombo.addItems([self._STATUS_ALL, "active", "retired"])
+        self._statusCombo.setCurrentText("active")
         self._statusCombo.currentTextChanged.connect(self._applyFilters)
         filterRow.addWidget(self._statusCombo)
 
@@ -190,7 +461,16 @@ class ArtefactsPanel(QWidget):
         self._table.setItemDelegateForColumn(0, StatusPillDelegate(self._table))
         self._table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._onContextMenu)
-        layout.addWidget(self._table, stretch=1)
+        self._table.selectionModel().currentChanged.connect(self._onCurrentChanged)
+
+        self._splitter = QSplitter(Qt.Vertical)
+        self._splitter.addWidget(self._table)
+        self._detailPanel = _DetailPanel()
+        self._detailPanel.setMinimumHeight(100)
+        self._splitter.addWidget(self._detailPanel)
+        self._splitter.setStretchFactor(0, 5)
+        self._splitter.setStretchFactor(1, 1)
+        layout.addWidget(self._splitter, stretch=1)
 
         # Footer.
         self._countLabel = QLabel("0 records")
@@ -259,25 +539,29 @@ class ArtefactsPanel(QWidget):
             return
 
         is_active = str(record.get("status", "")).lower() == "active"
-        has_path = bool(record.get("file_path") or record.get("mask_json_path"))
+        is_crystal_species = record.get("artefact_type") == "crystal_species"
+        cs_path = (record.get("_crystal_species") or {}).get("cifPath")
+        has_path = bool(
+            record.get("path") or record.get("file_path") or record.get("mask_json_path") or cs_path
+        )
 
         menu = QMenu(self._table)
 
-        retire_action = menu.addAction("Retire…")
+        retire_action = menu.addAction("Retire…" if not is_crystal_species else "Delete…")
         retire_action.setEnabled(is_active)
-        retire_action.setToolTip(
-            "Mark this artefact retired (reduction will skip it)."
-            if is_active
-            else "Already retired."
-        )
 
-        copy_action = menu.addAction("Copy…")
-        copy_action.setEnabled(is_active)
-        copy_action.setToolTip(
-            "Register a new artefact pointing at this one."
-            if is_active
-            else "Cannot copy a retired artefact."
-        )
+        if is_crystal_species:
+            copy_action = menu.addAction("Copy to campaign…")
+            copy_action.setEnabled(is_active)
+            copy_action.setToolTip("Copy this species (and its EOS) into another campaign.")
+        else:
+            copy_action = menu.addAction("Copy…")
+            copy_action.setEnabled(is_active)
+            copy_action.setToolTip(
+                "Register a new artefact pointing at this one."
+                if is_active
+                else "Cannot copy a retired artefact."
+            )
 
         menu.addSeparator()
 
@@ -290,8 +574,24 @@ class ArtefactsPanel(QWidget):
         if chosen is retire_action:
             self.retireRequested.emit(record)
         elif chosen is copy_action:
-            self.copyRequested.emit(record)
+            if is_crystal_species:
+                self.copyCrystalSpeciesRequested.emit(record)
+            else:
+                self.copyRequested.emit(record)
         elif chosen is open_action:
             self.openFileRequested.emit(record)
         elif chosen is copyid_action:
             QGuiApplication.clipboard().setText(str(record.get("artefact_id", "")))
+
+    # ── Detail panel wiring ────────────────────────────────────────
+
+    def _onCurrentChanged(self, current: QModelIndex, _previous: QModelIndex) -> None:
+        if not current.isValid():
+            self._detailPanel.clear()
+            return
+        src = self._proxy.mapToSource(current)
+        record = self._model.recordAt(src.row())
+        if record:
+            self._detailPanel.showRecord(record)
+        else:
+            self._detailPanel.clear()

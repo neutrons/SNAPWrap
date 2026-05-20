@@ -436,6 +436,73 @@ def rename_campaign_slug(
     }
 
 
+def delete_campaign(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    shared_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Permanently delete a campaign: removes it from ``_state.json`` and
+    deletes the campaign directory tree (all indexes, artefact files, etc.).
+
+    This is irreversible.  The caller is responsible for showing a
+    confirmation dialog before invoking this function.
+
+    Returns a dict ``{"deleted": True, "campaign_slug": slug, "campaign_id": id}``.
+    Raises :exc:`KeyError` if the slug is not found.
+    """
+    import shutil as _shutil
+
+    if ipts < 1:
+        raise ValueError("ipts must be >= 1")
+
+    root = _reduction_artefacts_root(ipts=ipts, shared_root=shared_root)
+    state_path = root / "_state.json"
+    state_lock = state_path.with_suffix(state_path.suffix + ".lock")
+    campaigns_dir = root / "campaigns"
+
+    with _exclusive_lock(state_lock):
+        if not state_path.exists():
+            raise KeyError(f"State file does not exist: {state_path}")
+
+        with state_path.open("r", encoding="utf-8") as handle:
+            state = json.load(handle)
+
+        campaigns = state.setdefault("campaigns", {})
+        aliases = state.setdefault("aliases", {})
+
+        slug = resolve_campaign_slug(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+
+        if slug not in campaigns:
+            raise KeyError(f"Unknown campaign slug: {slug!r}")
+
+        rec = campaigns.pop(slug)
+        campaign_id = rec.get("campaign_id")
+
+        # Remove all aliases that pointed at this slug.
+        for key in [k for k, v in aliases.items() if v == slug]:
+            del aliases[key]
+
+        # When the last campaign is deleted there can be no surviving ID
+        # references, so it is safe to reset the counter.
+        if not campaigns:
+            state["next_campaign_id"] = 1
+
+        _atomic_write_json(state_path, state)
+
+    # Delete the directory outside the lock — failure here leaves _state.json
+    # already updated, so the campaign is de-registered even if rmtree fails.
+    campaign_dir = campaigns_dir / slug
+    if campaign_dir.exists():
+        _shutil.rmtree(campaign_dir)
+
+    return {"deleted": True, "campaign_slug": slug, "campaign_id": campaign_id}
+
+
 def bootstrap_campaign(
     *,
     ipts: int,
@@ -1721,6 +1788,9 @@ def register_manual_bin_mask_artefact(
     status: str = "active",
     notes: str | None = None,
     created_by: str = "operator",
+    method: str = "bin_mask.manual_import",
+    metadata: dict | None = None,
+    thumbnail_path: str | None = None,
 ) -> dict[str, Any]:
     """Register a manually-created swiss-cheese bin-mask artefact.
 
@@ -1788,7 +1858,7 @@ def register_manual_bin_mask_artefact(
         provenance_source="manual",
         created_by=created_by,
         notes=notes,
-        metadata={"method": "bin_mask.manual_import"},
+        metadata={"method": method},
     )
 
     # ── Register the artefact ─────────────────────────────────────────────
@@ -1802,7 +1872,7 @@ def register_manual_bin_mask_artefact(
         "artefact_id": artefact_id,
         "artefact_type": "bin_mask",
         "intended_use": "pre_reduction",
-        "method": "bin_mask.manual_import",
+        "method": method,
         "version": version,
         "status": status,
         "run_context": {
@@ -1815,8 +1885,10 @@ def register_manual_bin_mask_artefact(
             "created_by": created_by,
             "tool": "manual",
         },
-        "metadata": {},
+        "metadata": dict(metadata) if metadata else {},
     }
+    if thumbnail_path:
+        record["thumbnail_path"] = thumbnail_path
     if notes:
         record["provenance"]["notes"] = notes
 
