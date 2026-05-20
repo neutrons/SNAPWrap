@@ -7,6 +7,8 @@ Phase 4c (pending): Crystal phase builder.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 from qtpy.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal  # type: ignore
@@ -257,7 +259,16 @@ class _EosSubForm(QGroupBox):
         self.setChecked(False)
         self.setToolTip("Tick to provide EOS parameters for pressure work.")
 
-        layout = QFormLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(4, 4, 4, 4)
+
+        # All form content lives in this widget, shown/hidden by the checkbox.
+        self._content = QWidget()
+        outer.addWidget(self._content)
+        self._content.setVisible(False)
+        self.toggled.connect(self._content.setVisible)
+
+        layout = QFormLayout(self._content)
         layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         # EOS type
@@ -425,6 +436,56 @@ class _EosSubForm(QGroupBox):
         return None
 
 
+# ── CIF preview helper ────────────────────────────────────────────────────────
+
+def _cif_preview_text(path: str) -> str:
+    """Return a tooltip-friendly crystal summary extracted from a CIF file.
+
+    Uses simple regex extraction — no Mantid required.  Returns an empty
+    string if the file cannot be read or parsed.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    def _get(*keys: str) -> str:
+        for key in keys:
+            m = re.search(
+                rf"^{re.escape(key)}\s+['\"]?([^'\"\n]+)['\"]?",
+                text,
+                re.MULTILINE | re.IGNORECASE,
+            )
+            if m:
+                return m.group(1).strip()
+        return "?"
+
+    sg = _get(
+        "_symmetry_space_group_name_H-M",
+        "_space_group_name_H-M_alt",
+        "_symmetry_space_group_name_h-m",
+    )
+    formula = _get(
+        "_chemical_formula_sum",
+        "_chemical_name_mineral",
+        "_chemical_formula_structural",
+    )
+    a = _get("_cell_length_a")
+    b = _get("_cell_length_b")
+    c = _get("_cell_length_c")
+    alpha = _get("_cell_angle_alpha")
+    beta  = _get("_cell_angle_beta")
+    gamma = _get("_cell_angle_gamma")
+
+    lines: list[str] = []
+    if formula != "?":
+        lines.append(f"Formula:      {formula}")
+    lines.append(f"Space group:  {sg}")
+    lines.append(f"a = {a}  b = {b}  c = {c} Å")
+    lines.append(f"α = {alpha}  β = {beta}  γ = {gamma}°")
+    return "\n".join(lines)
+
+
 # ── Crystal phase form ────────────────────────────────────────────────────────
 
 class _CrystalPhaseForm(QWidget):
@@ -476,6 +537,8 @@ class _CrystalPhaseForm(QWidget):
         )
         if path:
             self._cifEdit.setText(path)
+            preview = _cif_preview_text(path)
+            self._cifEdit.setToolTip(preview if preview else path)
 
     def params(self) -> dict[str, Any]:
         run_text = self._runEdit.text().strip()
@@ -518,6 +581,7 @@ class SetupPanel(QWidget):
 
     ingestRequested = Signal()
     refreshRequested = Signal()
+    assetDeleteRequested = Signal(str)   # emits asset_id
     pixelMaskRegistrationRequested = Signal(dict)
     crystalSpeciesRegistrationRequested = Signal(dict)
 
@@ -531,6 +595,11 @@ class SetupPanel(QWidget):
 
         toolbar = QHBoxLayout()
         toolbar.addStretch(1)
+        self._deleteBtn = QPushButton("Delete asset")
+        self._deleteBtn.setToolTip("Permanently remove the selected asset from the index")
+        self._deleteBtn.setEnabled(False)
+        self._deleteBtn.clicked.connect(self._onDeleteAsset)
+        toolbar.addWidget(self._deleteBtn)
         self._ingestBtn = QPushButton("Ingest asset…")
         self._ingestBtn.setToolTip("Copy a file into the managed asset store")
         self._ingestBtn.clicked.connect(self.ingestRequested)
@@ -548,6 +617,7 @@ class SetupPanel(QWidget):
         self._assetView.setEditTriggers(QTableView.NoEditTriggers)
         self._assetView.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self._assetView.verticalHeader().setVisible(False)
+        self._assetView.selectionModel().selectionChanged.connect(self._onAssetSelectionChanged)
         ag_layout.addWidget(self._assetView)
 
         layout.addWidget(assets_group)
@@ -592,6 +662,17 @@ class SetupPanel(QWidget):
         self._assetModel.setRows(rows)
 
     # ── Internal slots ─────────────────────────────────────────────────
+
+    def _onAssetSelectionChanged(self) -> None:
+        self._deleteBtn.setEnabled(bool(self._assetView.selectionModel().selectedRows()))
+
+    def _onDeleteAsset(self) -> None:
+        rows = self._assetView.selectionModel().selectedRows()
+        if not rows:
+            return
+        asset_id = self._assetModel._rows[rows[0].row()].get("asset_id", "")
+        if asset_id:
+            self.assetDeleteRequested.emit(asset_id)
 
     def _onTypeChanged(self, index: int) -> None:
         self._stack.setCurrentIndex(index)

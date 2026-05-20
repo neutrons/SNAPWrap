@@ -144,6 +144,7 @@ class CampaignManager(QDialog):
         self._setupPanel.refreshRequested.connect(self._reloadSetup)
         self._setupPanel.pixelMaskRegistrationRequested.connect(self._onPixelMaskRegistrationRequested)
         self._setupPanel.crystalSpeciesRegistrationRequested.connect(self._onCrystalSpeciesRegistrationRequested)
+        self._setupPanel.assetDeleteRequested.connect(self._onAssetDeleteRequested)
 
         self._tabs.addTab(self._setupPanel, "Setup")
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
@@ -524,6 +525,30 @@ class CampaignManager(QDialog):
             },
             success_msg=lambda r: f"Pixel mask '{r.get('artefact_id', '')}' registered.",
             after_success=_after_success,
+        )
+
+    def _onAssetDeleteRequested(self, asset_id: str) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
+            return
+        reply = QMessageBox.question(
+            self,
+            "Delete asset",
+            f"Permanently remove asset <b>{asset_id}</b> from the index?<br>"
+            "This cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._runMutation(
+            label=f"Deleting asset '{asset_id}'…",
+            fn=self._model.deleteAsset,
+            kwargs={"ipts": ipts, "campaign_identifier": slug, "asset_id": asset_id},
+            success_msg=lambda n: f"Deleted {n} record(s) for asset '{asset_id}'.",
+            after_success=self._reloadSetup,
         )
 
     def _onCrystalSpeciesRegistrationRequested(self, params: dict[str, Any]) -> None:

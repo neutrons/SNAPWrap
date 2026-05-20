@@ -20,10 +20,12 @@ from snapwrap.reduction_artefacts import (
     bootstrap_campaign,
     copy_artefact,
     get_campaign_artefact_dir,
+    get_campaign_paths,
     ingest_asset,
     list_artefact_records,
     list_asset_records,
     list_campaigns,
+    read_jsonl_records,
     register_crystal_species_artefact,
     register_pixel_mask_artefact,
     retire_artefact,
@@ -156,6 +158,38 @@ class CampaignManagerModel:
             if aid is not None:
                 seen[aid] = rec
         return list(seen.values())
+
+    @staticmethod
+    def deleteAsset(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        asset_id: str,
+        shared_root: str | Path | None = None,
+    ) -> int:
+        """Hard-delete all records for *asset_id* from the asset JSONL index.
+
+        Rewrites the index atomically (temp file + rename), removing every
+        record whose ``asset_id`` matches.  The physical file on disk is not
+        touched.  Returns the number of records removed.
+        """
+        import json as _json
+
+        paths = get_campaign_paths(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        all_records = read_jsonl_records(paths.assets_index)
+        keep = [r for r in all_records if r.get("asset_id") != asset_id]
+        removed = len(all_records) - len(keep)
+        if removed:
+            tmp = paths.assets_index.with_suffix(".jsonl.tmp")
+            with tmp.open("w", encoding="utf-8") as fh:
+                for rec in keep:
+                    fh.write(_json.dumps(rec) + "\n")
+            tmp.replace(paths.assets_index)
+        return removed
 
     @staticmethod
     def ingestAsset(

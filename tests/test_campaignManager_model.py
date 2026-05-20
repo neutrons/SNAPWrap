@@ -428,6 +428,30 @@ def test_createCampaign_bootstraps_campaign(tmp_path: Path) -> None:
     assert "gamma-test" in slugs
 
 
+def test_deleteAsset_removes_records(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    cif_file = tmp_path / "sample.cif"
+    cif_file.write_text("# cif")
+
+    CampaignManagerModel.ingestAsset(
+        ipts=ipts, campaign_identifier="alpha", source_path=cif_file,
+        asset_type="cif", asset_id="to-delete", shared_root=shared,
+    )
+    assert any(
+        a["asset_id"] == "to-delete"
+        for a in CampaignManagerModel.getAssets(ipts=ipts, campaign_identifier="alpha", shared_root=shared)
+    )
+
+    n = CampaignManagerModel.deleteAsset(
+        ipts=ipts, campaign_identifier="alpha", asset_id="to-delete", shared_root=shared
+    )
+    assert n == 1
+    assert all(
+        a["asset_id"] != "to-delete"
+        for a in CampaignManagerModel.getAssets(ipts=ipts, campaign_identifier="alpha", shared_root=shared)
+    )
+
+
 def test_registerCrystalSpecies_registers_artefact(two_campaign_ipts, tmp_path: Path) -> None:
     ipts, shared = two_campaign_ipts
     cif = tmp_path / "si.cif"
