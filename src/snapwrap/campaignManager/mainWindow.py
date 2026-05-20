@@ -150,6 +150,7 @@ class CampaignManager(QDialog):
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(self._runsPanel, "Runs")
         self._tabs.addTab(self._reducePanel, "Reduce")
+        self._tabs.currentChanged.connect(self._onTabChanged)
         layout.addWidget(self._tabs, stretch=1)
 
         # Status bar with embedded progress bar.
@@ -359,6 +360,11 @@ class CampaignManager(QDialog):
 
     # ── Data loading (background) ────────────────────────────────────
 
+    def _onTabChanged(self, _index: int) -> None:
+        """Auto-refresh the Artefacts panel whenever the user switches to it."""
+        if self._tabs.currentWidget() is self._artefactsPanel:
+            self._reloadCurrent()
+
     def _reloadCurrent(self) -> None:
         ipts = self._currentIPTS()
         slug_label = self._campaignCombo.currentData()
@@ -449,6 +455,30 @@ class CampaignManager(QDialog):
             return
 
         artefact_id = record.get("artefact_id", "")
+
+        # Crystal species have no status field — "retire" is a hard delete.
+        if record.get("artefact_type") == "crystal_species":
+            confirm = QMessageBox.question(
+                self,
+                "Delete crystal species?",
+                (
+                    f"Permanently remove crystal species <b>{artefact_id}</b>?<br><br>"
+                    "Crystal species records have no 'retired' state — this removes "
+                    "the entry completely and cannot be undone."
+                ),
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            )
+            if confirm != QMessageBox.Yes:
+                return
+            self._runMutation(
+                label=f"Deleting crystal species '{artefact_id}'…",
+                fn=self._model.deleteCrystalSpecies,
+                kwargs={"ipts": ipts, "campaign_identifier": slug, "record_id": artefact_id},
+                success_msg=lambda n: f"Deleted {n} crystal species record(s).",
+            )
+            return
+
         confirm = QMessageBox.question(
             self,
             "Retire artefact?",
@@ -660,6 +690,12 @@ class CampaignManager(QDialog):
         thread.started.connect(worker.run)
 
         def _on_done(result):
+            # Release the active-thread slot BEFORE calling after_success so
+            # the callback (e.g. _reloadCurrent) can start a new load without
+            # hitting the in-flight busy guard.
+            if self._loadThread is thread:
+                self._loadThread = None
+                self._loadWorker = None
             self._setStatus(success_msg(result))
             if after_success is not None:
                 after_success()
@@ -667,13 +703,21 @@ class CampaignManager(QDialog):
                 self._reloadCurrent()
 
         def _on_err(message):
+            if self._loadThread is thread:
+                self._loadThread = None
+                self._loadWorker = None
+                self._progress.setVisible(False)
             QMessageBox.warning(self, "Action failed", message)
             self._setStatus(f"Failed: {message}")
 
         def _cleanup():
-            self._loadThread = None
-            self._loadWorker = None
-            self._progress.setVisible(False)
+            # thread.finished fires after thread.quit() is processed; by then
+            # after_success may have handed _loadThread to a new worker.
+            # Only clear and hide progress if this thread is still the active one.
+            if self._loadThread is thread:
+                self._loadThread = None
+                self._loadWorker = None
+                self._progress.setVisible(False)
 
         worker.finished.connect(_on_done)
         worker.error.connect(_on_err)

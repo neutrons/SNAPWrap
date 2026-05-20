@@ -507,6 +507,39 @@ def test_registerCrystalSpecies_with_eos(two_campaign_ipts, tmp_path: Path) -> N
     assert written["stability_pressure"] == [2.1, None]
 
 
+def test_deleteCrystalSpecies_removes_record(two_campaign_ipts, tmp_path: Path) -> None:
+    ipts, shared = two_campaign_ipts
+    cif = tmp_path / "si.cif"
+    cif.write_text("# dummy cif")
+
+    rec = CampaignManagerModel.registerCrystalSpecies(
+        ipts=ipts, campaign_identifier="alpha",
+        species_name="silicon", cif_path=str(cif), shared_root=shared,
+    )
+    record_id = rec["record_id"]
+
+    # Register a second species — only the first should be deleted.
+    cif2 = tmp_path / "ice.cif"
+    cif2.write_text("# ice cif")
+    CampaignManagerModel.registerCrystalSpecies(
+        ipts=ipts, campaign_identifier="alpha",
+        species_name="ice-VII", cif_path=str(cif2), shared_root=shared,
+    )
+
+    n = CampaignManagerModel.deleteCrystalSpecies(
+        ipts=ipts, campaign_identifier="alpha",
+        record_id=record_id, shared_root=shared,
+    )
+    assert n == 1
+
+    remaining = CampaignManagerModel.getArtefacts(
+        ipts=ipts, campaign_identifier="alpha", shared_root=shared
+    )
+    cs_ids = {r["artefact_id"] for r in remaining if r.get("artefact_type") == "crystal_species"}
+    assert record_id not in cs_ids
+    assert any("ice-VII" in aid for aid in cs_ids)
+
+
 def test_getArtefacts_includes_crystal_species(two_campaign_ipts, tmp_path: Path) -> None:
     """Crystal species registered in crystal_species_index.jsonl must appear
     in getArtefacts() with artefact_type == 'crystal_species'."""

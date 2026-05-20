@@ -466,6 +466,39 @@ class CampaignManagerModel:
         )
 
     @staticmethod
+    def deleteCrystalSpecies(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        record_id: str,
+        shared_root: str | Path | None = None,
+    ) -> int:
+        """Hard-delete a crystal species by record_id from crystal_species_index.jsonl.
+
+        Crystal species records have no ``status`` field, so soft-retire is not
+        possible without backend changes.  This rewrites the index atomically
+        (temp file + rename), removing every record whose ``record_id`` matches.
+        Returns the number of records removed.
+        """
+        import json as _json
+
+        paths = get_campaign_paths(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        all_records = read_jsonl_records(paths.crystal_species_index)
+        keep = [r for r in all_records if r.get("record_id") != record_id]
+        removed = len(all_records) - len(keep)
+        if removed:
+            tmp = paths.crystal_species_index.with_suffix(".jsonl.tmp")
+            with tmp.open("w", encoding="utf-8") as fh:
+                for rec in keep:
+                    fh.write(_json.dumps(rec) + "\n")
+            tmp.replace(paths.crystal_species_index)
+        return removed
+
+    @staticmethod
     def registerCrystalSpecies(
         *,
         ipts: int,
