@@ -17,6 +17,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -24,6 +25,7 @@ from qtpy.QtWidgets import (  # type: ignore
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QTableView,
     QVBoxLayout,
@@ -533,11 +535,14 @@ class _CrystalPhaseForm(QWidget):
         self._cifCombo.currentIndexChanged.connect(self._onCifChanged)
         form.addRow("CIF asset:", self._cifCombo)
 
-        # Crystal structure preview for the selected CIF
-        self._cifPreview = QLabel()
-        self._cifPreview.setWordWrap(True)
-        self._cifPreview.setStyleSheet("color: gray;")
-        self._cifPreview.setTextFormat(Qt.PlainText)
+        # Crystal structure preview for the selected CIF.
+        # Fixed-height QPlainTextEdit avoids the height-for-width instability
+        # that QLabel(wordWrap=True) introduces in QFormLayout.
+        self._cifPreview = QPlainTextEdit()
+        self._cifPreview.setReadOnly(True)
+        self._cifPreview.setFixedHeight(62)
+        self._cifPreview.setFrameShape(QFrame.NoFrame)
+        self._cifPreview.setStyleSheet("color: gray; background: transparent;")
         form.addRow("", self._cifPreview)
 
         self._runEdit = QLineEdit()
@@ -591,7 +596,7 @@ class _CrystalPhaseForm(QWidget):
             self._cifPreview.clear()
             return
         path = rec.get("path", "")
-        self._cifPreview.setText(_cif_preview_text(path) if path else "")
+        self._cifPreview.setPlainText(_cif_preview_text(path) if path else "")
 
     def params(self) -> dict[str, Any]:
         rec = self._cifCombo.currentData()
@@ -709,7 +714,14 @@ class SetupPanel(QWidget):
         btn_row.addWidget(self._createBtn)
         cg_layout.addLayout(btn_row)
 
-        layout.addWidget(creation_group)
+        # Wrap in a scroll area so expanding EOS never fights the assets table
+        # for vertical space — the form scrolls rather than compressing.
+        creation_scroll = QScrollArea()
+        creation_scroll.setWidgetResizable(True)
+        creation_scroll.setFrameShape(QFrame.NoFrame)
+        creation_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        creation_scroll.setWidget(creation_group)
+        layout.addWidget(creation_scroll)
 
     # ── Public API ─────────────────────────────────────────────────────
 
