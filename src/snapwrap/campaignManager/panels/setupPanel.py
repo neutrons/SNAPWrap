@@ -266,7 +266,7 @@ class _EosSubForm(QGroupBox):
         self._content = QWidget()
         outer.addWidget(self._content)
         self._content.setVisible(False)
-        self.toggled.connect(self._content.setVisible)
+        self.toggled.connect(self._onToggled)
 
         layout = QFormLayout(self._content)
         layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -358,6 +358,18 @@ class _EosSubForm(QGroupBox):
         t_layout.addWidget(QLabel("T_max:"))
         t_layout.addWidget(self._tMaxEdit)
         layout.addRow("Temperature (K):", t_row)
+
+    def _onToggled(self, checked: bool) -> None:
+        self._content.setVisible(checked)
+        # setVisible alone doesn't propagate a layout-request through
+        # QStackedWidget — walk up and re-activate every layout so the
+        # parent chain re-allocates space correctly.
+        p = self.parentWidget()
+        while p is not None:
+            if p.layout() is not None:
+                p.layout().invalidate()
+                p.layout().activate()
+            p = p.parentWidget()
 
     def _onUnitChanged(self, _index: int) -> None:
         needs_z = self._v0UnitCombo.currentText() != _V0_UNIT_CELL
