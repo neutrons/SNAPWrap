@@ -558,6 +558,86 @@ class CampaignManagerModel:
 
         return records
 
+    @staticmethod
+    def registerManualNotchMask(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        notches: list[list[float]],
+        units: str = "Wavelength",
+        is_lite: bool = True,
+        run_number: int | None = None,
+        notes: str | None = None,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Build and register a bin mask from a manually entered notch list.
+
+        Calls ``build_swiss_cheese_from_notch_list`` (no Mantid detectors
+        needed — pure JSON construction) and registers the result.
+        Returns the registered artefact record.
+        """
+        from snapwrap.reduction_artefacts.masking import (  # type: ignore
+            build_swiss_cheese_from_notch_list,
+        )
+
+        artefact_dir = get_campaign_artefact_dir(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        file_prefix = (
+            f"binmask_manual_run{run_number}"
+            if run_number is not None
+            else "binmask_manual_campaign"
+        )
+
+        json_paths = build_swiss_cheese_from_notch_list(
+            notches=notches,
+            units=units,
+            is_lite=is_lite,
+            output_dir=artefact_dir,
+            file_prefix=file_prefix,
+        )
+
+        existing_ids = {
+            rec.get("artefact_id")
+            for rec in list_artefact_records(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_type="bin_mask",
+                shared_root=shared_root,
+            )
+        }
+
+        base_id = (
+            f"binmask-manual-run{run_number}"
+            if run_number is not None
+            else "binmask-manual-campaign"
+        )
+        records = []
+        for json_path in json_paths:
+            artefact_id = base_id
+            version = 2
+            while artefact_id in existing_ids:
+                artefact_id = f"{base_id}-v{version}"
+                version += 1
+            existing_ids.add(artefact_id)
+
+            record = register_manual_bin_mask_artefact(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_id=artefact_id,
+                mask_json_path=str(json_path),
+                run_number=run_number,
+                shared_root=shared_root,
+                method="bin_mask.manual_entry",
+                metadata={"notches": [[float(lo), float(hi)] for lo, hi in notches]},
+                notes=notes,
+            )
+            records.append(record)
+
+        return records[0] if len(records) == 1 else records
+
     # ── Run queries ──────────────────────────────────────────────────
 
     @staticmethod

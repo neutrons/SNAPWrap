@@ -537,6 +537,42 @@ def detect_notches_in_spectrum(
     return final, diagnostics
 
 
+def build_swiss_cheese_from_notch_list(
+    notches: list[list[float]],
+    units: str,
+    is_lite: bool,
+    output_dir: str | Path,
+    file_prefix: str,
+) -> list[Path]:
+    """Build and save a swiss-cheese bin mask from a manually provided notch list.
+
+    No Mantid required — ``notchFromList`` only constructs the JSON structure.
+
+    Args:
+        notches: List of ``[min, max]`` pairs in the given units.
+        units: Unit label stored in the mask JSON (e.g. ``"Wavelength"`` or
+            ``"dSpacing"``).
+        is_lite: Whether to generate a lite-mode spectraLst.
+        output_dir: Directory in which mask JSON files are written.
+        file_prefix: Filename stem for saved mask files.
+
+    Returns:
+        List of saved mask JSON paths (one per grouping produced by
+        ``swissCheese.save``).
+    """
+    if _swissCheese is None:
+        raise RuntimeError(
+            "snapwrap.maskUtils is not available in this environment. "
+            "Run inside Mantid Workbench."
+        )
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sc = _swissCheese()
+    sc.notchFromList(units, notches, is_lite)
+    sc.save(str(output_dir), file_prefix)
+    return sorted(output_dir.glob(f"{file_prefix}_*.json"))
+
+
 def _save_notch_diagnostic_plot(
     *,
     x: "np.ndarray",

@@ -28,6 +28,8 @@ from qtpy.QtWidgets import (  # type: ignore
     QScrollArea,
     QStackedWidget,
     QTableView,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +40,7 @@ _ASSET_COLUMNS = ["Asset ID", "Type", "Scope", "Status"]
 _TYPE_PIXEL_MASK = 0
 _TYPE_CRYSTAL_PHASE = 1
 _TYPE_BIN_MASK_MONITOR = 2
+_TYPE_BIN_MASK_MANUAL = 3
 
 
 # ── Assets table ──────────────────────────────────────────────────────────────
@@ -565,6 +568,147 @@ class _BinMaskFromMonitorForm(QWidget):
         return None
 
 
+# ── Bin mask from manual notch list form ──────────────────────────────────────
+
+class _BinMaskManualForm(QWidget):
+    """Form for building a bin mask from a manually entered list of notches.
+
+    The operator enters (min, max) pairs directly.  No Mantid is required
+    to build the mask — ``notchFromList`` only constructs the JSON.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addLayout(form)
+
+        # Units
+        self._unitsCombo = QComboBox()
+        self._unitsCombo.addItem("Wavelength (Å)", userData="Wavelength")
+        self._unitsCombo.addItem("d-spacing (Å)", userData="dSpacing")
+        form.addRow("Units:", self._unitsCombo)
+
+        # Lite / native toggle
+        self._liteCheck = QCheckBox("Lite mode")
+        self._liteCheck.setChecked(True)
+        self._liteCheck.setToolTip(
+            "Lite (18 432-pixel) and native (1 179 648-pixel) masks are "
+            "incompatible — match this to your reduction mode."
+        )
+        form.addRow("Instrument mode:", self._liteCheck)
+
+        # Run number (optional)
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("optional — leave blank for campaign-wide")
+        form.addRow("Run number:", self._runEdit)
+
+        # Notch table
+        tbl_label = QLabel("Notches:")
+        tbl_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        tbl_container = QWidget()
+        tbl_layout = QVBoxLayout(tbl_container)
+        tbl_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._table = QTableWidget(0, 2)
+        self._table.setHorizontalHeaderLabels(["Min", "Max"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._table.setSelectionMode(QTableWidget.SingleSelection)
+        self._table.setFixedHeight(160)
+        tbl_layout.addWidget(self._table)
+
+        btn_row = QHBoxLayout()
+        add_btn = QPushButton("Add notch")
+        add_btn.clicked.connect(self._onAdd)
+        remove_btn = QPushButton("Remove selected")
+        remove_btn.clicked.connect(self._onRemove)
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(remove_btn)
+        btn_row.addStretch(1)
+        tbl_layout.addLayout(btn_row)
+
+        form.addRow(tbl_label, tbl_container)
+
+        # Notes
+        self._notesEdit = QPlainTextEdit()
+        self._notesEdit.setPlaceholderText("Optional notes")
+        self._notesEdit.setFixedHeight(55)
+        form.addRow("Notes:", self._notesEdit)
+
+        # Seed with one empty row so the operator sees the table immediately
+        self._onAdd()
+
+    # ── Slots ──────────────────────────────────────────────────────────
+
+    def _onAdd(self) -> None:
+        r = self._table.rowCount()
+        self._table.insertRow(r)
+        self._table.setItem(r, 0, QTableWidgetItem(""))
+        self._table.setItem(r, 1, QTableWidgetItem(""))
+        self._table.editItem(self._table.item(r, 0))
+
+    def _onRemove(self) -> None:
+        rows = sorted(
+            {idx.row() for idx in self._table.selectedIndexes()}, reverse=True
+        )
+        for r in rows:
+            self._table.removeRow(r)
+
+    # ── Public API ─────────────────────────────────────────────────────
+
+    def _parseNotches(self) -> list[list[float]]:
+        notches: list[list[float]] = []
+        for r in range(self._table.rowCount()):
+            min_item = self._table.item(r, 0)
+            max_item = self._table.item(r, 1)
+            try:
+                lo = float(min_item.text().strip() if min_item else "")
+                hi = float(max_item.text().strip() if max_item else "")
+                notches.append([lo, hi])
+            except ValueError:
+                pass
+        return notches
+
+    def params(self) -> dict[str, Any]:
+        run_text = self._runEdit.text().strip()
+        try:
+            run_number: int | None = int(run_text) if run_text else None
+        except ValueError:
+            run_number = None
+        return {
+            "notches": self._parseNotches(),
+            "units": self._unitsCombo.currentData(),
+            "is_lite": self._liteCheck.isChecked(),
+            "run_number": run_number,
+            "notes": self._notesEdit.toPlainText().strip() or None,
+        }
+
+    def validate(self) -> str | None:
+        notches = self._parseNotches()
+        if not notches:
+            return "Enter at least one notch (Min / Max pair)."
+        for i, (lo, hi) in enumerate(notches, start=1):
+            if lo <= 0 or hi <= 0:
+                return f"Notch {i}: both values must be positive."
+            if lo >= hi:
+                return f"Notch {i}: Min must be less than Max."
+        # Check for overlaps
+        sorted_n = sorted(notches, key=lambda n: n[0])
+        for i in range(len(sorted_n) - 1):
+            if sorted_n[i][1] > sorted_n[i + 1][0]:
+                return (
+                    f"Notches overlap: [{sorted_n[i][0]}, {sorted_n[i][1]}] and "
+                    f"[{sorted_n[i+1][0]}, {sorted_n[i+1][1]}]. "
+                    "Merge or separate them."
+                )
+        return None
+
+
 # ── CIF preview helper ────────────────────────────────────────────────────────
 
 def _cif_preview_text(path: str) -> str:
@@ -760,6 +904,7 @@ class SetupPanel(QWidget):
     pixelMaskRegistrationRequested = Signal(dict)
     crystalSpeciesRegistrationRequested = Signal(dict)
     binMaskFromMonitorRequested = Signal(dict)
+    binMaskManualRequested = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -808,6 +953,7 @@ class SetupPanel(QWidget):
         self._typeCombo.addItem("Pixel mask")
         self._typeCombo.addItem("Crystal phase")
         self._typeCombo.addItem("Bin mask (transmission monitor)")
+        self._typeCombo.addItem("Bin mask (manual notch list)")
         self._typeCombo.currentIndexChanged.connect(self._onTypeChanged)
         type_row.addWidget(self._typeCombo)
         type_row.addStretch(1)
@@ -824,6 +970,9 @@ class SetupPanel(QWidget):
 
         self._binMaskMonitorForm = _BinMaskFromMonitorForm()
         self._stack.addWidget(self._binMaskMonitorForm)  # index 2 = _TYPE_BIN_MASK_MONITOR
+
+        self._binMaskManualForm = _BinMaskManualForm()
+        self._stack.addWidget(self._binMaskManualForm)  # index 3 = _TYPE_BIN_MASK_MANUAL
 
         cg_layout.addWidget(self._stack)
 
@@ -886,3 +1035,9 @@ class SetupPanel(QWidget):
                 QMessageBox.warning(self, "Invalid form", error)
                 return
             self.binMaskFromMonitorRequested.emit(self._binMaskMonitorForm.params())
+        elif index == _TYPE_BIN_MASK_MANUAL:
+            error = self._binMaskManualForm.validate()
+            if error:
+                QMessageBox.warning(self, "Invalid form", error)
+                return
+            self.binMaskManualRequested.emit(self._binMaskManualForm.params())
