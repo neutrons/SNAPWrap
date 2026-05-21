@@ -34,6 +34,7 @@ from qtpy.QtWidgets import (  # type: ignore
 from snapwrap.campaignManager.dialogs import CopyArtefactDialog, CopyCrystalSpeciesDialog, IngestAssetDialog, NewCampaignDialog
 from snapwrap.campaignManager.model import CampaignManagerModel
 from snapwrap.campaignManager.panels.artefactsPanel import ArtefactsPanel
+from snapwrap.campaignManager.panels.postProcessingPanel import PostProcessingPanel
 from snapwrap.campaignManager.panels.reducePanel import ReducePanel
 from snapwrap.campaignManager.panels.runsPanel import RunsPanel
 from snapwrap.campaignManager.panels.setupPanel import SetupPanel
@@ -162,10 +163,14 @@ class CampaignManager(QDialog):
         self._setupPanel.binMaskManualRequested.connect(self._onBinMaskManualRequested)
         self._setupPanel.assetDeleteRequested.connect(self._onAssetDeleteRequested)
 
+        self._postProcessPanel = PostProcessingPanel(self)
+        self._runsPanel.runSelected.connect(self._postProcessPanel.setRunNumber)
+
         self._tabs.addTab(self._setupPanel, "Setup")
         self._tabs.addTab(self._artefactsPanel, "Artefacts")
         self._tabs.addTab(self._runsPanel, "Runs")
         self._tabs.addTab(self._reducePanel, "Reduce")
+        self._tabs.addTab(self._postProcessPanel, "Post-process")
         self._tabs.setCurrentWidget(self._artefactsPanel)
         self._tabs.currentChanged.connect(self._onTabChanged)
         layout.addWidget(self._tabs, stretch=1)
@@ -336,8 +341,10 @@ class CampaignManager(QDialog):
         self._deleteCampaignBtn.setEnabled(has_campaign)
         if not has_campaign:
             self._reducePanel.setContext(None, None)
+            self._postProcessPanel.setContext(None, None)
             return
         self._reducePanel.setContext(ipts, slug)
+        self._postProcessPanel.setContext(ipts, slug)
         self._reloadCurrent()
         self._reloadRunSummaries()
         self._reloadSetup()

@@ -638,6 +638,35 @@ class CampaignManagerModel:
 
         return records[0] if len(records) == 1 else records
 
+    # ── Post-processing ──────────────────────────────────────────────
+
+    @staticmethod
+    def postprocessResample(
+        *,
+        run_number: int | None = None,
+        sample_factor: float = 1.0,
+        units: str = "dsp",
+    ) -> str:
+        """Resample reduced workspaces using RebinRagged.
+
+        Wraps ``snapwrap.utils.resample``.  stdout is captured and returned
+        so the caller can display it in a log widget.
+        """
+        import contextlib
+        import io
+
+        from snapwrap.utils import resample  # type: ignore
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            resample(
+                sampleFactor=sample_factor,
+                prefix="reduced",
+                units=units,
+                runNumber=run_number,
+            )
+        return buf.getvalue()
+
     # ── Run queries ──────────────────────────────────────────────────
 
     @staticmethod
