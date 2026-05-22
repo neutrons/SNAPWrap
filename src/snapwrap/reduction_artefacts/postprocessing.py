@@ -344,7 +344,15 @@ def compute_dspace_gaps(
             hi = int(np.searchsorted(x, xmax, side="right"))
             y[lo:hi] = 0.0
 
-    # ── 7. Focus per group; extract d-space gap regions ───────────────
+    # ── 7. Convert synthetic workspace to dSpacing for DiffractionFocussing ──
+    ConvertUnits(
+        InputWorkspace=synthetic_name,
+        OutputWorkspace=synthetic_name,
+        Target="dSpacing",
+        EMode="Elastic",
+    )
+
+    # ── 8. Focus per group; extract d-space gap regions ───────────────
     result: dict[str, list[list[tuple[float, float]]]] = {}
     for group_name, grouping_ws in grouping_ws_map.items():
         focused_name = f"crop_diag_focused_{group_name}_{run_number}"
@@ -353,12 +361,7 @@ def compute_dspace_gaps(
             OutputWorkspace=focused_name,
             GroupingWorkspace=grouping_ws,
         )
-        ConvertUnits(
-            InputWorkspace=focused_name,
-            OutputWorkspace=focused_name,
-            Target="dSpacing",
-            EMode="Elastic",
-        )
+        # Output is already in dSpacing — no unit conversion needed.
         focused_ws = mtd[focused_name]
         spectrum_gaps = [
             _find_zero_runs(focused_ws, i)
