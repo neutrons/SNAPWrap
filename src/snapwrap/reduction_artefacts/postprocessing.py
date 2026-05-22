@@ -2,8 +2,9 @@
 
 Provides workspace-cropping based on registered bin-mask artefacts:
 
-1. Locate the hidden grouping workspaces and unfocused donor left in ADS by
-   SNAPRed after reduction.
+1. Obtain the grouping workspaces for this run — first by scanning ADS for
+   any that SNAPRed left behind, then by loading them fresh via
+   ``ReductionService.loadAllGroupings`` if none are present.
 2. Build a synthetic flat workspace, zero the notched wavelength regions for
    the appropriate detectors, then diffraction-focus it.
 3. Identify the resulting zero-valued regions as d-space gaps.
@@ -31,14 +32,16 @@ def _run_tokens(run_number: int) -> list[str]:
 
 
 def find_grouping_workspaces(run_number: int, is_lite: bool) -> dict[str, str]:
-    """Return ``{group_name: ws_name}`` for SNAPRed's hidden grouping workspaces.
+    """Scan ADS for SNAPRed's hidden grouping workspaces; return ``{group_name: ws_name}``.
 
-    SNAPRed leaves these in ADS after reduction with names of the form::
+    SNAPRed loads grouping workspaces with names of the form::
 
         __SNAPLite_grouping_<Group>_<run>   (lite mode)
         __SNAP_grouping_<Group>_<run>       (native mode)
 
-    where *<Group>* is capitalised (``Column``, ``Bank``, ``All``).
+    These are normally cleaned up after reduction completes.  This function
+    returns whatever happens to still be present; use
+    :func:`load_grouping_workspaces` to guarantee they exist.
     """
     from mantid.api import mtd  # type: ignore
 
@@ -68,6 +71,50 @@ def find_grouping_workspaces(run_number: int, is_lite: bool) -> dict[str, str]:
             result[group_name] = name
 
     return result
+
+
+def load_grouping_workspaces(
+    run_number: int, is_lite: bool
+) -> tuple[dict[str, str], list[str]]:
+    """Return grouping workspaces, loading them via SNAPRed if necessary.
+
+    Tries the ADS scan first (fast, zero overhead).  If nothing is found —
+    the common case after reduction has finished and SNAPRed has cleaned up —
+    calls ``ReductionService.loadAllGroupings`` to load them fresh.
+
+    Returns:
+        ``(grouping_ws_map, freshly_loaded)`` where *grouping_ws_map* is
+        ``{group_name: ws_name}`` and *freshly_loaded* is the list of
+        workspace names that were just loaded (caller should delete them
+        when no longer needed).
+
+    Raises:
+        RuntimeError: If no grouping workspaces can be obtained.
+    """
+    # Fast path: already in ADS
+    present = find_grouping_workspaces(run_number, is_lite)
+    if present:
+        return present, []
+
+    # Slow path: ask SNAPRed to load them
+    from snapred.backend.service.ReductionService import ReductionService  # type: ignore
+
+    service = ReductionService()
+    result = service.loadAllGroupings(str(run_number), is_lite)
+
+    focus_groups = result["focusGroups"]
+    ws_names: list[str] = result["groupingWorkspaces"]
+
+    if not ws_names:
+        raise RuntimeError(
+            f"ReductionService.loadAllGroupings returned no grouping workspaces "
+            f"for run {run_number} (lite={is_lite})."
+        )
+
+    grouping_ws_map = {
+        fg.name: ws_name for fg, ws_name in zip(focus_groups, ws_names)
+    }
+    return grouping_ws_map, ws_names
 
 
 def find_unfocused_workspace(run_number: int, is_lite: bool) -> str | None:
@@ -198,13 +245,10 @@ def compute_dspace_gaps(
         mtd,
     )
 
-    # ── 1. Locate hidden grouping workspaces ──────────────────────────
-    grouping_ws_map = find_grouping_workspaces(run_number, is_lite)
-    if not grouping_ws_map:
-        raise RuntimeError(
-            f"No hidden grouping workspaces found in ADS for run {run_number}. "
-            "Ensure reduction has been completed in this Mantid session."
-        )
+    # ── 1. Obtain grouping workspaces (ADS scan, then SNAPRed load) ───
+    grouping_ws_map, freshly_loaded_groupings = load_grouping_workspaces(
+        run_number, is_lite
+    )
 
     # ── 2. Locate donor unfocused workspace ───────────────────────────
     donor_name = find_unfocused_workspace(run_number, is_lite)
@@ -284,6 +328,14 @@ def compute_dspace_gaps(
 
     if not diagnostics:
         DeleteWorkspace(synthetic_name)
+
+    # Always clean up grouping workspaces we loaded ourselves — they are
+    # infrastructure, not diagnostic output.
+    for ws_name in freshly_loaded_groupings:
+        try:
+            DeleteWorkspace(ws_name)
+        except Exception:
+            pass
 
     return result
 
