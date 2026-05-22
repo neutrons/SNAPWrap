@@ -649,6 +649,7 @@ class CampaignManagerModel:
         is_lite: bool,
         source_prefix: str = "reduced",
         diagnostics: bool = False,
+        edge_bins: int = 0,
         shared_root: str | Path | None = None,
     ) -> list[dict[str, Any]]:
         """Crop notch-mask gaps from reduced/resampled workspaces.
@@ -661,6 +662,11 @@ class CampaignManagerModel:
         End-gaps (at spectrum edges) are removed with ``CropWorkspaceRagged``;
         interior gaps are set to ``NaN``.  Results are registered as
         ``cropped_workspace`` artefacts.
+
+        Args:
+            edge_bins: Extra bins to expand each gap boundary outward on
+                both sides, absorbing the spike transition zone at notch
+                edges.  Default 0 (no expansion).
 
         Returns a list of registered artefact records (one per focus group).
         """
@@ -703,6 +709,7 @@ class CampaignManagerModel:
             is_lite=is_lite,
             bin_mask_paths=mask_paths,
             diagnostics=diagnostics,
+            edge_bins=edge_bins,
         )
         if not gap_map:
             raise RuntimeError("Gap computation returned no results.")

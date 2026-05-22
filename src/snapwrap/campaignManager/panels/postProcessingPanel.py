@@ -134,6 +134,21 @@ class _CropForm(QWidget):
         )
         form.addRow("Instrument mode:", self._liteCheck)
 
+        self._edgeSpin = QDoubleSpinBox()
+        self._edgeSpin.setRange(0, 50)
+        self._edgeSpin.setSingleStep(1)
+        self._edgeSpin.setDecimals(0)
+        self._edgeSpin.setValue(0)
+        self._edgeSpin.setMaximumWidth(100)
+        self._edgeSpin.setToolTip(
+            "Extra bins to expand each detected gap boundary outward on both sides.\n"
+            "Use this to absorb the spike transition zone that appears at notch\n"
+            "edges in the focused diagnostic workspace (caused by the geometric\n"
+            "spread of 2θ within a focus group).  Start with 0 and increase\n"
+            "until the spikes are covered."
+        )
+        form.addRow("Edge expansion (bins):", self._edgeSpin)
+
         self._diagCheck = QCheckBox(
             "Retain synthetic + gap-map workspaces in ADS for inspection"
         )
@@ -158,6 +173,7 @@ class _CropForm(QWidget):
             "run_number": run_number,
             "source_prefix": self._sourcePrefixCombo.currentData(),
             "is_lite": self._liteCheck.isChecked(),
+            "edge_bins": int(self._edgeSpin.value()),
             "diagnostics": self._diagCheck.isChecked(),
         }
 
@@ -338,10 +354,11 @@ class PostProcessingPanel(QWidget):
         params = self._cropForm.params()
         run = params["run_number"]
         mode = "lite" if params["is_lite"] else "native"
+        edge_note = f"  edge={params['edge_bins']}bins" if params["edge_bins"] else ""
         diag_note = "  [diagnostics on]" if params["diagnostics"] else ""
         self._appendLog(
             f"── Cropping notch gaps: run {run}  "
-            f"source={params['source_prefix']}  mode={mode}{diag_note}  "
+            f"source={params['source_prefix']}  mode={mode}{edge_note}{diag_note}  "
             f"IPTS-{self._ipts} / {self._campaignSlug} ──"
         )
 
@@ -359,6 +376,7 @@ class PostProcessingPanel(QWidget):
                 "run_number": run,
                 "is_lite": params["is_lite"],
                 "source_prefix": params["source_prefix"],
+                "edge_bins": params["edge_bins"],
                 "diagnostics": params["diagnostics"],
             },
         )

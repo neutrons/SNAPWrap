@@ -218,16 +218,32 @@ def _load_notches(
 # ── Gap detection in a focused workspace ──────────────────────────────────────
 
 
-def _find_zero_runs(ws: Any, spectrum_idx: int) -> list[tuple[float, float]]:
-    """Return ``[(d_lo, d_hi)]`` for contiguous near-zero Y regions."""
+def _find_zero_runs(
+    ws: Any, spectrum_idx: int, edge_bins: int = 0
+) -> list[tuple[float, float]]:
+    """Return ``[(d_lo, d_hi)]`` for contiguous near-zero Y regions.
+
+    Args:
+        ws: Focused workspace in d-spacing.
+        spectrum_idx: Spectrum index to analyse.
+        edge_bins: Number of additional bins to expand each gap boundary
+            outward on both sides.  Use this to absorb the spike transition
+            zone that arises at notch edges due to the geometric spread of
+            2θ within a focus group (detectors emerge from the wavelength
+            notch at slightly different d-spacings, producing a brief
+            overshoot before the flat baseline is restored).  Default 0
+            (no expansion; pure zero detection).
+    """
     import numpy as np  # type: ignore
 
     y = np.asarray(ws.readY(spectrum_idx))
     x = np.asarray(ws.readX(spectrum_idx))
+    n_bins = len(y)
     threshold = 1e-10
     is_zero = np.abs(y) <= threshold
 
-    gaps: list[tuple[float, float]] = []
+    # Collect runs as half-open bin-index intervals [lo, hi).
+    raw: list[tuple[int, int]] = []
     in_gap = False
     gap_start = 0
     for i, z in enumerate(is_zero):
@@ -236,10 +252,20 @@ def _find_zero_runs(ws: Any, spectrum_idx: int) -> list[tuple[float, float]]:
             gap_start = i
         elif not z and in_gap:
             in_gap = False
-            gaps.append((float(x[gap_start]), float(x[i])))
+            raw.append((gap_start, i))
     if in_gap:
-        gaps.append((float(x[gap_start]), float(x[len(y)])))
-    return gaps
+        raw.append((gap_start, n_bins))
+
+    if not raw:
+        return []
+
+    # Expand boundaries and convert to d-space coordinates.
+    # x[lo] is the left edge of the first gap bin; x[hi] is the right edge
+    # of the last gap bin (hi is one-past-the-last bin index).
+    return [
+        (float(x[max(0, lo - edge_bins)]), float(x[min(n_bins, hi + edge_bins)]))
+        for lo, hi in raw
+    ]
 
 
 # ── Main gap-computation entry point ──────────────────────────────────────────
@@ -250,6 +276,7 @@ def compute_dspace_gaps(
     is_lite: bool,
     bin_mask_paths: list[str | Path],
     diagnostics: bool = False,
+    edge_bins: int = 0,
 ) -> dict[str, list[list[tuple[float, float]]]]:
     """Compute d-space gap intervals from registered wavelength bin masks.
 
@@ -263,6 +290,9 @@ def compute_dspace_gaps(
         diagnostics: If ``True``, leave the synthetic and focused gap-map
             workspaces in ADS (named ``crop_diag_synthetic_{run}`` and
             ``crop_diag_focused_{group}_{run}``) for inspection.
+        edge_bins: Extra bins to expand each detected gap boundary outward
+            on both sides, absorbing the spike transition zone at notch
+            edges (see :func:`_find_zero_runs`).  Default 0.
 
     Returns:
         ``{group_name: [[gaps_for_spectrum_0], [gaps_for_spectrum_1], …]}``
@@ -365,7 +395,7 @@ def compute_dspace_gaps(
         # Output is already in dSpacing — no unit conversion needed.
         focused_ws = mtd[focused_name]
         spectrum_gaps = [
-            _find_zero_runs(focused_ws, i)
+            _find_zero_runs(focused_ws, i, edge_bins=edge_bins)
             for i in range(focused_ws.getNumberHistograms())
         ]
         result[group_name] = spectrum_gaps
