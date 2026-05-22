@@ -2495,53 +2495,70 @@ def register_cropped_workspace_artefact(
     """Register a cropped-workspace artefact produced by post-processing.
 
     Records the in-ADS workspace name, the source workspace, the focus group,
-    and the path to the gap-map JSON used to perform the crop.
+    and the path to the gap-map JSON used to perform the crop.  Stored with
+    ``artefact_type="other"`` and ``intended_use="post_reduction"`` to satisfy
+    the artefact record schema.
 
     Args:
         ipts: IPTS experiment number.
         campaign_identifier: Campaign id (int) or slug (str).
-        artefact_id: Unique identifier, e.g. ``"crop-Column-065891"``.
+        artefact_id: Unique identifier, e.g. ``"crop-column-065891"``.
         ws_name: Name of the cropped workspace in the Mantid ADS.
         source_ws_name: Name of the workspace that was cropped.
         run_number: Run number this artefact belongs to.
-        focus_group: Focus-group name (e.g. ``"Column"``).
+        focus_group: Focus-group name (e.g. ``"column"``).
         gap_map_path: Absolute path to the saved gap-map JSON.
         applied_bin_mask_ids: Artefact IDs of the bin masks used.
         shared_root: Override for the IPTS shared root (useful in tests).
         version: Record version (default 1).
-        status: ``"active"`` (default) or ``"retired"``.
+        status: Artefact status (default ``"active"``).
         notes: Free-text operator notes.
         metadata: Extra key-value pairs stored verbatim.
     """
-    artefact_dir = get_campaign_artefact_dir(
+    campaign_slug = resolve_campaign_slug(
         ipts=ipts,
         campaign_identifier=campaign_identifier,
         shared_root=shared_root,
     )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
 
+    with paths.campaign_json.open("r", encoding="utf-8") as fh:
+        campaign = json.load(fh)
+    campaign_id = int(campaign.get("campaign_id", 0))
+
+    now = _utc_now_iso()
     record: dict[str, Any] = {
-        "artefact_type": "cropped_workspace",
+        "record_id": f"artefact-{artefact_id}-v{version}-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
         "artefact_id": artefact_id,
+        "artefact_type": "other",
+        "intended_use": "post_reduction",
+        "method": "crop.notch_gaps",
         "version": version,
         "status": status,
-        "run_number": run_number,
-        "focus_group": focus_group,
-        "ws_name": ws_name,
-        "source_ws_name": source_ws_name,
-        "gap_map_path": gap_map_path,
-        "applied_bin_mask_ids": applied_bin_mask_ids,
-        "artefact_dir": str(artefact_dir),
+        "run_context": {
+            "run_number": run_number,
+            "state_id": None,
+        },
+        "input_asset_ids": list(applied_bin_mask_ids),
+        "path": gap_map_path,
+        "provenance": {
+            "created_by": "snapwrap",
+            "tool": "postprocessing.apply_dspace_gaps",
+        },
+        "metadata": {
+            **(dict(metadata) if metadata else {}),
+            "ws_name": ws_name,
+            "source_ws_name": source_ws_name,
+            "focus_group": focus_group,
+        },
     }
     if notes:
-        record["notes"] = notes
-    if metadata:
-        record["metadata"] = metadata
+        record["provenance"]["notes"] = notes
 
-    paths = get_campaign_paths(
-        ipts=ipts,
-        campaign_identifier=campaign_identifier,
-        shared_root=shared_root,
-    )
     append_jsonl_record(
         paths.artefacts_index,
         record,
