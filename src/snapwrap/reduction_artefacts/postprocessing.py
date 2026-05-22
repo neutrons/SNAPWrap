@@ -272,6 +272,7 @@ def compute_dspace_gaps(
     import numpy as np  # type: ignore
     from mantid.simpleapi import (  # type: ignore
         CloneWorkspace,
+        ConvertToMatrixWorkspace,
         ConvertUnits,
         DeleteWorkspace,
         DiffractionFocussing,
@@ -307,6 +308,11 @@ def compute_dspace_gaps(
         OutputWorkspace=synthetic_name,
         Target="Wavelength",
         EMode="Elastic",
+    )
+    # EventWorkspace.dataY() is read-only; convert to histogram before writing.
+    ConvertToMatrixWorkspace(
+        InputWorkspace=synthetic_name,
+        OutputWorkspace=synthetic_name,
     )
 
     ws_syn = mtd[synthetic_name]
