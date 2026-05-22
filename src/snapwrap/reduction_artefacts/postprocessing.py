@@ -409,8 +409,12 @@ def apply_dspace_gaps(
     Returns:
         The output workspace name.
     """
+    import logging
+
     import numpy as np  # type: ignore
     from mantid.simpleapi import CloneWorkspace, CropWorkspaceRagged, mtd  # type: ignore
+
+    log = logging.getLogger("snapwrap")
 
     if output_ws_name is None:
         output_ws_name = ws_name + "_cropped"
@@ -443,6 +447,20 @@ def apply_dspace_gaps(
                 hi = int(np.searchsorted(x, g_hi, side="right"))
                 y[lo:hi] = np.nan
 
+        if new_xmin >= new_xmax:
+            log.warning(
+                "Spectrum %d of '%s': end-gaps consume the entire range "
+                "[%.4f, %.4f] — skipping crop for this spectrum.",
+                i, ws_name, d_start, d_end,
+            )
+            new_xmin = d_start
+            new_xmax = d_end
+
+        log.debug(
+            "Spectrum %d: crop [%.4f, %.4f] → [%.4f, %.4f], %d interior gap(s)",
+            i, d_start, d_end, new_xmin, new_xmax,
+            sum(1 for g_lo, g_hi in gaps if d_start < g_lo and g_hi < d_end),
+        )
         xmins.append(new_xmin)
         xmaxs.append(new_xmax)
 
