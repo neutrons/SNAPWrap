@@ -66,6 +66,7 @@ def find_grouping_workspaces(run_number: int, is_lite: bool) -> dict[str, str]:
         if idx < 0:
             continue
         tail = after_mode[idx + len("grouping_"):]  # e.g. "Column_065891"
+        tail = tail.lstrip("_")  # absorb double-underscore separator if present
         group_name = tail[: -(len(matched_token) + 1)]  # strip "_065891"
         if group_name:
             result[group_name.lower()] = name
