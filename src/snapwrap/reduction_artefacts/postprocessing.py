@@ -300,6 +300,8 @@ def compute_dspace_gaps(
     Raises:
         RuntimeError: If the required ADS workspaces are not found.
     """
+    import logging
+
     import numpy as np  # type: ignore
     from mantid.simpleapi import (  # type: ignore
         CloneWorkspace,
@@ -310,10 +312,13 @@ def compute_dspace_gaps(
         mtd,
     )
 
+    log = logging.getLogger("snapwrap")
+
     # ── 1. Obtain grouping workspaces (ADS scan, then SNAPRed load) ───
     grouping_ws_map, freshly_loaded_groupings = load_grouping_workspaces(
         run_number, is_lite
     )
+    log.info("Gap computation: %d focus group(s): %s", len(grouping_ws_map), list(grouping_ws_map))
 
     # ── 2. Locate donor unfocused workspace ───────────────────────────
     donor_name = find_unfocused_workspace(run_number, is_lite)
@@ -322,6 +327,7 @@ def compute_dspace_gaps(
             f"No unfocused workspace found in ADS for run {run_number}. "
             "Re-reduce with keepUnfocussed=True, or reload the raw data."
         )
+    log.info("Gap computation: donor workspace '%s'", donor_name)
 
     # ── 3. Load all notches from the supplied bin-mask files ──────────
     all_notches: list[tuple[float, float, list[range]]] = []
@@ -330,6 +336,12 @@ def compute_dspace_gaps(
 
     if not all_notches:
         return {}
+    log.info("Gap computation: %d notch(es) loaded", len(all_notches))
+    for xmin, xmax, det_ranges in all_notches:
+        n_ranges = len(det_ranges)
+        log.info("  notch λ=[%.4f, %.4f]  det_ranges=%d (%s)",
+                 xmin, xmax, n_ranges,
+                 "all detectors" if not det_ranges else f"e.g. {det_ranges[0]}")
 
     # ── 4. Build a synthetic flat workspace in Wavelength ─────────────
     synthetic_name = f"crop_diag_synthetic_{run_number}"
@@ -348,6 +360,9 @@ def compute_dspace_gaps(
 
     ws_syn = mtd[synthetic_name]
     n_hist = ws_syn.getNumberHistograms()
+    x0 = ws_syn.readX(0)
+    log.info("Gap computation: synthetic workspace — %d spectra, λ=[%.4f, %.4f] Å",
+             n_hist, float(x0[0]), float(x0[-1]))
     for i in range(n_hist):
         ws_syn.dataY(i)[:] = 1.0
         ws_syn.dataE(i)[:] = 0.0
@@ -368,12 +383,16 @@ def compute_dspace_gaps(
             ]
         else:
             indices = range(n_hist)
+        zeroed_bins = 0
         for i in indices:
             x = ws_syn.readX(i)
             y = ws_syn.dataY(i)
             lo = int(np.searchsorted(x, xmin, side="left"))
             hi = int(np.searchsorted(x, xmax, side="right"))
+            zeroed_bins += hi - lo
             y[lo:hi] = 0.0
+        log.info("  notch λ=[%.4f, %.4f]: zeroed %d bin×spectrum slots across %d spectra",
+                 xmin, xmax, zeroed_bins, len(list(indices)))
 
     # ── 7. Convert synthetic workspace to dSpacing for DiffractionFocussing ──
     ConvertUnits(
@@ -394,10 +413,21 @@ def compute_dspace_gaps(
         )
         # Output is already in dSpacing — no unit conversion needed.
         focused_ws = mtd[focused_name]
+        n_foc = focused_ws.getNumberHistograms()
+        y_min = min(float(np.min(focused_ws.readY(i))) for i in range(n_foc))
+        y_max = max(float(np.max(focused_ws.readY(i))) for i in range(n_foc))
+        log.info("Group '%s': focused workspace has %d spectra, Y∈[%.4g, %.4g]",
+                 group_name, n_foc, y_min, y_max)
         spectrum_gaps = [
             _find_zero_runs(focused_ws, i, edge_bins=edge_bins)
-            for i in range(focused_ws.getNumberHistograms())
+            for i in range(n_foc)
         ]
+        total_gaps = sum(len(g) for g in spectrum_gaps)
+        log.info("Group '%s': %d gap interval(s) found across %d spectra (edge_bins=%d)",
+                 group_name, total_gaps, n_foc, edge_bins)
+        for si, gaps in enumerate(spectrum_gaps):
+            if gaps:
+                log.info("  spectrum %d: %s", si, gaps)
         result[group_name] = spectrum_gaps
         if not diagnostics:
             DeleteWorkspace(focused_name)
@@ -487,8 +517,9 @@ def apply_dspace_gaps(
             new_xmin = d_start
             new_xmax = d_end
 
-        log.debug(
-            "Spectrum %d: crop [%.4f, %.4f] → [%.4f, %.4f], %d interior gap(s)",
+        log.info(
+            "apply_gaps spectrum %d: d∈[%.4f, %.4f] → crop to [%.4f, %.4f], "
+            "%d interior NaN gap(s)",
             i, d_start, d_end, new_xmin, new_xmax,
             sum(1 for g_lo, g_hi in gaps if d_start < g_lo and g_hi < d_end),
         )
