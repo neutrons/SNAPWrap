@@ -68,7 +68,7 @@ def find_grouping_workspaces(run_number: int, is_lite: bool) -> dict[str, str]:
         tail = after_mode[idx + len("grouping_"):]  # e.g. "Column_065891"
         group_name = tail[: -(len(matched_token) + 1)]  # strip "_065891"
         if group_name:
-            result[group_name] = name
+            result[group_name.lower()] = name
 
     return result
 
@@ -112,7 +112,7 @@ def load_grouping_workspaces(
         )
 
     grouping_ws_map = {
-        fg.name: ws_name for fg, ws_name in zip(focus_groups, ws_names)
+        fg.name.lower(): ws_name for fg, ws_name in zip(focus_groups, ws_names)
     }
     return grouping_ws_map, ws_names
 
