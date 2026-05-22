@@ -158,13 +158,46 @@ def find_unfocused_workspace(run_number: int, is_lite: bool) -> str | None:
 # ── Bin-mask loading ───────────────────────────────────────────────────────────
 
 
+def _parse_spectra_list(spec_str: str) -> list[range]:
+    """Parse a spectraLst string into a compact list of ranges.
+
+    Handles comma-separated integers (``"7661,7662,7663"``), range notation
+    (``"0-18431"``), and mixtures.  Single integers are stored as
+    ``range(n, n+1)``.  Membership testing via ``any(d in r for r in ranges)``
+    is O(1) per range because ``range.__contains__`` uses arithmetic.
+
+    Returns an empty list if the string is blank (meaning: apply to all
+    detectors).
+    """
+    ranges: list[range] = []
+    for token in spec_str.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            parts = token.split("-", 1)
+            try:
+                lo, hi = int(parts[0]), int(parts[1])
+                ranges.append(range(lo, hi + 1))
+            except (ValueError, IndexError):
+                pass
+        else:
+            try:
+                n = int(token)
+                ranges.append(range(n, n + 1))
+            except ValueError:
+                pass
+    return ranges
+
+
 def _load_notches(
     mask_json_path: str | Path,
-) -> list[tuple[float, float, frozenset[int]]]:
+) -> list[tuple[float, float, list[range]]]:
     """Load notches from a swiss-cheese bin-mask JSON.
 
-    Returns a list of ``(xmin, xmax, detector_ids)`` tuples.
-    ``detector_ids`` is empty if the notch applies to all detectors.
+    Returns a list of ``(xmin, xmax, det_ranges)`` tuples where
+    ``det_ranges`` is a compact list of ``range`` objects (empty list
+    means the notch applies to all detectors).
     """
     data = json.loads(Path(mask_json_path).read_text(encoding="utf-8"))
     xmins: list[float] = data["xmins"]
@@ -174,10 +207,10 @@ def _load_notches(
     result = []
     for i, (xmin, xmax) in enumerate(zip(xmins, xmaxs)):
         if i < len(spectra_lsts) and spectra_lsts[i]:
-            ids = frozenset(int(s) for s in spectra_lsts[i].split(",") if s.strip())
+            det_ranges = _parse_spectra_list(spectra_lsts[i])
         else:
-            ids = frozenset()
-        result.append((float(xmin), float(xmax), ids))
+            det_ranges = []
+        result.append((float(xmin), float(xmax), det_ranges))
     return result
 
 
@@ -259,7 +292,7 @@ def compute_dspace_gaps(
         )
 
     # ── 3. Load all notches from the supplied bin-mask files ──────────
-    all_notches: list[tuple[float, float, frozenset[int]]] = []
+    all_notches: list[tuple[float, float, list[range]]] = []
     for path in bin_mask_paths:
         all_notches.extend(_load_notches(path))
 
@@ -289,12 +322,15 @@ def compute_dspace_gaps(
             det_to_idx[did] = i
 
     # ── 6. Apply wavelength notches to the synthetic workspace ─────────
-    for xmin, xmax, detector_ids in all_notches:
-        indices = (
-            [det_to_idx[d] for d in detector_ids if d in det_to_idx]
-            if detector_ids
-            else range(n_hist)
-        )
+    for xmin, xmax, det_ranges in all_notches:
+        if det_ranges:
+            # range.__contains__ is O(1) — no list expansion even for "0-1179647"
+            indices = [
+                idx for did, idx in det_to_idx.items()
+                if any(did in r for r in det_ranges)
+            ]
+        else:
+            indices = range(n_hist)
         for i in indices:
             x = ws_syn.readX(i)
             y = ws_syn.dataY(i)
