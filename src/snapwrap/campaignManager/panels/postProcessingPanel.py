@@ -18,6 +18,7 @@ from typing import Any
 from qtpy.QtCore import QThread, Qt  # type: ignore
 from qtpy.QtGui import QFont  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -36,6 +37,7 @@ from snapwrap.campaignManager.logHandler import QtLogHandler
 from snapwrap.campaignManager.workers import GenericWorker
 
 _OP_RESAMPLE = 0
+_OP_CROP = 1
 _SNAPWRAP_LOGGER = "snapwrap"
 
 
@@ -103,6 +105,75 @@ class _ResampleForm(QWidget):
         return None
 
 
+# ── Crop form ──────────────────────────────────────────────────────────────────
+
+
+class _CropForm(QWidget):
+    """Parameter form for the workspace-cropping operation."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        form = QFormLayout(self)
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self._sourcePrefixCombo = QComboBox()
+        self._sourcePrefixCombo.addItem("reduced", "reduced")
+        self._sourcePrefixCombo.addItem("resampled", "resampled")
+        self._sourcePrefixCombo.setMaximumWidth(200)
+        form.addRow("Source workspaces:", self._sourcePrefixCombo)
+
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("e.g. 65891 — required")
+        self._runEdit.setMaximumWidth(200)
+        form.addRow("Run number:", self._runEdit)
+
+        self._liteCheck = QCheckBox("Lite mode (18 432 pixels)")
+        self._liteCheck.setChecked(True)
+        self._liteCheck.setToolTip(
+            "Match this to the mode used during reduction."
+        )
+        form.addRow("Instrument mode:", self._liteCheck)
+
+        self._diagCheck = QCheckBox(
+            "Retain synthetic + gap-map workspaces in ADS for inspection"
+        )
+        self._diagCheck.setToolTip(
+            "Keeps crop_diag_synthetic_{run} and crop_diag_focused_{group}_{run} "
+            "visible in the Workbench workspace list."
+        )
+        form.addRow("Diagnostics:", self._diagCheck)
+
+    # ── Public API ─────────────────────────────────────────────────────
+
+    def setRunNumber(self, run_number: int) -> None:
+        self._runEdit.setText(str(run_number))
+
+    def params(self) -> dict[str, Any]:
+        run_text = self._runEdit.text().strip()
+        try:
+            run_number: int | None = int(run_text) if run_text else None
+        except ValueError:
+            run_number = None
+        return {
+            "run_number": run_number,
+            "source_prefix": self._sourcePrefixCombo.currentData(),
+            "is_lite": self._liteCheck.isChecked(),
+            "diagnostics": self._diagCheck.isChecked(),
+        }
+
+    def validate(self) -> str | None:
+        run_text = self._runEdit.text().strip()
+        if not run_text:
+            return "Run number is required for cropping."
+        try:
+            n = int(run_text)
+            if n <= 0:
+                return "Run number must be a positive integer."
+        except ValueError:
+            return f"'{run_text}' is not a valid run number."
+        return None
+
+
 # ── Main panel ─────────────────────────────────────────────────────────────────
 
 
@@ -138,6 +209,7 @@ class PostProcessingPanel(QWidget):
         op_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self._opCombo = QComboBox()
         self._opCombo.addItem("Resample", _OP_RESAMPLE)
+        self._opCombo.addItem("Crop notch gaps", _OP_CROP)
         self._opCombo.setMaximumWidth(280)
         self._opCombo.currentIndexChanged.connect(self._onOpChanged)
         op_row.addWidget(op_label)
@@ -149,6 +221,8 @@ class PostProcessingPanel(QWidget):
         self._stack = QStackedWidget()
         self._resampleForm = _ResampleForm()
         self._stack.addWidget(self._resampleForm)  # index 0 = _OP_RESAMPLE
+        self._cropForm = _CropForm()
+        self._stack.addWidget(self._cropForm)       # index 1 = _OP_CROP
         layout.addWidget(self._stack)
 
         # ── Log pane (created before buttons so Clear can reference it) ──
@@ -184,8 +258,9 @@ class PostProcessingPanel(QWidget):
             self._ctxLabel.setText("No campaign selected.")
 
     def setRunNumber(self, run_number: int) -> None:
-        """Pre-fill the run number in the resample form (called from Runs panel)."""
+        """Pre-fill the run number in both forms (called from Runs panel)."""
         self._resampleForm.setRunNumber(run_number)
+        self._cropForm.setRunNumber(run_number)
 
     # ── Internals ──────────────────────────────────────────────────────
 
@@ -206,6 +281,8 @@ class PostProcessingPanel(QWidget):
         op = self._opCombo.currentData()
         if op == _OP_RESAMPLE:
             self._onResample()
+        elif op == _OP_CROP:
+            self._onCrop()
 
     def _onResample(self) -> None:
         error = self._resampleForm.validate()
@@ -237,6 +314,52 @@ class PostProcessingPanel(QWidget):
                 "run_number": params["run_number"],
                 "sample_factor": params["sample_factor"],
                 "units": params["units"],
+            },
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._onOpFinished)
+        worker.error.connect(self._onOpError)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._onOpCleanup)
+        thread.start()
+        self._thread = thread
+        self._worker = worker
+
+    def _onCrop(self) -> None:
+        error = self._cropForm.validate()
+        if error:
+            QMessageBox.warning(self, "Invalid form", error)
+            return
+
+        params = self._cropForm.params()
+        run = params["run_number"]
+        mode = "lite" if params["is_lite"] else "native"
+        diag_note = "  [diagnostics on]" if params["diagnostics"] else ""
+        self._appendLog(
+            f"── Cropping notch gaps: run {run}  "
+            f"source={params['source_prefix']}  mode={mode}{diag_note}  "
+            f"IPTS-{self._ipts} / {self._campaignSlug} ──"
+        )
+
+        self._applyBtn.setEnabled(False)
+        self._installLogHandler()
+
+        from snapwrap.campaignManager.model import CampaignManagerModel
+
+        thread = QThread(self)
+        worker = GenericWorker(
+            CampaignManagerModel.postprocessCrop,
+            {
+                "ipts": self._ipts,
+                "campaign_identifier": self._campaignSlug,
+                "run_number": run,
+                "is_lite": params["is_lite"],
+                "source_prefix": params["source_prefix"],
+                "diagnostics": params["diagnostics"],
             },
         )
         worker.moveToThread(thread)

@@ -2473,3 +2473,74 @@ def build_run_manifest(
     manifest["manifest_path"] = str(manifest_path)
 
     return manifest
+
+
+def register_cropped_workspace_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    ws_name: str,
+    source_ws_name: str,
+    run_number: int,
+    focus_group: str,
+    gap_map_path: str,
+    applied_bin_mask_ids: list[str],
+    shared_root: Path | str | None = None,
+    version: int = 1,
+    status: str = "active",
+    notes: str | None = None,
+    metadata: dict | None = None,
+) -> dict[str, Any]:
+    """Register a cropped-workspace artefact produced by post-processing.
+
+    Records the in-ADS workspace name, the source workspace, the focus group,
+    and the path to the gap-map JSON used to perform the crop.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        artefact_id: Unique identifier, e.g. ``"crop-Column-065891"``.
+        ws_name: Name of the cropped workspace in the Mantid ADS.
+        source_ws_name: Name of the workspace that was cropped.
+        run_number: Run number this artefact belongs to.
+        focus_group: Focus-group name (e.g. ``"Column"``).
+        gap_map_path: Absolute path to the saved gap-map JSON.
+        applied_bin_mask_ids: Artefact IDs of the bin masks used.
+        shared_root: Override for the IPTS shared root (useful in tests).
+        version: Record version (default 1).
+        status: ``"active"`` (default) or ``"retired"``.
+        notes: Free-text operator notes.
+        metadata: Extra key-value pairs stored verbatim.
+    """
+    artefact_dir = get_campaign_artefact_dir(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+
+    record: dict[str, Any] = {
+        "artefact_type": "cropped_workspace",
+        "artefact_id": artefact_id,
+        "version": version,
+        "status": status,
+        "run_number": run_number,
+        "focus_group": focus_group,
+        "ws_name": ws_name,
+        "source_ws_name": source_ws_name,
+        "gap_map_path": gap_map_path,
+        "applied_bin_mask_ids": applied_bin_mask_ids,
+        "artefact_dir": str(artefact_dir),
+    }
+    if notes:
+        record["notes"] = notes
+    if metadata:
+        record["metadata"] = metadata
+
+    _append_artefact_record(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        record=record,
+        shared_root=shared_root,
+    )
+    return record

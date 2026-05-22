@@ -641,6 +641,139 @@ class CampaignManagerModel:
     # ── Post-processing ──────────────────────────────────────────────
 
     @staticmethod
+    def postprocessCrop(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        run_number: int,
+        is_lite: bool,
+        source_prefix: str = "reduced",
+        diagnostics: bool = False,
+        shared_root: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Crop notch-mask gaps from reduced/resampled workspaces.
+
+        Locates the registered bin-mask artefacts for the run, propagates
+        their wavelength notches to d-space gaps via the SNAPRed grouping
+        workspaces already in ADS, then applies those gaps to every focused
+        workspace matching *source_prefix* and *run_number*.
+
+        End-gaps (at spectrum edges) are removed with ``CropWorkspaceRagged``;
+        interior gaps are set to ``NaN``.  Results are registered as
+        ``cropped_workspace`` artefacts.
+
+        Returns a list of registered artefact records (one per focus group).
+        """
+        import json
+
+        from snapwrap.reduction_artefacts.persistence import (  # type: ignore
+            list_artefact_records,
+            register_cropped_workspace_artefact,
+        )
+        from snapwrap.reduction_artefacts.postprocessing import (  # type: ignore
+            apply_dspace_gaps,
+            compute_dspace_gaps,
+        )
+        from snapwrap.utils import workspaceHandles  # type: ignore
+
+        # ── Collect active bin-mask artefacts for this run ────────────
+        bin_mask_records = list_artefact_records(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            run_number=run_number,
+            artefact_type="bin_mask",
+            status="active",
+            shared_root=shared_root,
+        )
+        mask_paths = [
+            rec["mask_json_path"]
+            for rec in bin_mask_records
+            if rec.get("mask_json_path")
+        ]
+        if not mask_paths:
+            raise RuntimeError(
+                f"No active bin-mask artefacts found for run {run_number}. "
+                "Register a bin mask before cropping."
+            )
+
+        # ── Compute d-space gaps per focus group ──────────────────────
+        gap_map = compute_dspace_gaps(
+            run_number=run_number,
+            is_lite=is_lite,
+            bin_mask_paths=mask_paths,
+            diagnostics=diagnostics,
+        )
+        if not gap_map:
+            raise RuntimeError("Gap computation returned no results.")
+
+        # ── Apply gaps to each matching workspace ─────────────────────
+        handles = workspaceHandles(prefix=source_prefix, runNumber=run_number) or []
+        applied_mask_ids = [r["artefact_id"] for r in bin_mask_records]
+
+        artefact_dir = get_campaign_artefact_dir(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        artefact_dir.mkdir(parents=True, exist_ok=True)
+
+        registered: list[dict[str, Any]] = []
+        seen_ids: set[str] = {
+            rec.get("artefact_id", "")
+            for rec in list_artefact_records(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_type="cropped_workspace",
+                shared_root=shared_root,
+            )
+        }
+
+        for handle in handles:
+            group = handle.pixelGroup
+            if group not in gap_map:
+                continue
+            gaps = gap_map[group]
+            out_ws = f"cropped_dsp_{group}_{run_number}"
+            apply_dspace_gaps(handle.wsName, gaps, out_ws)
+
+            # Save gap map JSON alongside artefacts
+            gap_file = artefact_dir / f"gap_map_{group}_{run_number}.json"
+            gap_file.write_text(
+                json.dumps(
+                    {group: [[list(g) for g in spec] for spec in gaps]}, indent=2
+                ),
+                encoding="utf-8",
+            )
+
+            base_id = f"crop-{group}-{run_number}"
+            artefact_id = base_id
+            ver = 2
+            while artefact_id in seen_ids:
+                artefact_id = f"{base_id}-v{ver}"
+                ver += 1
+            seen_ids.add(artefact_id)
+
+            record = register_cropped_workspace_artefact(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_id=artefact_id,
+                ws_name=out_ws,
+                source_ws_name=handle.wsName,
+                run_number=run_number,
+                focus_group=group,
+                gap_map_path=str(gap_file),
+                applied_bin_mask_ids=applied_mask_ids,
+                shared_root=shared_root,
+            )
+            registered.append(record)
+
+        if not registered:
+            raise RuntimeError(
+                f"No {source_prefix} workspaces found in ADS for run {run_number}."
+            )
+        return registered
+
+    @staticmethod
     def postprocessResample(
         *,
         run_number: int | None = None,
