@@ -2537,10 +2537,14 @@ def register_cropped_workspace_artefact(
     if metadata:
         record["metadata"] = metadata
 
-    _append_artefact_record(
+    paths = get_campaign_paths(
         ipts=ipts,
         campaign_identifier=campaign_identifier,
-        record=record,
         shared_root=shared_root,
+    )
+    append_jsonl_record(
+        paths.artefacts_index,
+        record,
+        schema_name="artefact_record.schema.json",
     )
     return record
