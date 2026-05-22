@@ -685,15 +685,16 @@ class CampaignManagerModel:
             status="active",
             shared_root=shared_root,
         )
-        mask_paths = [
-            rec["mask_json_path"]
-            for rec in bin_mask_records
-            if rec.get("mask_json_path")
-        ]
-        if not mask_paths:
+        if not bin_mask_records:
             raise RuntimeError(
                 f"No active bin-mask artefacts found for run {run_number}. "
                 "Register a bin mask before cropping."
+            )
+        mask_paths = [rec["path"] for rec in bin_mask_records if rec.get("path")]
+        if not mask_paths:
+            raise RuntimeError(
+                f"Active bin-mask artefact(s) found for run {run_number} but none "
+                "have a 'path' field — check the artefact records."
             )
 
         # ── Compute d-space gaps per focus group ──────────────────────
