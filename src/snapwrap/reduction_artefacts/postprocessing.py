@@ -371,6 +371,24 @@ def compute_dspace_gaps(
         ws_syn.dataY(i)[:] = 1.0
         ws_syn.dataE(i)[:] = 0.0
 
+    # ── 4b. Extend the lowest-wavelength notch to the workspace edge ──────
+    # The transmission monitor (source of notch λ ranges) and the diffraction
+    # detectors sit at different flight paths, so the workspace λ_min can be
+    # slightly below the first notch's lower bound.  That thin uncovered
+    # sliver produces a spurious narrow peak at very low d after focusing.
+    # Fix: if the workspace starts below the first notch, extend that notch
+    # down to the actual workspace λ_min.
+    if all_notches:
+        ws_min_lambda = float(x0[0])
+        min_notch_idx = min(range(len(all_notches)), key=lambda k: all_notches[k][0])
+        xmin_n, xmax_n, det_ranges_n = all_notches[min_notch_idx]
+        if ws_min_lambda < xmin_n:
+            print(
+                f"  extending lowest notch xmin {xmin_n:.4f} → {ws_min_lambda:.4f} Å "
+                f"to cover workspace λ_min (flight-path offset)"
+            )
+            all_notches[min_notch_idx] = (ws_min_lambda, xmax_n, det_ranges_n)
+
     # ── 5. Apply wavelength notches to the synthetic workspace ──────────
     # spectraLsts in the mask JSON stores workspace spectrum indices (0-based),
     # matching Mantid's MaskBins InputWorkspaceIndexSet convention.  Compare
