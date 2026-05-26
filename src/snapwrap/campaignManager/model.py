@@ -39,6 +39,23 @@ from snapwrap.reduction_artefacts import (
 _IPTS_RE = re.compile(r"^/SNS/SNAP/IPTS-(\d+)/shared/?$")
 
 
+def _bin_mask_display_type(rec: dict[str, Any]) -> str:
+    """Return an enriched type label for a bin_mask record.
+
+    Appends the unit extracted from the path filename stem so the runs tab
+    can distinguish ``bin_mask (Wavelength)`` from ``bin_mask (dSpacing)``.
+    Falls back to plain ``"bin_mask"`` (or whatever artefact_type is set to)
+    if the path is absent or the unit suffix is unrecognised.
+    """
+    atype = rec.get("artefact_type") or ""
+    if atype == "bin_mask":
+        stem = Path(rec.get("path") or "").stem
+        for unit in ("Wavelength", "dSpacing"):
+            if stem.endswith(f"_{unit}"):
+                return f"bin_mask ({unit})"
+    return atype
+
+
 def _generate_pixel_mask_thumbnail(
     nxs_path: str,
     artefact_id: str,
@@ -837,14 +854,21 @@ class CampaignManagerModel:
         from snapwrap.utils import workspaceHandles  # type: ignore
 
         # ── Collect active bin-mask artefacts for this run ────────────
-        bin_mask_records = list_artefact_records(
+        # Include both run-scoped (run_number == this run) and campaign-scoped
+        # (run_number == None) masks.  The persistence layer excludes
+        # campaign-scoped records when run_number is passed as a filter, so we
+        # fetch all active bin masks and filter manually here.
+        _all_bin_masks = list_artefact_records(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
-            run_number=run_number,
             artefact_type="bin_mask",
             status="active",
             shared_root=shared_root,
         )
+        bin_mask_records = [
+            r for r in _all_bin_masks
+            if (r.get("run_context") or {}).get("run_number") in (run_number, None)
+        ]
         if not bin_mask_records:
             raise RuntimeError(
                 f"No active bin-mask artefacts found for run {run_number}. "
@@ -1046,7 +1070,8 @@ class CampaignManagerModel:
 
         ``{"run_number": int, "artefact_count": int, "artefact_types": list[str]}``
 
-        Records without a ``run_context.run_number`` are skipped.
+        Campaign-scoped artefacts (``run_context.run_number`` is ``None``)
+        are included in every run row — they apply to all runs.
         Only ``status == "active"`` records are counted.
         """
         records = list_artefact_records(
@@ -1055,18 +1080,33 @@ class CampaignManagerModel:
             shared_root=shared_root,
             status="active",
         )
+
+        run_scoped = [
+            r for r in records
+            if isinstance((r.get("run_context") or {}).get("run_number"), int)
+        ]
+        campaign_scoped = [
+            r for r in records
+            if not isinstance((r.get("run_context") or {}).get("run_number"), int)
+        ]
+
         runs: dict[int, dict[str, Any]] = {}
-        for rec in records:
-            rc = rec.get("run_context") or {}
-            rn = rc.get("run_number")
-            if not isinstance(rn, int):
-                continue
+        for rec in run_scoped:
+            rn = (rec.get("run_context") or {}).get("run_number")
             if rn not in runs:
                 runs[rn] = {"run_number": rn, "artefact_count": 0, "artefact_types": set()}
             runs[rn]["artefact_count"] += 1
-            atype = rec.get("artefact_type")
+            atype = _bin_mask_display_type(rec)
             if atype:
                 runs[rn]["artefact_types"].add(atype)
+
+        # Campaign-scoped artefacts apply to every run — add them to all rows.
+        for rn in runs:
+            for rec in campaign_scoped:
+                runs[rn]["artefact_count"] += 1
+                atype = _bin_mask_display_type(rec)
+                if atype:
+                    runs[rn]["artefact_types"].add(atype)
 
         # Crystal species are in a separate index — include run-scoped ones.
         cs_records = list_crystal_species_records(
