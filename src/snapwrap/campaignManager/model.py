@@ -844,6 +844,7 @@ class CampaignManagerModel:
         edge_bins: int = 0,
         min_coverage: float = 0.002,
         force_recompute: bool = False,
+        bin_mask_ids: list[str] | None = None,
         shared_root: str | Path | None = None,
     ) -> str:
         """Crop notch-mask gaps from reduced/resampled workspaces.
@@ -891,6 +892,11 @@ class CampaignManagerModel:
             r for r in _all_bin_masks
             if (r.get("run_context") or {}).get("run_number") in (run_number, None)
         ]
+        if bin_mask_ids is not None:
+            bin_mask_records = [
+                r for r in bin_mask_records
+                if r.get("artefact_id") in bin_mask_ids
+            ]
         if not bin_mask_records:
             raise RuntimeError(
                 f"No active bin-mask artefacts found for run {run_number}. "
