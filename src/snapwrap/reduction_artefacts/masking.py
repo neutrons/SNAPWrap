@@ -537,6 +537,50 @@ def detect_notches_in_spectrum(
     return final, diagnostics
 
 
+def build_swiss_cheese_from_workspace_history(
+    ws_name: str,
+    output_dir: str | Path,
+    file_prefix: str,
+) -> list[Path]:
+    """Build and save a swiss-cheese bin mask from a workspace's MaskBins history.
+
+    Calls :meth:`~snapwrap.maskUtils.swissCheese.extractFromWorkspaceHistory`
+    on *ws_name*, which scans the Mantid algorithm history for ``MaskBins``
+    operations and reconstructs the notch list from them.  The lite/native
+    mode is inferred from the workspace spectrum count.
+
+    Args:
+        ws_name: Name of the workspace in ADS (must have ``MaskBins`` calls
+            in its algorithm history — typically produced by manually masking
+            in the Instrument View).
+        output_dir: Directory in which mask JSON files are written.
+        file_prefix: Filename stem for saved mask files.
+
+    Returns:
+        List of saved mask JSON paths (one per unit found in the history).
+
+    Raises:
+        RuntimeError: If Mantid/maskUtils are unavailable or if no MaskBins
+            operations are found in the workspace history.
+    """
+    if _swissCheese is None:
+        raise RuntimeError(
+            "snapwrap.maskUtils is not available in this environment. "
+            "Run inside Mantid Workbench."
+        )
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sc = _swissCheese()
+    sc.extractFromWorkspaceHistory(ws_name)
+    if not sc.eyeList:
+        raise RuntimeError(
+            f"No MaskBins operations found in workspace '{ws_name}' history. "
+            "Apply masks via the Instrument View MaskBins tool before registering."
+        )
+    sc.save(str(output_dir), file_prefix)
+    return sorted(output_dir.glob(f"{file_prefix}_*.json"))
+
+
 def build_swiss_cheese_from_notch_list(
     notches: list[list[float]],
     units: str,

@@ -41,6 +41,7 @@ _TYPE_PIXEL_MASK = 0
 _TYPE_CRYSTAL_PHASE = 1
 _TYPE_BIN_MASK_MONITOR = 2
 _TYPE_BIN_MASK_MANUAL = 3
+_TYPE_BIN_MASK_WORKSPACE = 4
 
 
 # ── Assets table ──────────────────────────────────────────────────────────────
@@ -709,6 +710,71 @@ class _BinMaskManualForm(QWidget):
         return None
 
 
+# ── Bin mask from workspace history form ─────────────────────────────────────
+
+
+class _BinMaskFromWorkspaceForm(QWidget):
+    """Form for building a bin mask from a workspace's MaskBins algorithm history.
+
+    The operator applies masks in Mantid's Instrument View and then points this
+    form at the resulting workspace.  ``extractFromWorkspaceHistory`` scans the
+    algorithm history for ``MaskBins`` calls and reconstructs the notch list.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addLayout(form)
+
+        self._wsEdit = QLineEdit()
+        self._wsEdit.setPlaceholderText("ADS workspace name — must have MaskBins in history")
+        self._wsEdit.setToolTip(
+            "Name of the workspace in the Mantid Analysis Data Service.\n"
+            "Apply masks via Instrument View → Draw → Mask first, then enter\n"
+            "the workspace name here.  The MaskBins algorithm history is\n"
+            "extracted automatically."
+        )
+        form.addRow("Workspace:", self._wsEdit)
+
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("optional — leave blank for campaign-wide")
+        form.addRow("Run number:", self._runEdit)
+
+        self._notesEdit = QPlainTextEdit()
+        self._notesEdit.setPlaceholderText("Optional notes")
+        self._notesEdit.setFixedHeight(55)
+        form.addRow("Notes:", self._notesEdit)
+
+    def params(self) -> dict[str, Any]:
+        run_text = self._runEdit.text().strip()
+        try:
+            run_number: int | None = int(run_text) if run_text else None
+        except ValueError:
+            run_number = None
+        return {
+            "ws_name": self._wsEdit.text().strip(),
+            "run_number": run_number,
+            "notes": self._notesEdit.toPlainText().strip() or None,
+        }
+
+    def validate(self) -> str | None:
+        if not self._wsEdit.text().strip():
+            return "Workspace name is required."
+        run_text = self._runEdit.text().strip()
+        if run_text:
+            try:
+                n = int(run_text)
+                if n <= 0:
+                    return "Run number must be a positive integer."
+            except ValueError:
+                return f"'{run_text}' is not a valid run number."
+        return None
+
+
 # ── CIF preview helper ────────────────────────────────────────────────────────
 
 def _cif_preview_text(path: str) -> str:
@@ -905,6 +971,7 @@ class SetupPanel(QWidget):
     crystalSpeciesRegistrationRequested = Signal(dict)
     binMaskFromMonitorRequested = Signal(dict)
     binMaskManualRequested = Signal(dict)
+    binMaskFromWorkspaceRequested = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -954,6 +1021,7 @@ class SetupPanel(QWidget):
         self._typeCombo.addItem("Crystal phase")
         self._typeCombo.addItem("Bin mask (transmission monitor)")
         self._typeCombo.addItem("Bin mask (manual notch list)")
+        self._typeCombo.addItem("Bin mask (from workspace history)")
         self._typeCombo.currentIndexChanged.connect(self._onTypeChanged)
         type_row.addWidget(self._typeCombo)
         type_row.addStretch(1)
@@ -973,6 +1041,9 @@ class SetupPanel(QWidget):
 
         self._binMaskManualForm = _BinMaskManualForm()
         self._stack.addWidget(self._binMaskManualForm)  # index 3 = _TYPE_BIN_MASK_MANUAL
+
+        self._binMaskFromWorkspaceForm = _BinMaskFromWorkspaceForm()
+        self._stack.addWidget(self._binMaskFromWorkspaceForm)  # index 4 = _TYPE_BIN_MASK_WORKSPACE
 
         cg_layout.addWidget(self._stack)
 
@@ -1041,3 +1112,9 @@ class SetupPanel(QWidget):
                 QMessageBox.warning(self, "Invalid form", error)
                 return
             self.binMaskManualRequested.emit(self._binMaskManualForm.params())
+        elif index == _TYPE_BIN_MASK_WORKSPACE:
+            error = self._binMaskFromWorkspaceForm.validate()
+            if error:
+                QMessageBox.warning(self, "Invalid form", error)
+                return
+            self.binMaskFromWorkspaceRequested.emit(self._binMaskFromWorkspaceForm.params())

@@ -638,6 +638,84 @@ class CampaignManagerModel:
 
         return records[0] if len(records) == 1 else records
 
+    @staticmethod
+    def registerBinMaskFromWorkspaceHistory(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        ws_name: str,
+        run_number: int | None = None,
+        notes: str | None = None,
+        shared_root: str | Path | None = None,
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        """Extract MaskBins history from an ADS workspace and register it as a bin mask.
+
+        Calls ``extractFromWorkspaceHistory`` on *ws_name* to reconstruct the
+        notch list from the workspace's Mantid algorithm history, saves the
+        swiss-cheese JSON to the campaign artefact directory, and registers it.
+        """
+        from snapwrap.reduction_artefacts.masking import (  # type: ignore
+            build_swiss_cheese_from_workspace_history,
+        )
+
+        artefact_dir = get_campaign_artefact_dir(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        safe_stem = re.sub(r"[^a-z0-9_-]", "_", ws_name.lower())
+        file_prefix = (
+            f"binmask_ws_{safe_stem}_run{run_number}"
+            if run_number is not None
+            else f"binmask_ws_{safe_stem}"
+        )
+
+        json_paths = build_swiss_cheese_from_workspace_history(
+            ws_name=ws_name,
+            output_dir=artefact_dir,
+            file_prefix=file_prefix,
+        )
+
+        existing_ids = {
+            rec.get("artefact_id")
+            for rec in list_artefact_records(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_type="bin_mask",
+                shared_root=shared_root,
+            )
+        }
+
+        safe_id = re.sub(r"[^a-z0-9-]", "-", ws_name.lower())
+        base_id = (
+            f"binmask-ws-{safe_id}-run{run_number}"
+            if run_number is not None
+            else f"binmask-ws-{safe_id}"
+        )
+        records = []
+        for json_path in json_paths:
+            artefact_id = base_id
+            version = 2
+            while artefact_id in existing_ids:
+                artefact_id = f"{base_id}-v{version}"
+                version += 1
+            existing_ids.add(artefact_id)
+
+            record = register_manual_bin_mask_artefact(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_id=artefact_id,
+                mask_json_path=str(json_path),
+                run_number=run_number,
+                shared_root=shared_root,
+                method="bin_mask.from_workspace_history",
+                metadata={"source_workspace": ws_name},
+                notes=notes,
+            )
+            records.append(record)
+
+        return records[0] if len(records) == 1 else records
+
     # ── Post-processing ──────────────────────────────────────────────
 
     @staticmethod
