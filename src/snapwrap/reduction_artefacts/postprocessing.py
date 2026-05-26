@@ -361,19 +361,15 @@ def compute_dspace_gaps(
         ws_syn.dataY(i)[:] = 1.0
         ws_syn.dataE(i)[:] = 0.0
 
-    # ── 5. Build detector-ID → workspace-index map (one-time) ─────────
-    det_to_idx: dict[int, int] = {}
-    for i in range(n_hist):
-        for did in ws_syn.getSpectrum(i).getDetectorIDs():
-            det_to_idx[did] = i
-
-    # ── 6. Apply wavelength notches to the synthetic workspace ─────────
+    # ── 5. Apply wavelength notches to the synthetic workspace ──────────
+    # spectraLsts in the mask JSON stores workspace spectrum indices (0-based),
+    # matching Mantid's MaskBins InputWorkspaceIndexSet convention.  Compare
+    # directly against the spectrum index i, NOT against detector IDs.
     for xmin, xmax, det_ranges in all_notches:
         if det_ranges:
-            # range.__contains__ is O(1) — no list expansion even for "0-1179647"
-            indices = [
-                idx for did, idx in det_to_idx.items()
-                if any(did in r for r in det_ranges)
+            # range.__contains__ is O(1) for each range object
+            indices: range | list[int] = [
+                i for i in range(n_hist) if any(i in r for r in det_ranges)
             ]
         else:
             indices = range(n_hist)
