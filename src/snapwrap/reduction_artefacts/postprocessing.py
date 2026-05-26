@@ -219,7 +219,7 @@ def _load_notches(
 
 
 def _find_zero_runs(
-    ws: Any, spectrum_idx: int, edge_bins: int = 0
+    ws: Any, spectrum_idx: int, edge_bins: int = 0, min_coverage: float = 0.0
 ) -> list[tuple[float, float]]:
     """Return ``[(d_lo, d_hi)]`` for contiguous near-zero Y regions.
 
@@ -233,14 +233,19 @@ def _find_zero_runs(
             notch at slightly different d-spacings, producing a brief
             overshoot before the flat baseline is restored).  Default 0
             (no expansion; pure zero detection).
+        min_coverage: Fractional threshold relative to the spectrum Y maximum.
+            Bins with Y ≤ ``min_coverage * max(Y)`` are treated as zero.
+            This naturally handles the sparse transition zones at low d where
+            only a handful of detectors contribute before the main peak.
+            Default 0.0 (absolute zero only — same as the hardcoded threshold).
     """
     import numpy as np  # type: ignore
 
     y = np.asarray(ws.readY(spectrum_idx))
     x = np.asarray(ws.readX(spectrum_idx))
     n_bins = len(y)
-    threshold = 1e-10
-    is_zero = np.abs(y) <= threshold
+    threshold = max(1e-10, min_coverage * float(np.max(y)))
+    is_zero = y <= threshold
 
     # Collect runs as half-open bin-index intervals [lo, hi).
     raw: list[tuple[int, int]] = []
@@ -277,6 +282,7 @@ def compute_dspace_gaps(
     bin_mask_paths: list[str | Path],
     diagnostics: bool = False,
     edge_bins: int = 0,
+    min_coverage: float = 0.0,
 ) -> dict[str, list[list[tuple[float, float]]]]:
     """Compute d-space gap intervals from registered wavelength bin masks.
 
@@ -293,6 +299,10 @@ def compute_dspace_gaps(
         edge_bins: Extra bins to expand each detected gap boundary outward
             on both sides, absorbing the spike transition zone at notch
             edges (see :func:`_find_zero_runs`).  Default 0.
+        min_coverage: Fractional threshold for zero detection — bins with
+            Y ≤ ``min_coverage * max(Y)`` are treated as zero.  Absorbs
+            sparse transition zones at low d-spacing (see
+            :func:`_find_zero_runs`).  Default 0.0.
 
     Returns:
         ``{group_name: [[gaps_for_spectrum_0], [gaps_for_spectrum_1], …]}``
@@ -407,11 +417,11 @@ def compute_dspace_gaps(
         y_max = max(float(np.max(focused_ws.readY(i))) for i in range(n_foc))
         print(f"Group '{group_name}': focused workspace has {n_foc} spectra, Y∈[{y_min:.4g}, {y_max:.4g}]")
         spectrum_gaps = [
-            _find_zero_runs(focused_ws, i, edge_bins=edge_bins)
+            _find_zero_runs(focused_ws, i, edge_bins=edge_bins, min_coverage=min_coverage)
             for i in range(n_foc)
         ]
         total_gaps = sum(len(g) for g in spectrum_gaps)
-        print(f"Group '{group_name}': {total_gaps} gap interval(s) found across {n_foc} spectra (edge_bins={edge_bins})")
+        print(f"Group '{group_name}': {total_gaps} gap interval(s) found across {n_foc} spectra (edge_bins={edge_bins}, min_coverage={min_coverage})")
         for si, gaps in enumerate(spectrum_gaps):
             if gaps:
                 print(f"  spectrum {si}: {gaps}")

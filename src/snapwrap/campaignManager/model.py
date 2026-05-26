@@ -650,6 +650,7 @@ class CampaignManagerModel:
         source_prefix: str = "reduced",
         diagnostics: bool = False,
         edge_bins: int = 0,
+        min_coverage: float = 0.0,
         shared_root: str | Path | None = None,
     ) -> str:
         """Crop notch-mask gaps from reduced/resampled workspaces.
@@ -667,6 +668,10 @@ class CampaignManagerModel:
             edge_bins: Extra bins to expand each gap boundary outward on
                 both sides, absorbing the spike transition zone at notch
                 edges.  Default 0 (no expansion).
+            min_coverage: Fractional threshold for zero detection — bins
+                with Y ≤ ``min_coverage * max(Y)`` are treated as zero.
+                Absorbs sparse transition zones at low d-spacing.
+                Default 0.0 (absolute zero only).
 
         Returns a log string summarising the operation (captured stdout from
         the underlying computation).
@@ -735,6 +740,7 @@ class CampaignManagerModel:
                 bin_mask_paths=mask_paths,
                 diagnostics=diagnostics,
                 edge_bins=edge_bins,
+                min_coverage=min_coverage,
             )
             if not gap_map:
                 raise RuntimeError("Gap computation returned no results.")

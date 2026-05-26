@@ -150,6 +150,22 @@ class _CropForm(QWidget):
         )
         form.addRow("Edge expansion (bins):", self._edgeSpin)
 
+        self._minCoverageSpin = QDoubleSpinBox()
+        self._minCoverageSpin.setRange(0.0, 0.05)
+        self._minCoverageSpin.setSingleStep(0.001)
+        self._minCoverageSpin.setDecimals(3)
+        self._minCoverageSpin.setValue(0.0)
+        self._minCoverageSpin.setMaximumWidth(100)
+        self._minCoverageSpin.setToolTip(
+            "Fractional threshold for zero detection.\n"
+            "Bins with Y ≤ this fraction × max(Y) are treated as zero.\n"
+            "Useful for absorbing sparse transition zones at low d-spacing\n"
+            "where only 3–4 bins have any signal before the main peak.\n"
+            "Start with 0 (exact zero only) and increase to ~0.002 if spikes\n"
+            "remain after edge expansion."
+        )
+        form.addRow("Min coverage:", self._minCoverageSpin)
+
         self._diagCheck = QCheckBox(
             "Retain synthetic + gap-map workspaces in ADS for inspection"
         )
@@ -175,6 +191,7 @@ class _CropForm(QWidget):
             "source_prefix": self._sourcePrefixCombo.currentData(),
             "is_lite": self._liteCheck.isChecked(),
             "edge_bins": int(self._edgeSpin.value()),
+            "min_coverage": self._minCoverageSpin.value(),
             "diagnostics": self._diagCheck.isChecked(),
         }
 
@@ -409,10 +426,11 @@ class PostProcessingPanel(QWidget):
         run = params["run_number"]
         mode = "lite" if params["is_lite"] else "native"
         edge_note = f"  edge={params['edge_bins']}bins" if params["edge_bins"] else ""
+        cov_note = f"  min_cov={params['min_coverage']:.3f}" if params["min_coverage"] else ""
         diag_note = "  [diagnostics on]" if params["diagnostics"] else ""
         self._appendLog(
             f"── Cropping notch gaps: run {run}  "
-            f"source={params['source_prefix']}  mode={mode}{edge_note}{diag_note}  "
+            f"source={params['source_prefix']}  mode={mode}{edge_note}{cov_note}{diag_note}  "
             f"IPTS-{self._ipts} / {self._campaignSlug} ──"
         )
 
@@ -431,6 +449,7 @@ class PostProcessingPanel(QWidget):
                 "is_lite": params["is_lite"],
                 "source_prefix": params["source_prefix"],
                 "edge_bins": params["edge_bins"],
+                "min_coverage": params["min_coverage"],
                 "diagnostics": params["diagnostics"],
             },
         )
