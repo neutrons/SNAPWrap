@@ -78,6 +78,7 @@ def build_reduce_kwargs(
     continueNoDifcal: bool = False,
     continueNoVan: bool = False,
     extra_kwargs: dict[str, Any] | None = None,
+    selected_artefacts_override: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Translate a run manifest into ``snapwrap.reduce`` keyword arguments.
 
@@ -98,6 +99,13 @@ def build_reduce_kwargs(
         continueNoVan: Forwarded to ``reduce``.
         extra_kwargs: Any additional keyword arguments to merge in last
             (caller overrides).
+        selected_artefacts_override: If provided, replaces
+            ``manifest["selected_artefacts"]`` entirely.  Use this when the
+            workflow queue has explicit user-chosen artefact records that should
+            take precedence over auto-discovered manifest contents.  Each entry
+            must be a full artefact record dict (with ``artefact_type``,
+            ``artefact_id``, ``path``, etc.) — the same shape returned by
+            :func:`~snapwrap.reduction_artefacts.list_artefact_records`.
 
     Returns:
         Dict suitable for ``wrap.reduce(run_number, **kwargs)``.
@@ -106,6 +114,10 @@ def build_reduce_kwargs(
         RuntimeError: If a required artefact path is ``"PENDING"`` (planned
             but not yet fulfilled).
     """
+    if selected_artefacts_override is not None:
+        manifest = dict(manifest)
+        manifest["selected_artefacts"] = selected_artefacts_override
+
     by_type = _artefacts_by_type(manifest)
     run_number: int = manifest["run_number"]
     kwargs: dict[str, Any] = {

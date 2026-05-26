@@ -1076,6 +1076,148 @@ class CampaignManagerModel:
             )
         return buf.getvalue()
 
+    # ── Workflow queue ───────────────────────────────────────────────
+
+    @staticmethod
+    def loadWorkflowQueue(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        run_number: int,
+        shared_root: str | Path | None = None,
+    ):
+        """Load (or create empty) the workflow queue for *run_number*."""
+        from snapwrap.campaignManager.workflow import WorkflowQueue  # type: ignore
+
+        paths = get_campaign_paths(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        return WorkflowQueue.load(paths.campaign_dir, run_number)
+
+    @staticmethod
+    def saveWorkflowQueue(
+        queue,
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        shared_root: str | Path | None = None,
+    ) -> Path:
+        """Persist *queue* to the campaign directory."""
+        paths = get_campaign_paths(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        return queue.save(paths.campaign_dir)
+
+    @staticmethod
+    def resolveArtefactsForQueue(
+        step_artefact_selections: dict[str, list[str]],
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        shared_root: str | Path | None = None,
+    ) -> list[dict[str, Any]]:
+        """Resolve artefact IDs from a queue step into full artefact records.
+
+        Looks up each ID in the active artefact index and returns the matching
+        records as a flat list suitable for ``selected_artefacts_override`` in
+        ``build_reduce_kwargs``.
+
+        IDs suffixed with ``:MISSING`` are skipped (they cannot be resolved).
+        Raises :exc:`KeyError` if a non-missing ID is not found in active records.
+        """
+        all_records = list_artefact_records(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            status="active",
+            shared_root=shared_root,
+        )
+        by_id: dict[str, dict[str, Any]] = {
+            r["artefact_id"]: r for r in all_records if r.get("artefact_id")
+        }
+
+        result: list[dict[str, Any]] = []
+        for atype, ids in step_artefact_selections.items():
+            for aid in ids:
+                if aid.endswith(":MISSING"):
+                    continue
+                if aid not in by_id:
+                    raise KeyError(
+                        f"Artefact '{aid}' (type '{atype}') not found in active "
+                        "artefact records for this campaign."
+                    )
+                result.append(by_id[aid])
+        return result
+
+    @staticmethod
+    def executeReduceStep(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        run_number: int,
+        artefact_selections: dict[str, list[str]],
+        step_params: dict[str, Any] | None = None,
+        shared_root: str | Path | None = None,
+    ) -> str:
+        """Execute a Reduce step from a workflow queue.
+
+        Resolves the queue's *artefact_selections* to full records, builds a
+        synthetic manifest, calls ``build_reduce_kwargs``, then calls
+        ``wrap.reduce``.  stdout is captured and returned as a log string.
+
+        *step_params* may include any of the expert ``wrap.reduce`` kwargs
+        (``keepUnfocussed``, ``continueNoDifcal``, ``continueNoVan``,
+        ``verbose``).  Unrecognised keys are passed through as ``extra_kwargs``.
+        """
+        import contextlib
+        import io
+
+        from snapwrap.reduction_artefacts.reduce import build_reduce_kwargs  # type: ignore
+
+        params = dict(step_params or {})
+
+        resolved = CampaignManagerModel.resolveArtefactsForQueue(
+            artefact_selections,
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+
+        # Build a minimal manifest dict in-memory (no disk write needed).
+        # selected_artefacts_override replaces the artefact list so it
+        # reflects exactly what the user chose in the workflow queue.
+        manifest: dict[str, Any] = {"run_number": run_number, "selected_artefacts": []}
+
+        _DIRECT_KEYS = {"keepUnfocussed", "continueNoDifcal", "continueNoVan", "verbose"}
+        direct = {k: params.pop(k) for k in list(params) if k in _DIRECT_KEYS}
+        extra = params or None
+
+        kwargs = build_reduce_kwargs(
+            manifest,
+            selected_artefacts_override=resolved,
+            extra_kwargs=extra,
+            **direct,
+        )
+
+        try:
+            import snapwrap.utils as _wrap  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "snapwrap.utils not importable; cannot execute reduce step."
+            ) from exc
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            print(f"Reducing run {run_number} ...")
+            print(f"  artefacts: {[r.get('artefact_id') for r in resolved]}")
+            _wrap.reduce(run_number, **kwargs)
+            print(f"Run {run_number} reduction complete.")
+
+        return buf.getvalue()
+
     # ── Run queries ──────────────────────────────────────────────────
 
     @staticmethod
