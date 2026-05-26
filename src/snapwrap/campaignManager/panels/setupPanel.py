@@ -42,6 +42,7 @@ _TYPE_CRYSTAL_PHASE = 1
 _TYPE_BIN_MASK_MONITOR = 2
 _TYPE_BIN_MASK_MANUAL = 3
 _TYPE_BIN_MASK_WORKSPACE = 4
+_TYPE_BIN_MASK_JSON = 5
 
 
 # ── Assets table ──────────────────────────────────────────────────────────────
@@ -775,6 +776,88 @@ class _BinMaskFromWorkspaceForm(QWidget):
         return None
 
 
+# ── Bin mask from JSON file form ──────────────────────────────────────────────
+
+
+class _BinMaskFromJsonForm(QWidget):
+    """Form for registering a bin mask from a swiss-cheese JSON file on disk.
+
+    Use this when you already have a JSON produced by ``swissCheese.save()``
+    and want to bring it into the campaign artefact store.  The file is
+    validated via ``swissCheese.load()``, copied into the artefact directory,
+    and ``swissCheese.makeMaskBinsTables()`` is called to leave the
+    ``maskBins_*`` table workspaces in the ADS ready for use.
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addLayout(form)
+
+        file_row = QHBoxLayout()
+        self._fileEdit = QLineEdit()
+        self._fileEdit.setPlaceholderText("Path to swiss-cheese JSON file")
+        self._fileEdit.setToolTip(
+            "JSON file saved by swissCheese.save() — loaded and validated\n"
+            "before registration.  The file is copied into the campaign\n"
+            "artefact directory."
+        )
+        file_row.addWidget(self._fileEdit)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setFixedWidth(70)
+        browse_btn.clicked.connect(self._onBrowse)
+        file_row.addWidget(browse_btn)
+        form.addRow("JSON file:", file_row)
+
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("optional — leave blank for campaign-wide")
+        form.addRow("Run number:", self._runEdit)
+
+        self._notesEdit = QPlainTextEdit()
+        self._notesEdit.setPlaceholderText("Optional notes")
+        self._notesEdit.setFixedHeight(55)
+        form.addRow("Notes:", self._notesEdit)
+
+    def _onBrowse(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select swiss-cheese JSON", "", "JSON files (*.json)"
+        )
+        if path:
+            self._fileEdit.setText(path)
+
+    def params(self) -> dict[str, Any]:
+        run_text = self._runEdit.text().strip()
+        try:
+            run_number: int | None = int(run_text) if run_text else None
+        except ValueError:
+            run_number = None
+        return {
+            "json_path": self._fileEdit.text().strip(),
+            "run_number": run_number,
+            "notes": self._notesEdit.toPlainText().strip() or None,
+        }
+
+    def validate(self) -> str | None:
+        if not self._fileEdit.text().strip():
+            return "Select a JSON file."
+        from pathlib import Path as _Path
+        if not _Path(self._fileEdit.text().strip()).exists():
+            return f"File not found: {self._fileEdit.text().strip()}"
+        run_text = self._runEdit.text().strip()
+        if run_text:
+            try:
+                n = int(run_text)
+                if n <= 0:
+                    return "Run number must be a positive integer."
+            except ValueError:
+                return f"'{run_text}' is not a valid run number."
+        return None
+
+
 # ── CIF preview helper ────────────────────────────────────────────────────────
 
 def _cif_preview_text(path: str) -> str:
@@ -972,6 +1055,7 @@ class SetupPanel(QWidget):
     binMaskFromMonitorRequested = Signal(dict)
     binMaskManualRequested = Signal(dict)
     binMaskFromWorkspaceRequested = Signal(dict)
+    binMaskFromJsonRequested = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -1022,6 +1106,7 @@ class SetupPanel(QWidget):
         self._typeCombo.addItem("Bin mask (transmission monitor)")
         self._typeCombo.addItem("Bin mask (manual notch list)")
         self._typeCombo.addItem("Bin mask (from workspace history)")
+        self._typeCombo.addItem("Bin mask (from JSON file)")
         self._typeCombo.currentIndexChanged.connect(self._onTypeChanged)
         type_row.addWidget(self._typeCombo)
         type_row.addStretch(1)
@@ -1044,6 +1129,9 @@ class SetupPanel(QWidget):
 
         self._binMaskFromWorkspaceForm = _BinMaskFromWorkspaceForm()
         self._stack.addWidget(self._binMaskFromWorkspaceForm)  # index 4 = _TYPE_BIN_MASK_WORKSPACE
+
+        self._binMaskFromJsonForm = _BinMaskFromJsonForm()
+        self._stack.addWidget(self._binMaskFromJsonForm)  # index 5 = _TYPE_BIN_MASK_JSON
 
         cg_layout.addWidget(self._stack)
 
@@ -1118,3 +1206,9 @@ class SetupPanel(QWidget):
                 QMessageBox.warning(self, "Invalid form", error)
                 return
             self.binMaskFromWorkspaceRequested.emit(self._binMaskFromWorkspaceForm.params())
+        elif index == _TYPE_BIN_MASK_JSON:
+            error = self._binMaskFromJsonForm.validate()
+            if error:
+                QMessageBox.warning(self, "Invalid form", error)
+                return
+            self.binMaskFromJsonRequested.emit(self._binMaskFromJsonForm.params())

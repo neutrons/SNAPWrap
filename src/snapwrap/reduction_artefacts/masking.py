@@ -537,6 +537,67 @@ def detect_notches_in_spectrum(
     return final, diagnostics
 
 
+def build_swiss_cheese_from_json_file(
+    json_path: str | Path,
+    output_dir: str | Path,
+    file_prefix: str,
+    make_tables: bool = True,
+) -> list[Path]:
+    """Register a bin mask from a previously saved swiss-cheese JSON file.
+
+    Loads the JSON with :meth:`~snapwrap.maskUtils.swissCheese.load` for
+    validation, then copies the file to *output_dir* under a standard name.
+    If *make_tables* is ``True`` (the default),
+    :meth:`~snapwrap.maskUtils.swissCheese.makeMaskBinsTables` is also called,
+    leaving ``maskBins_{unit}`` table workspaces in the Mantid ADS ready for
+    use with ``MaskBinsFromTable``.
+
+    Args:
+        json_path: Path to the saved swiss-cheese JSON (as written by
+            :meth:`~snapwrap.maskUtils.swissCheese.save`).
+        output_dir: Campaign artefact directory to copy the file into.
+        file_prefix: Filename stem for the copy (unit suffix appended
+            automatically, e.g. ``_Wavelength``).
+        make_tables: If ``True``, populate ADS with ``maskBins_*`` table
+            workspaces.  Requires Mantid.  Default ``True``.
+
+    Returns:
+        List containing the path of the copied mask JSON in *output_dir*.
+
+    Raises:
+        FileNotFoundError: If *json_path* does not exist.
+        RuntimeError: If Mantid/maskUtils are unavailable or the JSON
+            contains no notches.
+    """
+    import shutil
+
+    if _swissCheese is None:
+        raise RuntimeError(
+            "snapwrap.maskUtils is not available in this environment. "
+            "Run inside Mantid Workbench."
+        )
+    json_path = Path(json_path)
+    if not json_path.exists():
+        raise FileNotFoundError(f"Mask JSON not found: {json_path}")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sc = _swissCheese()
+    sc.load(str(json_path))
+    if not sc.eyeList:
+        raise RuntimeError(f"No notches found in '{json_path}'.")
+
+    if make_tables:
+        sc.makeMaskBinsTables()
+
+    unit = sc.uniqueUnits[0] if sc.uniqueUnits else "unknown"
+    dest = output_dir / f"{file_prefix}_{unit}.json"
+    if json_path.resolve() != dest.resolve():
+        shutil.copy2(str(json_path), str(dest))
+    return [dest]
+
+
 def build_swiss_cheese_from_workspace_history(
     ws_name: str,
     output_dir: str | Path,

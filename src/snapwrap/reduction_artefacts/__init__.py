@@ -68,6 +68,7 @@ from .masking import (
 	build_swiss_cheese_from_ub_files,
 	build_swiss_cheese_from_transmission_monitor,
 	build_swiss_cheese_from_workspace_history,
+	build_swiss_cheese_from_json_file,
 	detect_notches_in_spectrum,
 )
 from .requirements import (
@@ -136,6 +137,7 @@ __all__ = [
 	"build_swiss_cheese_from_ub_files",
 	"build_swiss_cheese_from_transmission_monitor",
 	"build_swiss_cheese_from_workspace_history",
+	"build_swiss_cheese_from_json_file",
 	"copy_artefact",
 	"delete_campaign",
 	"detect_notches_in_spectrum",

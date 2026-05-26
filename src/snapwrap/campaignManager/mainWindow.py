@@ -162,6 +162,7 @@ class CampaignManager(QDialog):
         self._setupPanel.binMaskFromMonitorRequested.connect(self._onBinMaskFromMonitorRequested)
         self._setupPanel.binMaskManualRequested.connect(self._onBinMaskManualRequested)
         self._setupPanel.binMaskFromWorkspaceRequested.connect(self._onBinMaskFromWorkspaceRequested)
+        self._setupPanel.binMaskFromJsonRequested.connect(self._onBinMaskFromJsonRequested)
         self._setupPanel.assetDeleteRequested.connect(self._onAssetDeleteRequested)
 
         self._postProcessPanel = PostProcessingPanel(self)
@@ -792,6 +793,29 @@ class CampaignManager(QDialog):
                 f"Registered {len(recs)} bin mask artefact(s) from workspace '{ws}'."
                 if isinstance(recs, list) else f"Bin mask from workspace '{ws}' registered."
             ),
+            after_success=_after_success,
+        )
+
+    def _onBinMaskFromJsonRequested(self, params: dict[str, Any]) -> None:
+        ipts = self._currentIPTS()
+        slug = self._campaignCombo.currentData()
+        if ipts is None or not slug:
+            QMessageBox.warning(self, "No campaign", "Select an IPTS and campaign first.")
+            return
+
+        def _after_success() -> None:
+            self._reloadCurrent()
+            self._reloadRunSummaries()
+
+        from pathlib import Path as _Path
+        fname = _Path(params.get("json_path", "")).name
+        run = params.get("run_number")
+        scope = f"run {run}" if run is not None else "campaign-wide"
+        self._runMutation(
+            label=f"Registering bin mask from '{fname}' ({scope})…",
+            fn=self._model.registerBinMaskFromJsonFile,
+            kwargs={"ipts": ipts, "campaign_identifier": slug, **params},
+            success_msg=lambda _r: f"Bin mask from '{fname}' registered ({scope}).",
             after_success=_after_success,
         )
 

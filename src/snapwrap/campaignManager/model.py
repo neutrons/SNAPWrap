@@ -716,6 +716,81 @@ class CampaignManagerModel:
 
         return records[0] if len(records) == 1 else records
 
+    @staticmethod
+    def registerBinMaskFromJsonFile(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        json_path: str | Path,
+        run_number: int | None = None,
+        notes: str | None = None,
+        shared_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Load a swiss-cheese JSON saved by ``swissCheese.save()`` and register it.
+
+        Copies the file into the campaign artefact directory, calls
+        ``swissCheese.load()`` to validate it, and calls
+        ``swissCheese.makeMaskBinsTables()`` to leave ``maskBins_*`` table
+        workspaces in the Mantid ADS ready for use.  Returns the registered
+        artefact record.
+        """
+        from snapwrap.reduction_artefacts.masking import (  # type: ignore
+            build_swiss_cheese_from_json_file,
+        )
+
+        json_path = Path(json_path)
+        artefact_dir = get_campaign_artefact_dir(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        safe_stem = re.sub(r"[^a-z0-9_-]", "_", json_path.stem.lower())
+        file_prefix = (
+            f"binmask_json_{safe_stem}_run{run_number}"
+            if run_number is not None
+            else f"binmask_json_{safe_stem}"
+        )
+
+        json_paths = build_swiss_cheese_from_json_file(
+            json_path=json_path,
+            output_dir=artefact_dir,
+            file_prefix=file_prefix,
+        )
+
+        existing_ids = {
+            rec.get("artefact_id")
+            for rec in list_artefact_records(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_type="bin_mask",
+                shared_root=shared_root,
+            )
+        }
+
+        safe_id = re.sub(r"[^a-z0-9-]", "-", json_path.stem.lower())
+        base_id = (
+            f"binmask-json-{safe_id}-run{run_number}"
+            if run_number is not None
+            else f"binmask-json-{safe_id}"
+        )
+        artefact_id = base_id
+        version = 2
+        while artefact_id in existing_ids:
+            artefact_id = f"{base_id}-v{version}"
+            version += 1
+
+        return register_manual_bin_mask_artefact(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            artefact_id=artefact_id,
+            mask_json_path=str(json_paths[0]),
+            run_number=run_number,
+            shared_root=shared_root,
+            method="bin_mask.from_json_file",
+            metadata={"source_file": str(json_path)},
+            notes=notes,
+        )
+
     # ── Post-processing ──────────────────────────────────────────────
 
     @staticmethod
