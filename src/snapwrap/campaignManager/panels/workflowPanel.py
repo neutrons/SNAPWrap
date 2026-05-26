@@ -259,12 +259,6 @@ class _ResampleCard(QGroupBox):
         self._factorSpin.setMaximumWidth(120)
         form.addRow("Sample factor:", self._factorSpin)
 
-        self._unitsCombo = QComboBox()
-        self._unitsCombo.addItem("d-spacing  (dsp)", "dsp")
-        self._unitsCombo.addItem("Time-of-flight  (tof)", "tof")
-        self._unitsCombo.setMaximumWidth(240)
-        form.addRow("Units:", self._unitsCombo)
-
         outer.addLayout(form)
 
     def setExpertMode(self, _enabled: bool) -> None:
@@ -276,21 +270,13 @@ class _ResampleCard(QGroupBox):
     def toStep(self) -> WorkflowStep:
         return WorkflowStep(
             step_type="resample",
-            params={
-                "sample_factor": self._factorSpin.value(),
-                "units": self._unitsCombo.currentData(),
-            },
+            params={"sample_factor": self._factorSpin.value()},
         )
 
     def fromStep(self, step: WorkflowStep) -> None:
         p = step.params
         if "sample_factor" in p:
             self._factorSpin.setValue(float(p["sample_factor"]))
-        units = p.get("units", "dsp")
-        for i in range(self._unitsCombo.count()):
-            if self._unitsCombo.itemData(i) == units:
-                self._unitsCombo.setCurrentIndex(i)
-                break
 
 
 class _CropCard(QGroupBox):
@@ -317,12 +303,6 @@ class _CropCard(QGroupBox):
         self._liteCheck = QCheckBox("Lite mode (18 432 pixels)")
         self._liteCheck.setChecked(True)
         form.addRow("Instrument mode:", self._liteCheck)
-
-        self._sourcePrefixCombo = QComboBox()
-        self._sourcePrefixCombo.addItem("reduced", "reduced")
-        self._sourcePrefixCombo.addItem("resampled", "resampled")
-        self._sourcePrefixCombo.setMaximumWidth(200)
-        form.addRow("Source workspaces:", self._sourcePrefixCombo)
 
         self._edgeSpin = QDoubleSpinBox()
         self._edgeSpin.setRange(0, 50)
@@ -363,7 +343,6 @@ class _CropCard(QGroupBox):
             sels["bin_mask"] = bm
         params: dict[str, Any] = {
             "is_lite": self._liteCheck.isChecked(),
-            "source_prefix": self._sourcePrefixCombo.currentData(),
             "edge_bins": int(self._edgeSpin.value()),
             "min_coverage": self._minCovSpin.value(),
             "force_recompute": self._forceCheck.isChecked(),
@@ -375,11 +354,6 @@ class _CropCard(QGroupBox):
         self._binMaskList.setSelectedIds(step.artefact_selections.get("bin_mask", []))
         p = step.params
         self._liteCheck.setChecked(bool(p.get("is_lite", True)))
-        src = p.get("source_prefix", "reduced")
-        for i in range(self._sourcePrefixCombo.count()):
-            if self._sourcePrefixCombo.itemData(i) == src:
-                self._sourcePrefixCombo.setCurrentIndex(i)
-                break
         if "edge_bins" in p:
             self._edgeSpin.setValue(float(p["edge_bins"]))
         if "min_coverage" in p:
@@ -405,8 +379,16 @@ def _execute_queue_fn(
     ipts: int,
     campaign_slug: str,
 ) -> str:
-    """Execute all workflow steps sequentially.  Returns accumulated log."""
+    """Execute all workflow steps sequentially.  Returns accumulated log.
+
+    source_prefix for the Crop step is derived automatically: if a Resample
+    step is present in the queue, Crop reads from 'resampled' workspaces;
+    otherwise it reads from 'reduced'.
+    """
     from snapwrap.campaignManager.model import CampaignManagerModel  # type: ignore
+
+    step_types = [s["step_type"] for s in steps]
+    has_resample = "resample" in step_types
 
     log_parts: list[str] = []
     for step_dict in steps:
@@ -430,18 +412,21 @@ def _execute_queue_fn(
             result = CampaignManagerModel.postprocessResample(
                 run_number=run_number,
                 sample_factor=params.get("sample_factor", 1.0),
-                units=params.get("units", "dsp"),
+                units="dsp",
             )
             log_parts.append(result)
 
         elif stype == "crop":
+            # Auto-derive source prefix: use resampled output if resample ran.
+            source_prefix = "resampled" if has_resample else "reduced"
+            log_parts.append(f"  source_prefix: {source_prefix}\n")
             bin_ids = sels.get("bin_mask") or None
             result = CampaignManagerModel.postprocessCrop(
                 ipts=ipts,
                 campaign_identifier=campaign_slug,
                 run_number=run_number,
                 is_lite=params.get("is_lite", True),
-                source_prefix=params.get("source_prefix", "reduced"),
+                source_prefix=source_prefix,
                 edge_bins=int(params.get("edge_bins", 0)),
                 min_coverage=float(params.get("min_coverage", 0.002)),
                 force_recompute=bool(params.get("force_recompute", False)),

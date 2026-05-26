@@ -338,8 +338,10 @@ class CampaignManager(QDialog):
         self._deleteCampaignBtn.setEnabled(has_campaign)
         if not has_campaign:
             self._workflowPanel.setContext(None, None)
+            self._setupPanel.setIPTS(None)
             return
         self._workflowPanel.setContext(ipts, slug)
+        self._setupPanel.setIPTS(ipts)
         self._reloadCurrent()
         self._reloadRunSummaries()
         self._reloadSetup()

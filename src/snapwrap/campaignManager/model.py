@@ -1351,9 +1351,8 @@ class CampaignManagerModel:
                         "_crystal_species": rec,
                     })
 
-        # Attach thumbnail_path to pixel_mask records where the PNG exists.
-        # Thumbnails are stored at a predictable path in the artefact dir,
-        # so this works for records registered in previous sessions too.
+        # Attach thumbnail_path to pixel_mask and bin_mask records where a
+        # PNG exists on disk but the JSONL record is missing the field.
         try:
             artefact_dir_p = get_campaign_artefact_dir(
                 ipts=ipts,
@@ -1361,12 +1360,28 @@ class CampaignManagerModel:
                 shared_root=shared_root,
             )
             for rec in records:
-                if rec.get("artefact_type") == "pixel_mask" and "thumbnail_path" not in rec:
+                if "thumbnail_path" in rec:
+                    continue
+                atype = rec.get("artefact_type", "")
+                if atype == "pixel_mask":
                     aid = rec.get("artefact_id", "")
                     if aid:
                         thumb = artefact_dir_p / f"{aid}_thumbnail.png"
                         if thumb.exists():
                             rec["thumbnail_path"] = str(thumb)
+                elif atype == "bin_mask":
+                    # Derive diag PNG from JSON filename:
+                    # e.g. binmask_monitor_run65893_Wavelength.json → binmask_monitor_run65893_diag.png
+                    json_path = Path(rec.get("path") or "")
+                    if json_path.exists():
+                        stem = json_path.stem
+                        for unit_suffix in ("_Wavelength", "_dSpacing"):
+                            if stem.endswith(unit_suffix):
+                                file_prefix = stem[: -len(unit_suffix)]
+                                diag = json_path.parent / f"{file_prefix}_diag.png"
+                                if diag.exists():
+                                    rec["thumbnail_path"] = str(diag)
+                                break
         except Exception:
             pass
 

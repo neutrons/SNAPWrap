@@ -822,9 +822,14 @@ class _BinMaskFromJsonForm(QWidget):
         self._notesEdit.setFixedHeight(55)
         form.addRow("Notes:", self._notesEdit)
 
+    def setDefaultDir(self, directory: str | None) -> None:
+        """Set the directory the file browser opens in by default."""
+        self._defaultDir = directory or ""
+
     def _onBrowse(self) -> None:
+        start_dir = getattr(self, "_defaultDir", "")
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select swiss-cheese JSON", "", "JSON files (*.json)"
+            self, "Select swiss-cheese JSON", start_dir, "JSON files (*.json)"
         )
         if path:
             self._fileEdit.setText(path)
@@ -1152,6 +1157,14 @@ class SetupPanel(QWidget):
         layout.addWidget(creation_scroll)
 
     # ── Public API ─────────────────────────────────────────────────────
+
+    def setIPTS(self, ipts: int | None) -> None:
+        """Set the current IPTS so the JSON file browser opens in the right folder."""
+        if ipts is not None:
+            default_dir = f"/SNS/SNAP/IPTS-{ipts}/shared"
+        else:
+            default_dir = ""
+        self._binMaskFromJsonForm.setDefaultDir(default_dir)
 
     def setRows(self, rows: list[dict[str, Any]]) -> None:
         self._assetModel.setRows(rows)

@@ -36,7 +36,6 @@ STEP_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "resample": {
         "sample_factor": 1.0,
-        "units": "dsp",
     },
     "crop": {
         "edge_bins": 0,
