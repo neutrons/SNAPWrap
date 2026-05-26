@@ -219,7 +219,7 @@ def _load_notches(
 
 
 def _find_zero_runs(
-    ws: Any, spectrum_idx: int, edge_bins: int = 0, min_coverage: float = 0.0
+    ws: Any, spectrum_idx: int, edge_bins: int = 0, min_coverage: float = 0.002
 ) -> list[tuple[float, float]]:
     """Return ``[(d_lo, d_hi)]`` for contiguous near-zero Y regions.
 
@@ -282,7 +282,7 @@ def compute_dspace_gaps(
     bin_mask_paths: list[str | Path],
     diagnostics: bool = False,
     edge_bins: int = 0,
-    min_coverage: float = 0.0,
+    min_coverage: float = 0.002,
 ) -> dict[str, list[list[tuple[float, float]]]]:
     """Compute d-space gap intervals from registered wavelength bin masks.
 

@@ -650,28 +650,20 @@ class CampaignManagerModel:
         source_prefix: str = "reduced",
         diagnostics: bool = False,
         edge_bins: int = 0,
-        min_coverage: float = 0.0,
+        min_coverage: float = 0.002,
+        force_recompute: bool = False,
         shared_root: str | Path | None = None,
     ) -> str:
         """Crop notch-mask gaps from reduced/resampled workspaces.
 
-        Locates the registered bin-mask artefacts for the run, propagates
-        their wavelength notches to d-space gaps via the SNAPRed grouping
-        workspaces already in ADS, then applies those gaps to every focused
-        workspace matching *source_prefix* and *run_number*.
+        By default, if an active crop artefact already exists for this run
+        whose stored parameters (bin masks, edge_bins, min_coverage) match
+        the requested values, the stored gap map is re-applied directly
+        without recomputing.  Set *force_recompute* to bypass this and
+        always regenerate from scratch (retiring the old artefact first).
 
         End-gaps (at spectrum edges) are removed with ``CropWorkspaceRagged``;
-        interior gaps are set to ``NaN``.  Results are registered as
-        ``cropped_workspace`` artefacts.
-
-        Args:
-            edge_bins: Extra bins to expand each gap boundary outward on
-                both sides, absorbing the spike transition zone at notch
-                edges.  Default 0 (no expansion).
-            min_coverage: Fractional threshold for zero detection — bins
-                with Y ≤ ``min_coverage * max(Y)`` are treated as zero.
-                Absorbs sparse transition zones at low d-spacing.
-                Default 0.0 (absolute zero only).
+        interior gaps are set to ``NaN``.
 
         Returns a log string summarising the operation (captured stdout from
         the underlying computation).
@@ -683,6 +675,7 @@ class CampaignManagerModel:
         from snapwrap.reduction_artefacts.persistence import (  # type: ignore
             list_artefact_records,
             register_cropped_workspace_artefact,
+            retire_crop_artefacts,
         )
         from snapwrap.reduction_artefacts.postprocessing import (  # type: ignore
             apply_dspace_gaps,
@@ -710,9 +703,61 @@ class CampaignManagerModel:
                 f"Active bin-mask artefact(s) found for run {run_number} but none "
                 "have a 'path' field — check the artefact records."
             )
-
         applied_mask_ids = [r["artefact_id"] for r in bin_mask_records]
 
+        # ── Try to reuse an existing matching crop artefact ───────────
+        if not force_recompute:
+            existing_crop = [
+                r for r in list_artefact_records(
+                    ipts=ipts,
+                    campaign_identifier=campaign_identifier,
+                    run_number=run_number,
+                    status="active",
+                    shared_root=shared_root,
+                )
+                if r.get("method") == "crop.notch_gaps"
+            ]
+            reuse_map: dict[str, tuple[str, list]] = {}
+            for rec in existing_crop:
+                meta = rec.get("metadata", {})
+                if (
+                    sorted(rec.get("input_asset_ids", [])) == sorted(applied_mask_ids)
+                    and meta.get("edge_bins") == edge_bins
+                    and abs(float(meta.get("min_coverage", -1.0)) - min_coverage) < 1e-9
+                ):
+                    group = meta.get("focus_group", "")
+                    gap_path = rec.get("path", "")
+                    if group and group not in reuse_map and gap_path and Path(gap_path).exists():
+                        gap_json = json.loads(Path(gap_path).read_text(encoding="utf-8"))
+                        gaps_for_group: list[list[tuple[float, float]]] = [
+                            [tuple(g) for g in spec]  # type: ignore[misc]
+                            for spec in gap_json.get(group, [])
+                        ]
+                        reuse_map[group] = (rec["artefact_id"], gaps_for_group)
+
+            if reuse_map:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    handles = workspaceHandles(prefix=source_prefix, runNumber=run_number) or []
+                    reused_ids: list[str] = []
+                    for handle in handles:
+                        group = handle.pixelGroup
+                        if group not in reuse_map:
+                            print(f"WARNING: no stored gap map for group '{group}' — skipping")
+                            continue
+                        aid, gaps_reuse = reuse_map[group]
+                        out_ws = f"cropped_dsp_{group}_{run_number}"
+                        apply_dspace_gaps(handle.wsName, gaps_reuse, out_ws)
+                        print(f"Group '{group}': reused stored gap map from artefact '{aid}'")
+                        reused_ids.append(aid)
+                if not reused_ids:
+                    raise RuntimeError(
+                        f"No {source_prefix} workspaces found in ADS for run {run_number}."
+                    )
+                ids = ", ".join(reused_ids)
+                return buf.getvalue() + f"\nReused {len(reused_ids)} existing crop artefact(s): {ids}.\n"
+
+        # ── Recompute: retire existing crop artefacts first ───────────
         artefact_dir = get_campaign_artefact_dir(
             ipts=ipts,
             campaign_identifier=campaign_identifier,
@@ -720,20 +765,19 @@ class CampaignManagerModel:
         )
         artefact_dir.mkdir(parents=True, exist_ok=True)
 
-        seen_ids: set[str] = {
-            rec.get("artefact_id", "")
-            for rec in list_artefact_records(
-                ipts=ipts,
-                campaign_identifier=campaign_identifier,
-                artefact_type="cropped_workspace",
-                shared_root=shared_root,
-            )
-        }
+        n_retired = retire_crop_artefacts(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            run_number=run_number,
+            shared_root=shared_root,
+        )
 
         # ── Compute gaps and apply; capture all print output ──────────
         registered: list[dict[str, Any]] = []
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
+            if n_retired:
+                print(f"Retired {n_retired} previous crop artefact(s) for run {run_number}.")
             gap_map = compute_dspace_gaps(
                 run_number=run_number,
                 is_lite=is_lite,
@@ -763,24 +807,17 @@ class CampaignManagerModel:
                     encoding="utf-8",
                 )
 
-                base_id = f"crop-{group}-{run_number}"
-                artefact_id = base_id
-                ver = 2
-                while artefact_id in seen_ids:
-                    artefact_id = f"{base_id}-v{ver}"
-                    ver += 1
-                seen_ids.add(artefact_id)
-
                 record = register_cropped_workspace_artefact(
                     ipts=ipts,
                     campaign_identifier=campaign_identifier,
-                    artefact_id=artefact_id,
+                    artefact_id=f"crop-{group}-{run_number}",
                     ws_name=out_ws,
                     source_ws_name=handle.wsName,
                     run_number=run_number,
                     focus_group=group,
                     gap_map_path=str(gap_file),
                     applied_bin_mask_ids=applied_mask_ids,
+                    metadata={"edge_bins": edge_bins, "min_coverage": min_coverage},
                     shared_root=shared_root,
                 )
                 registered.append(record)
