@@ -424,19 +424,18 @@ class CampaignManager(QDialog):
         if ipts is None or not slug:
             return
 
-        confirm = QMessageBox.warning(
+        typed, ok = QInputDialog.getText(
             self,
-            "Delete campaign?",
+            "Delete campaign — confirm",
             (
-                f"<b>Permanently delete campaign '{slug}'</b> from IPTS-{ipts}?<br><br>"
-                "This will remove the campaign directory and <b>all its contents</b>: "
-                "artefact records, asset records, thumbnails, and any generated files.<br><br>"
-                "This cannot be undone."
+                f"This will permanently delete campaign <b>'{slug}'</b> from IPTS-{ipts} "
+                "and all its contents (artefact records, assets, thumbnails).<br><br>"
+                f"Type <b>{slug}</b> to confirm:"
             ),
-            QMessageBox.Ok | QMessageBox.Cancel,
-            QMessageBox.Cancel,
         )
-        if confirm != QMessageBox.Ok:
+        if not ok or typed.strip() != slug:
+            if ok:
+                QMessageBox.warning(self, "Cancelled", "Campaign name did not match — deletion cancelled.")
             return
 
         def _after_success() -> None:

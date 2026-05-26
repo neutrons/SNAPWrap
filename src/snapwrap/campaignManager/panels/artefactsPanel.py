@@ -98,7 +98,7 @@ class _DetailPanel(QGroupBox):
     * **other** — generic metadata summary
     """
 
-    _THUMB_W, _THUMB_H = 192, 96  # display size — 1:1 with the 192×96 detector grid
+    _THUMB_W, _THUMB_H = 384, 192  # display size — 2× the 192×96 detector grid
 
     def __init__(self, parent=None) -> None:
         super().__init__("Detail", parent)
