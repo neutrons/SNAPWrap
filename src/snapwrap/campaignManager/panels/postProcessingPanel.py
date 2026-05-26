@@ -38,6 +38,7 @@ from snapwrap.campaignManager.workers import GenericWorker
 
 _OP_RESAMPLE = 0
 _OP_CROP = 1
+_OP_RETIRE = 2
 _SNAPWRAP_LOGGER = "snapwrap"
 
 
@@ -190,6 +191,53 @@ class _CropForm(QWidget):
         return None
 
 
+# ── Retire form ───────────────────────────────────────────────────────────────
+
+
+class _RetireForm(QWidget):
+    """Parameter form for retiring (archiving) crop artefacts."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        form = QFormLayout(self)
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self._runEdit = QLineEdit()
+        self._runEdit.setPlaceholderText("leave blank to retire all runs in campaign")
+        self._runEdit.setMaximumWidth(300)
+        form.addRow("Run number:", self._runEdit)
+
+        note = QLabel(
+            "Sets status=archived on all crop.notch_gaps artefacts matching the\n"
+            "run number (or the whole campaign if left blank).  Does not delete\n"
+            "the records — they remain in the index but are ignored by crop."
+        )
+        note.setStyleSheet("color: gray; font-style: italic;")
+        form.addRow("", note)
+
+    def setRunNumber(self, run_number: int) -> None:
+        self._runEdit.setText(str(run_number))
+
+    def params(self) -> dict[str, Any]:
+        run_text = self._runEdit.text().strip()
+        try:
+            run_number: int | None = int(run_text) if run_text else None
+        except ValueError:
+            run_number = None
+        return {"run_number": run_number}
+
+    def validate(self) -> str | None:
+        run_text = self._runEdit.text().strip()
+        if run_text:
+            try:
+                n = int(run_text)
+                if n <= 0:
+                    return "Run number must be a positive integer."
+            except ValueError:
+                return f"'{run_text}' is not a valid run number."
+        return None
+
+
 # ── Main panel ─────────────────────────────────────────────────────────────────
 
 
@@ -226,6 +274,7 @@ class PostProcessingPanel(QWidget):
         self._opCombo = QComboBox()
         self._opCombo.addItem("Resample", _OP_RESAMPLE)
         self._opCombo.addItem("Crop notch gaps", _OP_CROP)
+        self._opCombo.addItem("Retire crop artefacts", _OP_RETIRE)
         self._opCombo.setMaximumWidth(280)
         self._opCombo.currentIndexChanged.connect(self._onOpChanged)
         op_row.addWidget(op_label)
@@ -239,6 +288,8 @@ class PostProcessingPanel(QWidget):
         self._stack.addWidget(self._resampleForm)  # index 0 = _OP_RESAMPLE
         self._cropForm = _CropForm()
         self._stack.addWidget(self._cropForm)       # index 1 = _OP_CROP
+        self._retireForm = _RetireForm()
+        self._stack.addWidget(self._retireForm)     # index 2 = _OP_RETIRE
         layout.addWidget(self._stack)
 
         # ── Log pane (created before buttons so Clear can reference it) ──
@@ -274,9 +325,10 @@ class PostProcessingPanel(QWidget):
             self._ctxLabel.setText("No campaign selected.")
 
     def setRunNumber(self, run_number: int) -> None:
-        """Pre-fill the run number in both forms (called from Runs panel)."""
+        """Pre-fill the run number in all forms (called from Runs panel)."""
         self._resampleForm.setRunNumber(run_number)
         self._cropForm.setRunNumber(run_number)
+        self._retireForm.setRunNumber(run_number)
 
     # ── Internals ──────────────────────────────────────────────────────
 
@@ -299,6 +351,8 @@ class PostProcessingPanel(QWidget):
             self._onResample()
         elif op == _OP_CROP:
             self._onCrop()
+        elif op == _OP_RETIRE:
+            self._onRetire()
 
     def _onResample(self) -> None:
         error = self._resampleForm.validate()
@@ -393,6 +447,47 @@ class PostProcessingPanel(QWidget):
         self._thread = thread
         self._worker = worker
 
+    def _onRetire(self) -> None:
+        error = self._retireForm.validate()
+        if error:
+            QMessageBox.warning(self, "Invalid form", error)
+            return
+
+        params = self._retireForm.params()
+        run = params["run_number"]
+        scope = f"run {run}" if run is not None else "all runs"
+        self._appendLog(
+            f"── Retiring crop artefacts: {scope}  "
+            f"IPTS-{self._ipts} / {self._campaignSlug} ──"
+        )
+
+        self._applyBtn.setEnabled(False)
+        self._installLogHandler()
+
+        from snapwrap.campaignManager.model import CampaignManagerModel
+
+        thread = QThread(self)
+        worker = GenericWorker(
+            CampaignManagerModel.retireCropArtefacts,
+            {
+                "ipts": self._ipts,
+                "campaign_identifier": self._campaignSlug,
+                "run_number": run,
+            },
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._onOpFinished)
+        worker.error.connect(self._onOpError)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._onOpCleanup)
+        thread.start()
+        self._thread = thread
+        self._worker = worker
+
     def _appendLog(self, text: str) -> None:
         self._logEdit.appendPlainText(text)
         sb = self._logEdit.verticalScrollBar()
@@ -401,7 +496,9 @@ class PostProcessingPanel(QWidget):
     def _installLogHandler(self) -> None:
         handler = QtLogHandler()
         handler.logLine.connect(self._appendLog)
-        logging.getLogger(_SNAPWRAP_LOGGER).addHandler(handler)
+        logger = logging.getLogger(_SNAPWRAP_LOGGER)
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
         self._logHandler = handler
 
     def _uninstallLogHandler(self) -> None:

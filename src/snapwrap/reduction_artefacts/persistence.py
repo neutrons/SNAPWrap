@@ -2565,3 +2565,58 @@ def register_cropped_workspace_artefact(
         schema_name="artefact_record.schema.json",
     )
     return record
+
+
+def retire_crop_artefacts(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    run_number: int | None = None,
+    shared_root: Path | str | None = None,
+) -> int:
+    """Set ``status="archived"`` on all ``crop.notch_gaps`` artefact records.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        run_number: If given, only records whose ``run_context.run_number``
+            matches are retired.  ``None`` retires all crop artefacts for
+            the campaign.
+        shared_root: Override for the IPTS shared root (useful in tests).
+
+    Returns:
+        Number of records updated.
+    """
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.artefacts_index.exists():
+        return 0
+
+    records = read_jsonl_records(paths.artefacts_index)
+    updated = 0
+    for rec in records:
+        if rec.get("method") != "crop.notch_gaps":
+            continue
+        if run_number is not None:
+            if rec.get("run_context", {}).get("run_number") != run_number:
+                continue
+        if rec.get("status") == "archived":
+            continue
+        rec["status"] = "archived"
+        updated += 1
+
+    if updated:
+        lock_path = paths.artefacts_index.with_suffix(
+            paths.artefacts_index.suffix + ".lock"
+        )
+        with _exclusive_lock(lock_path):
+            with paths.artefacts_index.open("w", encoding="utf-8") as fh:
+                for rec in records:
+                    fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
+
+    return updated

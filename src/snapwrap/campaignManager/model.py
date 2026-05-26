@@ -782,6 +782,26 @@ class CampaignManagerModel:
         return registered
 
     @staticmethod
+    def retireCropArtefacts(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        run_number: int | None = None,
+        shared_root: str | Path | None = None,
+    ) -> str:
+        """Archive all crop.notch_gaps artefacts for the given run (or all runs)."""
+        from snapwrap.reduction_artefacts.persistence import retire_crop_artefacts  # type: ignore
+
+        n = retire_crop_artefacts(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            run_number=run_number,
+            shared_root=shared_root,
+        )
+        scope = f"run {run_number}" if run_number is not None else "all runs"
+        return f"Retired {n} crop artefact(s) for {scope}."
+
+    @staticmethod
     def postprocessResample(
         *,
         run_number: int | None = None,
