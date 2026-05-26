@@ -56,6 +56,20 @@ def _bin_mask_display_type(rec: dict[str, Any]) -> str:
     return atype
 
 
+def _units_tag(json_path: Path) -> str:
+    """Return 'wavelength' or 'dspacing' from a swissCheese JSON filename stem.
+
+    swissCheese.save() appends ``_Wavelength`` or ``_dSpacing`` before the
+    ``.json`` extension.  Falls back to ``'unknown'`` if the suffix is absent.
+    """
+    stem = json_path.stem
+    if stem.endswith("_Wavelength"):
+        return "wavelength"
+    if stem.endswith("_dSpacing"):
+        return "dspacing"
+    return "unknown"
+
+
 def _generate_pixel_mask_thumbnail(
     nxs_path: str,
     artefact_id: str,
@@ -548,8 +562,9 @@ class CampaignManagerModel:
         }
 
         records = []
-        base_id = f"binmask-monitor-run{run_number}"
         for json_path in json_paths:
+            ut = _units_tag(Path(json_path))
+            base_id = f"binmask-{ut}-monitor-run{run_number}"
             artefact_id = base_id
             version = 2
             while artefact_id in existing_ids:
@@ -626,13 +641,14 @@ class CampaignManagerModel:
             )
         }
 
-        base_id = (
-            f"binmask-manual-run{run_number}"
-            if run_number is not None
-            else "binmask-manual-campaign"
-        )
         records = []
         for json_path in json_paths:
+            ut = _units_tag(Path(json_path))
+            base_id = (
+                f"binmask-{ut}-manual-run{run_number}"
+                if run_number is not None
+                else f"binmask-{ut}-manual"
+            )
             artefact_id = base_id
             version = 2
             while artefact_id in existing_ids:
@@ -703,14 +719,14 @@ class CampaignManagerModel:
             )
         }
 
-        safe_id = re.sub(r"[^a-z0-9-]", "-", ws_name.lower())
-        base_id = (
-            f"binmask-ws-{safe_id}-run{run_number}"
-            if run_number is not None
-            else f"binmask-ws-{safe_id}"
-        )
         records = []
         for json_path in json_paths:
+            ut = _units_tag(Path(json_path))
+            base_id = (
+                f"binmask-{ut}-workspace-run{run_number}"
+                if run_number is not None
+                else f"binmask-{ut}-workspace"
+            )
             artefact_id = base_id
             version = 2
             while artefact_id in existing_ids:
@@ -784,29 +800,35 @@ class CampaignManagerModel:
             )
         }
 
-        safe_id = re.sub(r"[^a-z0-9-]", "-", json_path.stem.lower())
-        base_id = (
-            f"binmask-json-{safe_id}-run{run_number}"
-            if run_number is not None
-            else f"binmask-json-{safe_id}"
-        )
-        artefact_id = base_id
-        version = 2
-        while artefact_id in existing_ids:
-            artefact_id = f"{base_id}-v{version}"
-            version += 1
+        records = []
+        for out_path in json_paths:
+            ut = _units_tag(Path(out_path))
+            base_id = (
+                f"binmask-{ut}-json-run{run_number}"
+                if run_number is not None
+                else f"binmask-{ut}-json"
+            )
+            artefact_id = base_id
+            version = 2
+            while artefact_id in existing_ids:
+                artefact_id = f"{base_id}-v{version}"
+                version += 1
+            existing_ids.add(artefact_id)
 
-        return register_manual_bin_mask_artefact(
-            ipts=ipts,
-            campaign_identifier=campaign_identifier,
-            artefact_id=artefact_id,
-            mask_json_path=str(json_paths[0]),
-            run_number=run_number,
-            shared_root=shared_root,
-            method="bin_mask.from_json_file",
-            metadata={"source_file": str(json_path)},
-            notes=notes,
-        )
+            record = register_manual_bin_mask_artefact(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                artefact_id=artefact_id,
+                mask_json_path=str(out_path),
+                run_number=run_number,
+                shared_root=shared_root,
+                method="bin_mask.from_json_file",
+                metadata={"source_file": str(json_path)},
+                notes=notes,
+            )
+            records.append(record)
+
+        return records[0] if len(records) == 1 else records
 
     # ── Post-processing ──────────────────────────────────────────────
 
