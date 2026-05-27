@@ -284,15 +284,22 @@ def compute_dspace_gaps(
     edge_bins: int = 0,
     min_coverage: float = 0.002,
 ) -> dict[str, list[list[tuple[float, float]]]]:
-    """Compute d-space gap intervals from registered wavelength bin masks.
+    """Compute d-space gap intervals from bin masks (wavelength and/or d-spacing).
 
     For each focus group and each spectrum within that group, returns the
     list of ``(d_lo, d_hi)`` intervals that are masked.
 
+    Wavelength-domain masks are applied to the synthetic flat workspace before
+    the unit conversion to d-spacing.  D-spacing-domain masks are applied after
+    the conversion, immediately before DiffractionFocussing.  The mask unit is
+    detected from the JSON filename: ``_Wavelength`` → wavelength,
+    ``_dSpacing`` → d-spacing.
+
     Args:
         run_number: Run number whose ADS workspaces are used.
         is_lite: ``True`` for Lite (18 432-pixel) mode.
-        bin_mask_paths: Paths to swiss-cheese JSON mask files.
+        bin_mask_paths: Paths to swiss-cheese JSON mask files (any mix of
+            wavelength and d-spacing units).
         diagnostics: If ``True``, leave the synthetic and focused gap-map
             workspaces in ADS (named ``crop_diag_synthetic_{run}`` and
             ``crop_diag_focused_{group}_{run}``) for inspection.
@@ -335,18 +342,30 @@ def compute_dspace_gaps(
         )
     print(f"Gap computation: donor workspace '{donor_name}'")
 
-    # ── 3. Load all notches from the supplied bin-mask files ──────────
-    all_notches: list[tuple[float, float, list[range]]] = []
+    # ── 3. Load all notches; split by unit domain (detected from filename) ──
+    wavelength_notches: list[tuple[float, float, list[range]]] = []
+    dspacing_notches: list[tuple[float, float, list[range]]] = []
     for path in bin_mask_paths:
-        all_notches.extend(_load_notches(path))
+        notches = _load_notches(path)
+        if Path(path).stem.endswith("_dSpacing"):
+            dspacing_notches.extend(notches)
+        else:  # _Wavelength or unknown → treat as wavelength
+            wavelength_notches.extend(notches)
 
-    if not all_notches:
+    if not wavelength_notches and not dspacing_notches:
         return {}
-    print(f"Gap computation: {len(all_notches)} notch(es) loaded")
-    for xmin, xmax, det_ranges in all_notches:
+    print(
+        f"Gap computation: {len(wavelength_notches)} wavelength notch(es), "
+        f"{len(dspacing_notches)} d-spacing notch(es) loaded"
+    )
+    for xmin, xmax, det_ranges in wavelength_notches:
         n_ranges = len(det_ranges)
         det_desc = "all detectors" if not det_ranges else f"e.g. {det_ranges[0]}"
         print(f"  notch λ=[{xmin:.4f}, {xmax:.4f}]  det_ranges={n_ranges} ({det_desc})")
+    for xmin, xmax, det_ranges in dspacing_notches:
+        n_ranges = len(det_ranges)
+        det_desc = "all detectors" if not det_ranges else f"e.g. {det_ranges[0]}"
+        print(f"  notch d=[{xmin:.4f}, {xmax:.4f}]  det_ranges={n_ranges} ({det_desc})")
 
     # ── 4. Build a synthetic flat workspace in Wavelength ─────────────
     synthetic_name = f"crop_diag_synthetic_{run_number}"
@@ -378,24 +397,23 @@ def compute_dspace_gaps(
     # sliver produces a spurious narrow peak at very low d after focusing.
     # Fix: if the workspace starts below the first notch, extend that notch
     # down to the actual workspace λ_min.
-    if all_notches:
+    if wavelength_notches:
         ws_min_lambda = float(x0[0])
-        min_notch_idx = min(range(len(all_notches)), key=lambda k: all_notches[k][0])
-        xmin_n, xmax_n, det_ranges_n = all_notches[min_notch_idx]
+        min_notch_idx = min(range(len(wavelength_notches)), key=lambda k: wavelength_notches[k][0])
+        xmin_n, xmax_n, det_ranges_n = wavelength_notches[min_notch_idx]
         if ws_min_lambda < xmin_n:
             print(
                 f"  extending lowest notch xmin {xmin_n:.4f} → {ws_min_lambda:.4f} Å "
                 f"to cover workspace λ_min (flight-path offset)"
             )
-            all_notches[min_notch_idx] = (ws_min_lambda, xmax_n, det_ranges_n)
+            wavelength_notches[min_notch_idx] = (ws_min_lambda, xmax_n, det_ranges_n)
 
     # ── 5. Apply wavelength notches to the synthetic workspace ──────────
     # spectraLsts in the mask JSON stores workspace spectrum indices (0-based),
     # matching Mantid's MaskBins InputWorkspaceIndexSet convention.  Compare
     # directly against the spectrum index i, NOT against detector IDs.
-    for xmin, xmax, det_ranges in all_notches:
+    for xmin, xmax, det_ranges in wavelength_notches:
         if det_ranges:
-            # range.__contains__ is O(1) for each range object
             indices: range | list[int] = [
                 i for i in range(n_hist) if any(i in r for r in det_ranges)
             ]
@@ -418,6 +436,29 @@ def compute_dspace_gaps(
         Target="dSpacing",
         EMode="Elastic",
     )
+
+    # ── 7b. Apply d-spacing notches after unit conversion ─────────────
+    # D-spacing masks cannot be applied in wavelength space — they must be
+    # zeroed after ConvertUnits so that the notch coordinates are interpreted
+    # in the correct domain before DiffractionFocussing.
+    if dspacing_notches:
+        ws_dsp = mtd[synthetic_name]
+        for xmin, xmax, det_ranges in dspacing_notches:
+            if det_ranges:
+                indices = [
+                    i for i in range(n_hist) if any(i in r for r in det_ranges)
+                ]
+            else:
+                indices = range(n_hist)
+            zeroed_bins = 0
+            for i in indices:
+                x = ws_dsp.readX(i)
+                y = ws_dsp.dataY(i)
+                lo = int(np.searchsorted(x, xmin, side="left"))
+                hi = int(np.searchsorted(x, xmax, side="right"))
+                zeroed_bins += hi - lo
+                y[lo:hi] = 0.0
+            print(f"  notch d=[{xmin:.4f}, {xmax:.4f}]: zeroed {zeroed_bins} bin×spectrum slots across {len(indices)} spectra")
 
     # ── 8. Focus per group; extract d-space gap regions ───────────────
     result: dict[str, list[list[tuple[float, float]]]] = {}
