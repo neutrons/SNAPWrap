@@ -16,6 +16,7 @@ from typing import Any
 
 from qtpy.QtCore import QThread, Qt  # type: ignore
 from qtpy.QtWidgets import (  # type: ignore
+    QCheckBox,
     QComboBox,
     QCompleter,
     QDialog,
@@ -131,6 +132,16 @@ class CampaignManager(QDialog):
 
         ctx.addStretch(1)
 
+        self._liteModeCheck = QCheckBox("Lite mode")
+        self._liteModeCheck.setChecked(True)
+        self._liteModeCheck.setToolTip(
+            "Lite mode: 18 432 detector pixels (fast).\n"
+            "Unchecked: full native 1 179 648 pixels."
+        )
+        self._liteModeCheck.toggled.connect(self._onLiteModeToggled)
+        ctx.addWidget(self._liteModeCheck)
+
+        ctx.addSpacing(8)
         self._reloadBtn = QPushButton("Reload")
         self._reloadBtn.clicked.connect(self._reloadCurrent)
         ctx.addWidget(self._reloadBtn)
@@ -329,6 +340,9 @@ class CampaignManager(QDialog):
             self._campaignCombo.addItem(label, userData=slug)
         self._campaignCombo.blockSignals(False)
         self._setStatus(f"IPTS-{ipts}: {len(campaigns)} campaign(s).")
+
+    def _onLiteModeToggled(self, checked: bool) -> None:
+        self._workflowPanel.setLiteMode(checked)
 
     def _onCampaignChanged(self, _text: str) -> None:
         ipts = self._currentIPTS()

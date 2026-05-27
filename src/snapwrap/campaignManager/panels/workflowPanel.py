@@ -297,13 +297,6 @@ class _CropCard(QGroupBox):
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        self._binMaskList = _BinMaskCheckList()
-        form.addRow("Bin masks:", self._binMaskList)
-
-        self._liteCheck = QCheckBox("Lite mode (18 432 pixels)")
-        self._liteCheck.setChecked(True)
-        form.addRow("Instrument mode:", self._liteCheck)
-
         self._edgeSpin = QDoubleSpinBox()
         self._edgeSpin.setRange(0, 50)
         self._edgeSpin.setSingleStep(1)
@@ -333,27 +326,20 @@ class _CropCard(QGroupBox):
     def setExpertMode(self, enabled: bool) -> None:
         self._diagCheck.setVisible(enabled)
 
-    def setArtefacts(self, bin_masks: list[dict[str, Any]], **_) -> None:
-        self._binMaskList.populate(bin_masks)
+    def setArtefacts(self, **_) -> None:
+        pass
 
     def toStep(self) -> WorkflowStep:
-        sels: dict[str, list[str]] = {}
-        bm = self._binMaskList.selectedIds()
-        if bm:
-            sels["bin_mask"] = bm
         params: dict[str, Any] = {
-            "is_lite": self._liteCheck.isChecked(),
             "edge_bins": int(self._edgeSpin.value()),
             "min_coverage": self._minCovSpin.value(),
             "force_recompute": self._forceCheck.isChecked(),
             "diagnostics": self._diagCheck.isChecked(),
         }
-        return WorkflowStep(step_type="crop", params=params, artefact_selections=sels)
+        return WorkflowStep(step_type="crop", params=params, artefact_selections={})
 
     def fromStep(self, step: WorkflowStep) -> None:
-        self._binMaskList.setSelectedIds(step.artefact_selections.get("bin_mask", []))
         p = step.params
-        self._liteCheck.setChecked(bool(p.get("is_lite", True)))
         if "edge_bins" in p:
             self._edgeSpin.setValue(float(p["edge_bins"]))
         if "min_coverage" in p:
@@ -378,17 +364,31 @@ def _execute_queue_fn(
     run_number: int,
     ipts: int,
     campaign_slug: str,
+    is_lite: bool = True,
 ) -> str:
     """Execute all workflow steps sequentially.  Returns accumulated log.
 
-    source_prefix for the Crop step is derived automatically: if a Resample
-    step is present in the queue, Crop reads from 'resampled' workspaces;
-    otherwise it reads from 'reduced'.
+    ``is_lite`` comes from the global Lite mode toggle in the main window and
+    applies to all steps that need it (currently only Crop).
+
+    Bin masks for the Crop step are taken directly from the Reduce step's
+    artefact_selections so that the synthetic workspace mirrors the real data
+    exactly.  The Crop step no longer carries its own bin-mask selection.
+
+    source_prefix for Crop is derived automatically: if a Resample step is in
+    the queue, Crop reads from 'resampled' workspaces; otherwise 'reduced'.
     """
     from snapwrap.campaignManager.model import CampaignManagerModel  # type: ignore
 
     step_types = [s["step_type"] for s in steps]
     has_resample = "resample" in step_types
+
+    # Pull bin mask IDs from the Reduce step for use by Crop.
+    reduce_bin_mask_ids: list[str] = []
+    for s in steps:
+        if s["step_type"] == "reduce":
+            reduce_bin_mask_ids = (s.get("artefact_selections") or {}).get("bin_mask", [])
+            break
 
     log_parts: list[str] = []
     for step_dict in steps:
@@ -417,21 +417,19 @@ def _execute_queue_fn(
             log_parts.append(result)
 
         elif stype == "crop":
-            # Auto-derive source prefix: use resampled output if resample ran.
             source_prefix = "resampled" if has_resample else "reduced"
             log_parts.append(f"  source_prefix: {source_prefix}\n")
-            bin_ids = sels.get("bin_mask") or None
             result = CampaignManagerModel.postprocessCrop(
                 ipts=ipts,
                 campaign_identifier=campaign_slug,
                 run_number=run_number,
-                is_lite=params.get("is_lite", True),
+                is_lite=is_lite,
                 source_prefix=source_prefix,
                 edge_bins=int(params.get("edge_bins", 0)),
                 min_coverage=float(params.get("min_coverage", 0.002)),
                 force_recompute=bool(params.get("force_recompute", False)),
                 diagnostics=bool(params.get("diagnostics", False)),
-                bin_mask_ids=bin_ids,
+                bin_mask_ids=reduce_bin_mask_ids or None,
             )
             log_parts.append(result)
 
@@ -461,6 +459,7 @@ class WorkflowPanel(QWidget):
         self._ipts: int | None = None
         self._campaignSlug: str | None = None
         self._runNumber: int | None = None
+        self._isLite: bool = True
         self._expertMode: bool = False
         self._execThread: QThread | None = None
         self._execWorker: GenericWorker | None = None
@@ -589,6 +588,9 @@ class WorkflowPanel(QWidget):
         self._refreshArtefacts()
         self._updateButtonStates()
 
+    def setLiteMode(self, is_lite: bool) -> None:
+        self._isLite = is_lite
+
     # ── Internals ──────────────────────────────────────────────────────
 
     def _updateButtonStates(self) -> None:
@@ -711,8 +713,6 @@ class WorkflowPanel(QWidget):
                     pixel_masks=_fetch("pixel_mask"),
                     attenuations=_fetch("attenuation_workspace"),
                 )
-            elif step_type == "crop":
-                card.setArtefacts(bin_masks=bin_masks)
         except Exception as exc:
             self._appendLog(f"  Warning: could not load artefacts: {exc}")
 
@@ -846,6 +846,7 @@ class WorkflowPanel(QWidget):
                 "run_number": self._runNumber,
                 "ipts": self._ipts,
                 "campaign_slug": self._campaignSlug,
+                "is_lite": self._isLite,
             },
         )
         worker.moveToThread(thread)

@@ -546,6 +546,11 @@ def apply_dspace_gaps(
         new_xmin = d_start
         new_xmax = d_end
 
+        # Strip trailing zero bin: Mantid's CropWorkspaceRagged leaves a
+        # zero-filled final bin when xMax doesn't align with the bin grid.
+        if len(y) > 1 and float(y[-1]) == 0.0:
+            new_xmax = float(x[-2])
+
         gaps = gaps_per_spectrum[i] if i < len(gaps_per_spectrum) else []
         for g_lo, g_hi in sorted(gaps):
             if g_lo <= d_start:
