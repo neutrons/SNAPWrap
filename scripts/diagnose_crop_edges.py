@@ -184,7 +184,10 @@ def _analyse_workspace(ws_name, label):
 if SOURCE_WS is None:
     SOURCE_WS = _find([SOURCE_PREFIX, FOCUS_GROUP], RUN_NUMBER)
 if CROPPED_WS is None:
-    CROPPED_WS = _find([SOURCE_PREFIX, FOCUS_GROUP, "crop"], RUN_NUMBER)
+    # Try 'cropped_' prefix first (model names output as cropped_dsp_*),
+    # then fall back to source-name + '_cropped' suffix convention.
+    CROPPED_WS = (_find(["cropped", FOCUS_GROUP], RUN_NUMBER)
+                  or _find([SOURCE_PREFIX, FOCUS_GROUP, "crop"], RUN_NUMBER))
 
 # Diagnostic synthetic/focused workspaces (only present if diagnostics=True)
 diag_synth = _find(["crop_diag_synthetic"], RUN_NUMBER)
