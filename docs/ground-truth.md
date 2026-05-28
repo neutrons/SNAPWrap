@@ -125,6 +125,40 @@ Old campaigns with pre-Phase-1 IDs continue to work — the ID scheme change is 
 
 ---
 
+## Background extraction
+
+### Background artefact ID scheme
+
+Background artefact IDs follow `bgnd-{method}-run{N}` for per-run extractions, or `bgnd-composite-campaign` for the composite multi-run method.
+
+| Field | Values |
+|---|---|
+| `method` | `clip` (ClipPeaks rolling sphere), `spline` (crystal species + weighted spline), `composite` (multi-run average) |
+| `-run{N}` | included for Methods 1 and 2; omitted for composite (campaign scope) |
+
+**Retention policy:** only the most recent background per method/scope is kept — not versioned.
+
+**Confirmed:** 2026-05-28
+
+---
+
+### ClipPeaks window expressed in d-spacing (Å)
+
+The rolling-sphere window size for ClipPeaks background extraction is `win_dspacing` (Å), not a bin count. This ensures the window covers the same physical extent regardless of resampling factor or PGS-specific binning — the same reasoning as `edge_dspacing` in cropping.
+
+The natural nominal value can be derived from instrument resolution:
+
+- SNAPRed provides `δd/d` per pixel via `EstimateResolutionDiffraction`
+- After DiffractionFocussing: `resolution_dsp_{pgs}_{run}` workspace holds `δd(d) = (δd/d) × d` per focused spectrum (produced by `makeResolutionWorkspace` in `utils.py`)
+- A window spanning N resolution units at d-spacing d₀ has `win_dspacing = N × (δd/d)|_{d₀} × d₀`
+- For SNAP lite mode at column group: δd/d ≈ 0.003–0.005 at typical peak positions
+
+The derivation from SNAPRed is a Phase 1 refinement — Phase 0 exposes `win_dspacing` directly to the user.
+
+**Confirmed:** 2026-05-28
+
+---
+
 ## Future decision pending
 
 ### Artefact ID scheme revisit (parked)

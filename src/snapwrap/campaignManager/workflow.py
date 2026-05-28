@@ -17,13 +17,14 @@ from typing import Any
 
 
 #: Valid step type identifiers — order here is the canonical execution order.
-STEP_TYPES: tuple[str, ...] = ("reduce", "resample", "crop")
+STEP_TYPES: tuple[str, ...] = ("reduce", "resample", "crop", "background")
 
 #: Human-readable labels for each step type.
 STEP_LABELS: dict[str, str] = {
     "reduce": "Reduce",
     "resample": "Resample",
     "crop": "Crop",
+    "background": "Background",
 }
 
 #: Default params for each step type (used when creating a new step).
@@ -43,6 +44,12 @@ STEP_DEFAULTS: dict[str, dict[str, Any]] = {
         "force_recompute": False,
         "diagnostics": False,
     },
+    "background": {
+        "method": "clip",
+        "win_dspacing": 0.05,
+        "force_recompute": False,
+        "diagnostics": False,
+    },
 }
 
 #: Artefact types that gate each step (step cannot be added if these are absent).
@@ -50,6 +57,7 @@ STEP_REQUIRED_ARTEFACTS: dict[str, list[str]] = {
     "reduce": [],
     "resample": [],
     "crop": ["bin_mask"],
+    "background": [],
 }
 
 

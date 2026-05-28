@@ -1,6 +1,6 @@
 # SNAPWrap Campaign Manager — Project Status
 
-_Branch: `reduction_artifacts` | Updated: 2026-05-27_
+_Branch: `reduction_artifacts` | Updated: 2026-05-28_
 
 ---
 
@@ -28,16 +28,26 @@ All work to date is on the `reduction_artifacts` branch, targeting a PR to `next
 
 ---
 
-## Immediate next step
+## Current work — Background extraction
 
-**Manual Workbench test** (Malcolm):  
-Run crop post-processing on a run with **both** a wavelength and a d-spacing bin mask registered. In the log, verify:
-- `"N wavelength notch(es), M d-spacing notch(es) loaded"` with correct counts
-- `"notch d=[…]: zeroed N bin×spectrum slots"` appears (d-spacing mask applied after `ConvertUnits`)
-- No `"WARNING: … end-gaps consume the entire range"` messages for d-spacing positions
-- Focused output has gap intervals at expected d-spacing positions
+The `reduction_artifacts` PR is pushed (branch `reduction_artifacts` → `next`). Background extraction is now the active workstream.
 
-Once testing passes: **push branch and open PR to `next`**.
+### Background extraction phases
+
+| Phase | Description | Status |
+|---|---|---|
+| Phase 0 — Common infrastructure | `"background"` step in workflow + `_BackgroundCard` skeleton | 🔄 In progress |
+| Phase 1 — Method 1: ClipPeaks | Rolling sphere; `win_dspacing` param; `bgnd-clip-run{N}` artefact | ⬜ Not started |
+| Phase 2 — Method 2: Crystal species + spline | inspectrum pipeline; exclusion regions; weighted spline | ⬜ Not started |
+| Phase 3 — Method 3: Composite | Multi-run nanmean; deNAN interpolation; `bgnd-composite-campaign` artefact | ⬜ Not started |
+
+**Artefact IDs:** `bgnd-{method}-run{N}` (Methods 1, 2) or `bgnd-composite-campaign` (Method 3). See `docs/ground-truth.md`.
+
+**Key design decisions locked:**
+- `win_dspacing` in Å (not bins) — resampling-independent; derivable from δd/d via SNAPRed resolution workspace
+- "Most recent only" retention — no versioning of backgrounds
+- Apply by subtraction + positive constant offset (clip at zero)
+- Diagnostic workspaces: `bgnd_{method}_dsp_{pgs}_{run}` — named by method for comparison
 
 ---
 
@@ -53,15 +63,6 @@ Replace the EOS file picker in `_CrystalPhaseForm` with an inline form. Fields: 
 3. Should the EOS sub-form be collapsible / optional?
 
 Key files: `src/snapwrap/campaignManager/panels/setupPanel.py`, `src/snapwrap/campaignManager/model.py`
-
-### Background extraction (post-processing)
-
-Three methods planned (in approximate order of complexity):
-1. **Bragg peak de-spiking** — identify peaks via `_inspectrum` machinery, set Y to NaN, fit spline background.
-2. **Multi-run averaged background** — depeaked spectra from all campaign runs averaged (NaN-ignoring); works because pressure shifts peaks between runs, filling the gaps.
-3. **ClipPeaks fallback** — for runs without crystal species artefacts.
-
-Output for each method: a background workspace per reduced workspace, subtracted from the original, then a positive constant added.
 
 ### Automatic notch detection from transmission monitor
 

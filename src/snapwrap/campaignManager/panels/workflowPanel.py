@@ -350,12 +350,97 @@ class _CropCard(QGroupBox):
         self._diagCheck.setChecked(bool(p.get("diagnostics")))
 
 
+class _BackgroundCard(QGroupBox):
+    removeRequested = Signal(str)
+
+    _METHODS = [
+        ("clip", "ClipPeaks (blind rolling sphere)"),
+        ("spline", "Crystal species — weighted spline"),
+        ("composite", "Composite (multi-run average)"),
+    ]
+
+    def __init__(self, parent=None) -> None:
+        super().__init__("Background", parent)
+        outer = QVBoxLayout(self)
+
+        hdr = QHBoxLayout()
+        hdr.addStretch(1)
+        self._removeBtn = QPushButton("✕ Remove")
+        self._removeBtn.setFixedWidth(100)
+        self._removeBtn.clicked.connect(lambda: self.removeRequested.emit("background"))
+        hdr.addWidget(self._removeBtn)
+        outer.addLayout(hdr)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self._methodCombo = QComboBox()
+        for key, label in self._METHODS:
+            self._methodCombo.addItem(label, key)
+        form.addRow("Method:", self._methodCombo)
+
+        self._winSpin = QDoubleSpinBox()
+        self._winSpin.setRange(0.001, 2.0)
+        self._winSpin.setSingleStep(0.005)
+        self._winSpin.setDecimals(3)
+        self._winSpin.setValue(0.050)
+        self._winSpin.setMaximumWidth(100)
+        self._winSpin.setToolTip(
+            "Rolling-sphere half-width in Å.\n"
+            "Typical starting point: 0.05–0.15 Å (≈10–30× δd at a mid-range peak)."
+        )
+        form.addRow("Window (Å):", self._winSpin)
+
+        self._forceCheck = QCheckBox("Force recalculate")
+        form.addRow("Recompute:", self._forceCheck)
+
+        self._diagCheck = QCheckBox("Retain diagnostics workspaces in ADS")
+        form.addRow("Diagnostics:", self._diagCheck)
+
+        outer.addLayout(form)
+
+        self._methodCombo.currentIndexChanged.connect(self._onMethodChanged)
+        self._onMethodChanged(0)
+
+    def _onMethodChanged(self, _: int) -> None:
+        method = self._methodCombo.currentData()
+        self._winSpin.setEnabled(method == "clip")
+
+    def setExpertMode(self, enabled: bool) -> None:
+        pass
+
+    def setArtefacts(self, **_) -> None:
+        pass
+
+    def toStep(self) -> WorkflowStep:
+        params: dict[str, Any] = {
+            "method": self._methodCombo.currentData(),
+            "win_dspacing": self._winSpin.value(),
+            "force_recompute": self._forceCheck.isChecked(),
+            "diagnostics": self._diagCheck.isChecked(),
+        }
+        return WorkflowStep(step_type="background", params=params, artefact_selections={})
+
+    def fromStep(self, step: WorkflowStep) -> None:
+        p = step.params
+        method = p.get("method", "clip")
+        for i in range(self._methodCombo.count()):
+            if self._methodCombo.itemData(i) == method:
+                self._methodCombo.setCurrentIndex(i)
+                break
+        if "win_dspacing" in p:
+            self._winSpin.setValue(float(p["win_dspacing"]))
+        self._forceCheck.setChecked(bool(p.get("force_recompute", False)))
+        self._diagCheck.setChecked(bool(p.get("diagnostics", False)))
+
+
 # ── Card registry ──────────────────────────────────────────────────────────────
 
 _CARD_CLASSES = {
     "reduce": _ReduceCard,
     "resample": _ResampleCard,
     "crop": _CropCard,
+    "background": _BackgroundCard,
 }
 
 
@@ -434,6 +519,9 @@ def _execute_queue_fn(
                 bin_mask_ids=reduce_bin_mask_ids or None,
             )
             log_parts.append(result)
+
+        elif stype == "background":
+            log_parts.append("  Background extraction not yet implemented.\n")
 
         else:
             log_parts.append(f"Unknown step type '{stype}' — skipped.\n")
