@@ -62,6 +62,31 @@ This convention is used in `compute_dspace_gaps` (`postprocessing.py`) to split 
 
 ---
 
+## Workspace naming convention
+
+### SNAPWrap workspace names follow a strict pattern
+
+All Mantid workspaces produced by SNAPWrap use:
+
+```
+{prefix}_{units}_{pgs}_{runNumber}
+```
+
+| Field | Values | Notes |
+|---|---|---|
+| `prefix` | `resampled`, `reduced`, `cropped` | step that produced the workspace |
+| `units` | `dsp` | d-spacing (the only units currently produced) |
+| `pgs` | `column`, `bank`, … | pixel grouping scheme, **lowercase** |
+| `runNumber` | `065893` | 6-digit zero-padded integer |
+
+Examples: `resampled_dsp_column_065893`, `cropped_dsp_column_65893`
+
+**Critical for auto-discovery:** workspace search must match on the prefix, not assume the prefix from the step name. Cropped workspaces carry the `cropped_` prefix, not `resampled_…_cropped`. This bit `diagnose_crop_edges.py` until fixed (commit `ea22b0b`).
+
+**Confirmed:** 2026-05-27
+
+---
+
 ## Mantid workspace geometry
 
 ### d-spacing x-axis is monotonically increasing after ConvertUnits

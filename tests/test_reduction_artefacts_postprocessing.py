@@ -210,21 +210,21 @@ class TestFindZeroRuns:
         assert math.isclose(gaps[0][0], 0.0)
         assert math.isclose(gaps[0][1], 3.0)
 
-    def test_edge_bins_expands_boundaries(self):
-        # bins 2,3 are zero: lo=2, hi=4 → with edge_bins=1: x[1], x[5]
+    def test_edge_dspacing_expands_boundaries(self):
+        # bins 2,3 are zero (x∈[2,4]); edge_dspacing=1.0 Å expands to x∈[1,5]
         ws = self._ws([1.0, 1.0, 0.0, 0.0, 1.0, 1.0])
-        gaps = _find_zero_runs(ws, 0, edge_bins=1)
+        gaps = _find_zero_runs(ws, 0, edge_dspacing=1.0)
         assert len(gaps) == 1
         assert math.isclose(gaps[0][0], 1.0)
         assert math.isclose(gaps[0][1], 5.0)
 
-    def test_edge_bins_clamped_at_workspace_boundary(self):
-        # bins 0,1 are zero: lo=0, hi=2 → edge_bins=3: x[max(0, -3)] = x[0] = 0.0
+    def test_edge_dspacing_clamped_at_workspace_boundary(self):
+        # bins 0,1 are zero (x∈[0,2]); edge_dspacing=3.0 Å: left clamped at 0.0
         ws = self._ws([0.0, 0.0, 1.0, 1.0, 1.0])
-        gaps = _find_zero_runs(ws, 0, edge_bins=3)
+        gaps = _find_zero_runs(ws, 0, edge_dspacing=3.0)
         assert len(gaps) == 1
-        assert math.isclose(gaps[0][0], 0.0)  # clamped at left
-        assert math.isclose(gaps[0][1], 5.0)  # 2+3=5, x[5] = 5.0
+        assert math.isclose(gaps[0][0], 0.0)  # clamped at left edge
+        assert math.isclose(gaps[0][1], 5.0)  # 2.0 + 3.0 = 5.0
 
     def test_min_coverage_treats_near_zero_as_zero(self):
         # max(y)=10, threshold=0.5*10=5; bins 1,2 have y=0.3 < 5 → treated as zero

@@ -298,12 +298,12 @@ class _CropCard(QGroupBox):
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self._edgeSpin = QDoubleSpinBox()
-        self._edgeSpin.setRange(0, 50)
-        self._edgeSpin.setSingleStep(1)
-        self._edgeSpin.setDecimals(0)
-        self._edgeSpin.setValue(0)
+        self._edgeSpin.setRange(0.0, 0.5)
+        self._edgeSpin.setSingleStep(0.005)
+        self._edgeSpin.setDecimals(3)
+        self._edgeSpin.setValue(0.030)
         self._edgeSpin.setMaximumWidth(100)
-        form.addRow("Edge expansion (bins):", self._edgeSpin)
+        form.addRow("Edge expansion (Å):", self._edgeSpin)
 
         self._minCovSpin = QDoubleSpinBox()
         self._minCovSpin.setRange(0.0, 0.05)
@@ -311,27 +311,25 @@ class _CropCard(QGroupBox):
         self._minCovSpin.setDecimals(3)
         self._minCovSpin.setValue(0.002)
         self._minCovSpin.setMaximumWidth(100)
-        form.addRow("Min coverage:", self._minCovSpin)
+        form.addRow("Gap threshold:", self._minCovSpin)
 
         self._forceCheck = QCheckBox("Force recalculate")
         form.addRow("Recompute:", self._forceCheck)
 
         self._diagCheck = QCheckBox("Retain diagnostics workspaces in ADS")
-        self._diagCheck.setVisible(False)
         form.addRow("Diagnostics:", self._diagCheck)
 
-        self._expertWidget = self._diagCheck
         outer.addLayout(form)
 
     def setExpertMode(self, enabled: bool) -> None:
-        self._diagCheck.setVisible(enabled)
+        pass  # Crop diagnostics option is always visible
 
     def setArtefacts(self, **_) -> None:
         pass
 
     def toStep(self) -> WorkflowStep:
         params: dict[str, Any] = {
-            "edge_bins": int(self._edgeSpin.value()),
+            "edge_dspacing": self._edgeSpin.value(),
             "min_coverage": self._minCovSpin.value(),
             "force_recompute": self._forceCheck.isChecked(),
             "diagnostics": self._diagCheck.isChecked(),
@@ -340,7 +338,11 @@ class _CropCard(QGroupBox):
 
     def fromStep(self, step: WorkflowStep) -> None:
         p = step.params
-        if "edge_bins" in p:
+        if "edge_dspacing" in p:
+            self._edgeSpin.setValue(float(p["edge_dspacing"]))
+        elif "edge_bins" in p:
+            # Legacy campaigns stored edge_bins (integer bin count); load as-is
+            # and let the user re-tune in Å units.
             self._edgeSpin.setValue(float(p["edge_bins"]))
         if "min_coverage" in p:
             self._minCovSpin.setValue(float(p["min_coverage"]))
@@ -425,7 +427,7 @@ def _execute_queue_fn(
                 run_number=run_number,
                 is_lite=is_lite,
                 source_prefix=source_prefix,
-                edge_bins=int(params.get("edge_bins", 0)),
+                edge_dspacing=float(params.get("edge_dspacing", params.get("edge_bins", 0.0))),
                 min_coverage=float(params.get("min_coverage", 0.002)),
                 force_recompute=bool(params.get("force_recompute", False)),
                 diagnostics=bool(params.get("diagnostics", False)),
@@ -901,4 +903,6 @@ class WorkflowPanel(QWidget):
     def _refreshArtefacts(self) -> None:
         """Re-populate all existing step cards with current artefact lists."""
         for step_type, card in self._cards.items():
+            saved = card.toStep()
             self._populateCardArtefacts(card, step_type)
+            card.fromStep(saved)

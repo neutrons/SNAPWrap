@@ -841,7 +841,7 @@ class CampaignManagerModel:
         is_lite: bool,
         source_prefix: str = "reduced",
         diagnostics: bool = False,
-        edge_bins: int = 0,
+        edge_dspacing: float = 0.0,
         min_coverage: float = 0.002,
         force_recompute: bool = False,
         bin_mask_ids: list[str] | None = None,
@@ -850,7 +850,7 @@ class CampaignManagerModel:
         """Crop notch-mask gaps from reduced/resampled workspaces.
 
         By default, if an active crop artefact already exists for this run
-        whose stored parameters (bin masks, edge_bins, min_coverage) match
+        whose stored parameters (bin masks, edge_dspacing, min_coverage) match
         the requested values, the stored gap map is re-applied directly
         without recomputing.  Set *force_recompute* to bypass this and
         always regenerate from scratch (retiring the old artefact first).
@@ -927,7 +927,7 @@ class CampaignManagerModel:
                 meta = rec.get("metadata", {})
                 if (
                     sorted(rec.get("input_asset_ids", [])) == sorted(applied_mask_ids)
-                    and meta.get("edge_bins") == edge_bins
+                    and abs(float(meta.get("edge_dspacing", meta.get("edge_bins", 0.0))) - edge_dspacing) < 1e-9
                     and abs(float(meta.get("min_coverage", -1.0)) - min_coverage) < 1e-9
                 ):
                     group = meta.get("focus_group", "")
@@ -988,7 +988,7 @@ class CampaignManagerModel:
                 is_lite=is_lite,
                 bin_mask_paths=mask_paths,
                 diagnostics=diagnostics,
-                edge_bins=edge_bins,
+                edge_dspacing=edge_dspacing,
                 min_coverage=min_coverage,
             )
             if not gap_map:
@@ -1022,7 +1022,7 @@ class CampaignManagerModel:
                     focus_group=group,
                     gap_map_path=str(gap_file),
                     applied_bin_mask_ids=applied_mask_ids,
-                    metadata={"edge_bins": edge_bins, "min_coverage": min_coverage},
+                    metadata={"edge_dspacing": edge_dspacing, "min_coverage": min_coverage},
                     shared_root=shared_root,
                 )
                 registered.append(record)

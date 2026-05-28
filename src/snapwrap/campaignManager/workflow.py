@@ -38,7 +38,7 @@ STEP_DEFAULTS: dict[str, dict[str, Any]] = {
         "sample_factor": 1.0,
     },
     "crop": {
-        "edge_bins": 0,
+        "edge_dspacing": 0.030,
         "min_coverage": 0.002,
         "force_recompute": False,
         "diagnostics": False,
@@ -59,7 +59,7 @@ class WorkflowStep:
 
     Args:
         step_type: One of ``"reduce"``, ``"resample"``, or ``"crop"``.
-        params: Step-specific parameters (e.g. ``{"edge_bins": 0}`` for crop).
+        params: Step-specific parameters (e.g. ``{"edge_dspacing": 0.030}`` for crop).
         artefact_selections: Maps artefact_type → list of artefact_ids selected
             by the user.  For example::
 

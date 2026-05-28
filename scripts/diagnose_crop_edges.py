@@ -16,26 +16,46 @@ analysed as well — that gives the most direct picture of what the gap-detector
 sees before edge_bins/min_coverage are applied.
 """
 
+import sys
 import numpy as np
 from mantid.api import mtd  # type: ignore  # noqa: F401
 
 # ── Edit these ────────────────────────────────────────────────────────────────
 
-RUN_NUMBER   = 65891      # <─ change to your run number
+RUN_NUMBER   = 65893      # <─ change to your run number
 FOCUS_GROUP  = "column"   # focus group, lowercase (e.g. "column", "bank")
 SOURCE_PREFIX = "resampled"  # "resampled" or "reduced"
 
 # Override auto-discovery (set to None to auto-detect from the above):
-SOURCE_WS  = None   # e.g. "resampled_065891_Column"
-CROPPED_WS = None   # e.g. "resampled_065891_Column_cropped"
+SOURCE_WS  = None   # e.g. "resampled_dsp_column_065893"
+CROPPED_WS = None   # e.g. "cropped_dsp_column_65893"
 
-# How many bins to show on each side of a transition boundary.
+# Set to a file path to write output there instead of (or in addition to) the
+# Workbench log, e.g. "/tmp/crop_diag.txt".  None = log only.
+OUTPUT_FILE = "/tmp/crop_diag.txt"
+
+# COMPACT = True  → only print the cross-spectrum ramp summary for each
+#                   workspace (a ~10-line table).  Fast to read / paste.
+# COMPACT = False → also print per-spectrum ramp tables and detailed bin
+#                   tables around every edge/NaN boundary (very verbose).
+COMPACT = True
+
+# How many bins to show on each side of a transition boundary (verbose mode).
 CONTEXT_BINS = 20
 
 # Threshold fractions to report in the ramp-length summary.
-FRAC_LEVELS = [0.002, 0.005, 0.01, 0.02, 0.05, 0.10]
+# Extend to 0.90 so we can see the full detector-coverage ramp extent.
+FRAC_LEVELS = [0.002, 0.005, 0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 0.90]
 
 # ─────────────────────────────────────────────────────────────────────────────
+
+_out_fh = open(OUTPUT_FILE, "w") if OUTPUT_FILE else None
+
+
+def _pr(*args, **kwargs):
+    print(*args, **kwargs)
+    if _out_fh:
+        print(*args, **kwargs, file=_out_fh)
 
 
 def _find(patterns, run):
@@ -48,17 +68,14 @@ def _find(patterns, run):
             continue
         if all(p.lower() in name.lower() for p in patterns):
             candidates.append(name)
-    # Prefer exact-match on all patterns; return first alphabetically
     return candidates[0] if candidates else None
 
 
 def _ramp_lengths(y, y_max, thresholds):
-    """Return {frac: (left_bins, right_bins)} for each threshold fraction."""
     n = len(y)
     result = {}
     for frac in thresholds:
         thr = frac * y_max
-        # Left ramp: count leading bins where |y| <= thr (ignore NaN)
         left = 0
         for i in range(n):
             if not np.isfinite(y[i]):
@@ -67,7 +84,6 @@ def _ramp_lengths(y, y_max, thresholds):
                 left += 1
             else:
                 break
-        # Right ramp: count trailing bins where |y| <= thr (ignore NaN)
         right = 0
         for i in range(n - 1, -1, -1):
             if not np.isfinite(y[i]):
@@ -82,13 +98,13 @@ def _ramp_lengths(y, y_max, thresholds):
 
 def _print_edge_table(x, y, y_max, region, indices):
     n_bins = len(y)
-    print(f"\n    ── {region} {len(list(indices))} bins ──")
-    print(f"    {'bin':>5}  {'d-left':>8}  {'Y':>12}  {'|Y|/Ymax':>9}  note")
+    _pr(f"\n    ── {region} {len(list(indices))} bins ──")
+    _pr(f"    {'bin':>5}  {'d-left':>8}  {'Y':>12}  {'|Y|/Ymax':>9}  note")
     for i in indices:
         if i < 0 or i >= n_bins:
             continue
         if not np.isfinite(y[i]):
-            print(f"    {i:>5}  {x[i]:>8.4f}  {'NaN':>12}  {'---':>9}")
+            _pr(f"    {i:>5}  {x[i]:>8.4f}  {'NaN':>12}  {'---':>9}")
             continue
         frac = abs(y[i]) / y_max if y_max > 0 else 0.0
         note = ""
@@ -102,22 +118,22 @@ def _print_edge_table(x, y, y_max, region, indices):
             note = "< 5%"
         elif frac < 0.10:
             note = "< 10%"
-        print(f"    {i:>5}  {x[i]:>8.4f}  {y[i]:>12.4g}  {frac:>9.4f}  {note}")
+        _pr(f"    {i:>5}  {x[i]:>8.4f}  {y[i]:>12.4g}  {frac:>9.4f}  {note}")
 
 
 def _analyse_workspace(ws_name, label):
     if ws_name is None:
-        print(f"\n  [{label}] not configured — skipping")
+        _pr(f"\n  [{label}] not configured — skipping")
         return
     if ws_name not in mtd:
-        print(f"\n  [{label}] '{ws_name}' not in ADS — skipping")
+        _pr(f"\n  [{label}] '{ws_name}' not in ADS — skipping")
         return
 
     ws = mtd[ws_name]
     n = ws.getNumberHistograms()
-    print(f"\n{'='*72}")
-    print(f"[{label}]  {ws_name}  —  {n} spectrum/a")
-    print(f"{'='*72}")
+    _pr(f"\n{'='*72}")
+    _pr(f"[{label}]  {ws_name}  —  {n} spectrum/a")
+    _pr(f"{'='*72}")
 
     all_left_ramps = {f: [] for f in FRAC_LEVELS}
     all_right_ramps = {f: [] for f in FRAC_LEVELS}
@@ -129,54 +145,54 @@ def _analyse_workspace(ws_name, label):
         finite_y = y[np.isfinite(y)]
         y_max = float(np.max(np.abs(finite_y))) if len(finite_y) else 1.0
 
-        print(f"\n  Spectrum {si}: d∈[{x[0]:.4f}, {x[-1]:.4f}] Å, "
-              f"{n_bins} bins, max|Y|={y_max:.4g}")
-
-        # Ramp-length summary at each threshold
         ramps = _ramp_lengths(y, y_max, FRAC_LEVELS)
-        print(f"  {'threshold':>10}  {'left ramp':>10}  {'right ramp':>11}")
-        print(f"  {'─'*10}  {'─'*10}  {'─'*11}")
         for frac in FRAC_LEVELS:
             lft, rgt = ramps[frac]
             all_left_ramps[frac].append(lft)
             all_right_ramps[frac].append(rgt)
-            print(f"  {frac:>9.3f}  {lft:>9d}b  {rgt:>10d}b")
 
-        # Detailed edge tables
-        left_end = min(CONTEXT_BINS, n_bins)
-        right_start = max(0, n_bins - CONTEXT_BINS)
-        _print_edge_table(x, y, y_max, f"first {left_end}", range(left_end))
-        _print_edge_table(x, y, y_max, f"last  {CONTEXT_BINS}", range(right_start, n_bins))
+        if not COMPACT:
+            _pr(f"\n  Spectrum {si}: d∈[{x[0]:.4f}, {x[-1]:.4f}] Å, "
+                f"{n_bins} bins, max|Y|={y_max:.4g}")
+            _pr(f"  {'threshold':>10}  {'left ramp':>10}  {'right ramp':>11}")
+            _pr(f"  {'─'*10}  {'─'*10}  {'─'*11}")
+            for frac in FRAC_LEVELS:
+                lft, rgt = ramps[frac]
+                _pr(f"  {frac:>9.3f}  {lft:>9d}b  {rgt:>10d}b")
 
-        # Detect NaN interior gaps and show their boundaries too
-        in_nan = False
-        nan_starts = []
-        for i, v in enumerate(y):
-            if np.isnan(v) and not in_nan:
-                in_nan = True
-                nan_starts.append(i)
-            elif not np.isnan(v) and in_nan:
-                in_nan = False
-                # Show context around the right edge of this NaN block
-                lo = max(0, i - CONTEXT_BINS // 2)
-                hi = min(n_bins, i + CONTEXT_BINS // 2)
+            left_end = min(CONTEXT_BINS, n_bins)
+            right_start = max(0, n_bins - CONTEXT_BINS)
+            _print_edge_table(x, y, y_max, f"first {left_end}", range(left_end))
+            _print_edge_table(x, y, y_max, f"last  {CONTEXT_BINS}", range(right_start, n_bins))
+
+            in_nan = False
+            nan_starts = []
+            for i, v in enumerate(y):
+                if np.isnan(v) and not in_nan:
+                    in_nan = True
+                    nan_starts.append(i)
+                elif not np.isnan(v) and in_nan:
+                    in_nan = False
+                    lo = max(0, i - CONTEXT_BINS // 2)
+                    hi = min(n_bins, i + CONTEXT_BINS // 2)
+                    _print_edge_table(x, y, y_max,
+                                      f"NaN-end @ bin {i}",
+                                      range(lo, hi))
+            for ns in nan_starts:
+                lo = max(0, ns - CONTEXT_BINS // 2)
+                hi = min(n_bins, ns + CONTEXT_BINS // 2)
                 _print_edge_table(x, y, y_max,
-                                  f"NaN-end @ bin {i}",
+                                  f"NaN-start @ bin {ns}",
                                   range(lo, hi))
-        for ns in nan_starts:
-            lo = max(0, ns - CONTEXT_BINS // 2)
-            hi = min(n_bins, ns + CONTEXT_BINS // 2)
-            _print_edge_table(x, y, y_max,
-                              f"NaN-start @ bin {ns}",
-                              range(lo, hi))
 
-    # Cross-spectrum ramp summary
-    print(f"\n  ── Cross-spectrum ramp summary for [{label}] ──")
-    print(f"  {'threshold':>10}  {'max_left':>9}  {'max_right':>10}  note")
+    # Cross-spectrum ramp summary (always printed)
+    _pr(f"\n  ── Cross-spectrum ramp summary for [{label}] ──")
+    _pr(f"  {'threshold':>10}  {'max_left':>9}  {'max_right':>10}")
+    _pr(f"  {'─'*10}  {'─'*9}  {'─'*10}")
     for frac in FRAC_LEVELS:
         ml = max(all_left_ramps[frac]) if all_left_ramps[frac] else 0
         mr = max(all_right_ramps[frac]) if all_right_ramps[frac] else 0
-        print(f"  {frac:>9.3f}  {ml:>8d}b  {mr:>9d}b")
+        _pr(f"  {frac:>9.3f}  {ml:>8d}b  {mr:>9d}b")
 
 
 # ── Auto-discover ──────────────────────────────────────────────────────────────
@@ -184,35 +200,32 @@ def _analyse_workspace(ws_name, label):
 if SOURCE_WS is None:
     SOURCE_WS = _find([SOURCE_PREFIX, FOCUS_GROUP], RUN_NUMBER)
 if CROPPED_WS is None:
-    # Try 'cropped_' prefix first (model names output as cropped_dsp_*),
-    # then fall back to source-name + '_cropped' suffix convention.
     CROPPED_WS = (_find(["cropped", FOCUS_GROUP], RUN_NUMBER)
                   or _find([SOURCE_PREFIX, FOCUS_GROUP, "crop"], RUN_NUMBER))
 
-# Diagnostic synthetic/focused workspaces (only present if diagnostics=True)
 diag_synth = _find(["crop_diag_synthetic"], RUN_NUMBER)
 diag_foc   = _find(["crop_diag_focused", FOCUS_GROUP], RUN_NUMBER)
 
-print(f"Auto-discovered:")
-print(f"  Source          : {SOURCE_WS}")
-print(f"  Cropped         : {CROPPED_WS}")
-print(f"  Diag synthetic  : {diag_synth or '(not present — run crop with Retain diagnostics)'}")
-print(f"  Diag focused    : {diag_foc   or '(not present)'}")
+_pr(f"Auto-discovered:")
+_pr(f"  Source          : {SOURCE_WS}")
+_pr(f"  Cropped         : {CROPPED_WS}")
+_pr(f"  Diag synthetic  : {diag_synth or '(not present — run crop with Retain diagnostics)'}")
+_pr(f"  Diag focused    : {diag_foc   or '(not present)'}")
+_pr(f"  Mode            : {'COMPACT (summaries only)' if COMPACT else 'VERBOSE (per-bin detail)'}")
+if OUTPUT_FILE:
+    _pr(f"  Output file     : {OUTPUT_FILE}")
 
 # ── Run analysis ───────────────────────────────────────────────────────────────
 
 _analyse_workspace(SOURCE_WS, "SOURCE (pre-crop)")
 _analyse_workspace(CROPPED_WS, "CROPPED")
 
-# If diagnostics were retained, analyse the focused synthetic workspace too —
-# this is what _find_zero_runs actually operates on, so it shows directly what
-# min_coverage and edge_bins need to be set to.
 if diag_foc:
     _analyse_workspace(diag_foc, "DIAG FOCUSED SYNTHETIC")
 
 # ── Guidance ───────────────────────────────────────────────────────────────────
 
-print("""
+_pr("""
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║  HOW TO READ THESE RESULTS AND TUNE THE PARAMETERS                      ║
 ╠══════════════════════════════════════════════════════════════════════════╣
@@ -241,3 +254,7 @@ print("""
 ║                                                                          ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """)
+
+if _out_fh:
+    _out_fh.close()
+    print(f"\nOutput written to: {OUTPUT_FILE}")
