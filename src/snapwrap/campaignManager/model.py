@@ -205,25 +205,29 @@ def _apply_background(
     from mantid.simpleapi import CloneWorkspace, DeleteWorkspace  # type: ignore
 
     out_ws_name = f"backsub_dsp_{group}_{run_number}"
+    # Delete any stale workspace under this name before cloning — Mantid's
+    # CloneWorkspace may silently skip the overwrite and return the old object.
+    if out_ws_name in mtd:
+        DeleteWorkspace(Workspace=out_ws_name)
     CloneWorkspace(InputWorkspace=source_ws_name, OutputWorkspace=out_ws_name)
     out_ws = mtd[out_ws_name]
     bgnd_ws = mtd[bgnd_ws_name]
 
     global_min = 0.0
     for i in range(out_ws.getNumberHistograms()):
-        y_src = out_ws.readY(i).copy()
-        y_bg = bgnd_ws.readY(i)
+        y_src = np.array(out_ws.readY(i))
+        y_bg = np.array(bgnd_ws.readY(i))
         n = min(len(y_src), len(y_bg))
         y_sub = y_src[:n] - y_bg[:n]
         global_min = min(global_min, float(np.nanmin(y_sub)))
 
     offset = max(0.0, -global_min)
     for i in range(out_ws.getNumberHistograms()):
-        y_src = out_ws.readY(i).copy()
-        y_bg = bgnd_ws.readY(i)
+        y_src = np.array(out_ws.readY(i))
+        y_bg = np.array(bgnd_ws.readY(i))
         n = min(len(y_src), len(y_bg))
         y_sub = y_src[:n] - y_bg[:n] + offset
-        out_ws.setY(i, y_sub)
+        out_ws.dataY(i)[:] = y_sub
 
     print(
         f"Group '{group}': background subtracted → '{out_ws_name}' "
@@ -1267,10 +1271,12 @@ class CampaignManagerModel:
 
                 # Build background workspace (clone + overwrite Y)
                 bgnd_ws_name = f"bgnd_clip_dsp_{group}_{run_number}"
+                if bgnd_ws_name in mtd:
+                    DeleteWorkspace(Workspace=bgnd_ws_name)
                 CloneWorkspace(InputWorkspace=handle.wsName, OutputWorkspace=bgnd_ws_name)
                 bgnd_ws = mtd[bgnd_ws_name]
                 for i, bg in enumerate(backgrounds):
-                    bgnd_ws.setY(i, bg)
+                    bgnd_ws.dataY(i)[:] = bg
 
                 # Save to Nexus
                 nxs_path = str(artefact_dir / f"bgnd_clip_{group}_{run_number}.nxs")
