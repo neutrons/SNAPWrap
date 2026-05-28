@@ -635,6 +635,16 @@ def compute_clip_background(
         d_mid = float(x_c[mid])
         right = int(np.searchsorted(x_c, d_mid + win_dspacing, side="left"))
         win_size = max(1, right - mid)
-        bg, _ = estimate_background(y, win_size=win_size, lls=use_lls, smoothing=smoothing)
+        # Replace non-finite values (NaN from gap regions) with linear
+        # interpolation so they don't poison the smoothing step.
+        y_est = np.asarray(y, dtype=float)
+        nan_mask = ~np.isfinite(y_est)
+        if nan_mask.any() and not nan_mask.all():
+            idx = np.arange(len(y_est))
+            y_est[nan_mask] = np.interp(idx[nan_mask], idx[~nan_mask], y_est[~nan_mask])
+        elif nan_mask.all():
+            backgrounds.append(np.zeros_like(y_est))
+            continue
+        bg, _ = estimate_background(y_est, win_size=win_size, lls=use_lls, smoothing=smoothing)
         backgrounds.append(bg)
     return backgrounds

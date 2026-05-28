@@ -346,3 +346,25 @@ class TestComputeClipBackground:
         ws = self._ws(list(y))
         bgs = compute_clip_background(ws, win_dspacing=10.0)
         assert float(np.max(bgs[0])) <= float(np.max(y)) + 0.01
+
+    def test_nan_gap_bins_do_not_produce_zero_background(self):
+        # Regression: when interior bins are NaN (gap regions after cropping),
+        # the background must still reflect the true signal level, not collapse
+        # to zero because the normalisation index landed on a zero bin.
+        y = np.ones(200, dtype=float)
+        y[95:105] = np.nan  # interior NaN gap (notch)
+        ws = self._ws(list(y))
+        bgs = compute_clip_background(ws, win_dspacing=10.0)
+        bg = bgs[0]
+        # Background at valid bins should be close to 1.0, NOT zero
+        valid = np.isfinite(y)
+        assert np.allclose(bg[valid], 1.0, atol=0.1), (
+            f"Background collapsed to near-zero: max={np.max(bg[valid]):.4f}"
+        )
+
+    def test_nan_only_spectrum_returns_zeros(self):
+        # All-NaN spectrum (degenerate case) → zeros background, no crash
+        y = np.full(50, np.nan)
+        ws = self._ws(list(y))
+        bgs = compute_clip_background(ws, win_dspacing=5.0)
+        assert np.all(bgs[0] == 0.0)

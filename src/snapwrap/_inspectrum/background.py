@@ -104,9 +104,16 @@ def _peak_clip(
         temp = _inv_lls_transform(temp)
 
     # Normalise so the background matches the original at the
-    # point of minimum difference (where peak contribution is smallest)
+    # point of minimum difference (where peak contribution is smallest).
+    # Only consider bins where both start_data and temp are finite and positive
+    # so that zero-filled gap bins cannot corrupt the reference point.
     diff = start_data - temp
-    index = int(np.argmin(diff))
+    valid = np.isfinite(diff) & (start_data > 0) & (temp > 0)
+    if valid.any():
+        index = int(np.argmin(np.where(valid, diff, np.inf)))
+    else:
+        finite_diff = np.where(np.isfinite(diff), diff, np.inf)
+        index = int(np.argmin(finite_diff))
     if temp[index] != 0:
         output = temp * (start_data[index] / temp[index])
     else:
