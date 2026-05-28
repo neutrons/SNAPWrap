@@ -359,6 +359,12 @@ class _BackgroundCard(QGroupBox):
         ("composite", "Composite (multi-run average)"),
     ]
 
+    _SOURCES = [
+        ("cropped", "Cropped"),
+        ("resampled", "Resampled"),
+        ("reduced", "Reduced"),
+    ]
+
     def __init__(self, parent=None) -> None:
         super().__init__("Background", parent)
         outer = QVBoxLayout(self)
@@ -373,6 +379,15 @@ class _BackgroundCard(QGroupBox):
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+        self._sourceCombo = QComboBox()
+        for key, label in self._SOURCES:
+            self._sourceCombo.addItem(label, key)
+        self._sourceCombo.setToolTip(
+            "Which workspace to extract background from.\n"
+            "Match this to the last processing step you want to treat as input."
+        )
+        form.addRow("Apply to:", self._sourceCombo)
 
         self._methodCombo = QComboBox()
         for key, label in self._METHODS:
@@ -414,6 +429,7 @@ class _BackgroundCard(QGroupBox):
 
     def toStep(self) -> WorkflowStep:
         params: dict[str, Any] = {
+            "source_prefix": self._sourceCombo.currentData(),
             "method": self._methodCombo.currentData(),
             "win_dspacing": self._winSpin.value(),
             "force_recompute": self._forceCheck.isChecked(),
@@ -423,6 +439,11 @@ class _BackgroundCard(QGroupBox):
 
     def fromStep(self, step: WorkflowStep) -> None:
         p = step.params
+        source = p.get("source_prefix", "cropped")
+        for i in range(self._sourceCombo.count()):
+            if self._sourceCombo.itemData(i) == source:
+                self._sourceCombo.setCurrentIndex(i)
+                break
         method = p.get("method", "clip")
         for i in range(self._methodCombo.count()):
             if self._methodCombo.itemData(i) == method:
@@ -464,12 +485,13 @@ def _execute_queue_fn(
 
     source_prefix for Crop is derived automatically: if a Resample step is in
     the queue, Crop reads from 'resampled' workspaces; otherwise 'reduced'.
+    source_prefix for Background is taken directly from the step's params
+    (set via the "Apply to:" dropdown in _BackgroundCard).
     """
     from snapwrap.campaignManager.model import CampaignManagerModel  # type: ignore
 
     step_types = [s["step_type"] for s in steps]
     has_resample = "resample" in step_types
-    has_crop = "crop" in step_types
 
     # Pull bin mask IDs from the Reduce step for use by Crop.
     reduce_bin_mask_ids: list[str] = []
@@ -522,8 +544,8 @@ def _execute_queue_fn(
             log_parts.append(result)
 
         elif stype == "background":
-            bg_source = "cropped" if has_crop else ("resampled" if has_resample else "reduced")
-            log_parts.append(f"  source_prefix: {bg_source}\n")
+            source_prefix = params.get("source_prefix", "cropped")
+            log_parts.append(f"  source_prefix: {source_prefix}\n")
             result = CampaignManagerModel.postprocessBackground(
                 ipts=ipts,
                 campaign_identifier=campaign_slug,
@@ -532,7 +554,7 @@ def _execute_queue_fn(
                 win_dspacing=float(params.get("win_dspacing", 0.05)),
                 force_recompute=bool(params.get("force_recompute", False)),
                 diagnostics=bool(params.get("diagnostics", False)),
-                source_prefix=bg_source,
+                source_prefix=source_prefix,
             )
             log_parts.append(result)
 

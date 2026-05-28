@@ -45,6 +45,7 @@ STEP_DEFAULTS: dict[str, dict[str, Any]] = {
         "diagnostics": False,
     },
     "background": {
+        "source_prefix": "cropped",
         "method": "clip",
         "win_dspacing": 0.05,
         "force_recompute": False,

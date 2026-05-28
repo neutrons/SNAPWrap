@@ -159,15 +159,12 @@ def _is_readable_dir(path: Path) -> bool:
         return False
 
 
-def _find_source_handles(preferred_prefix: str, run_number: int) -> list:
-    """Return workspace handles for *run_number*, falling back through the pipeline.
+def _find_source_handles(source_prefix: str, run_number: int) -> list:
+    """Return workspace handles matching *source_prefix* and *run_number*.
 
     Scans the ADS directly (rather than via io.reducedRuns) so that workspaces
     produced purely in-memory — such as 'cropped_dsp_*' created by apply_dspace_gaps
     with no on-disk reduction record — are found correctly.
-
-    Tries *preferred_prefix* first, then cascades through cropped → resampled →
-    reduced until a non-empty set is found.
     """
     from mantid.api import mtd  # type: ignore
 
@@ -178,28 +175,17 @@ def _find_source_handles(preferred_prefix: str, run_number: int) -> list:
             self.wsName = ws_name
             self.pixelGroup = group
 
-    def _scan(pfx: str) -> list:
-        found = []
-        for name in mtd.getObjectNames():
-            # Pattern: {prefix}_dsp_{group}_{run}
-            if not name.startswith(f"{pfx}_dsp_"):
-                continue
-            if any(name.endswith(f"_{t}") for t in run_tokens):
-                parts = name.split("_")
-                if len(parts) >= 4:
-                    found.append(_Handle(name, parts[2]))
-        return found
-
-    seen: set[str] = set()
-    for pfx in [preferred_prefix, "cropped", "resampled", "reduced"]:
-        if pfx in seen:
+    found = []
+    for name in mtd.getObjectNames():
+        if not name.startswith(f"{source_prefix}_dsp_"):
             continue
-        seen.add(pfx)
-        handles = _scan(pfx)
-        if handles:
-            print(f"  source prefix: '{pfx}'")
-            return handles
-    return []
+        if any(name.endswith(f"_{t}") for t in run_tokens):
+            parts = name.split("_")
+            if len(parts) >= 4:
+                found.append(_Handle(name, parts[2]))
+    if found:
+        print(f"  source prefix: '{source_prefix}'")
+    return found
 
 
 def _apply_background(
