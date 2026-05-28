@@ -159,6 +159,28 @@ def _is_readable_dir(path: Path) -> bool:
         return False
 
 
+def _find_source_handles(preferred_prefix: str, run_number: int) -> list:
+    """Return workspace handles for *run_number*, falling back through the pipeline.
+
+    Tries *preferred_prefix* first, then the full cascade ``cropped → resampled
+    → reduced`` so that a background-only queue works correctly even when the
+    source workspaces were produced by a prior queue execution.
+    """
+    from snapwrap.utils import workspaceHandles  # type: ignore
+
+    cascade = [preferred_prefix, "cropped", "resampled", "reduced"]
+    seen: set[str] = set()
+    for pfx in cascade:
+        if pfx in seen:
+            continue
+        seen.add(pfx)
+        handles = workspaceHandles(prefix=pfx, runNumber=run_number) or []
+        if handles:
+            print(f"  source prefix: '{pfx}'")
+            return handles
+    return []
+
+
 def _apply_background(
     source_ws_name: str,
     bgnd_ws_name: str,
@@ -1185,7 +1207,7 @@ class CampaignManagerModel:
                     and abs(float(r.get("metadata", {}).get("win_dspacing", -1)) - win_dspacing) < 1e-9
                 ]
                 if existing:
-                    handles = workspaceHandles(prefix=source_prefix, runNumber=run_number) or []
+                    handles = _find_source_handles(source_prefix, run_number)
                     reused: list[str] = []
                     for handle in handles:
                         group = handle.pixelGroup
@@ -1221,10 +1243,11 @@ class CampaignManagerModel:
             if n_retired:
                 print(f"Retired {n_retired} previous background artefact(s) for run {run_number}.")
 
-            handles = workspaceHandles(prefix=source_prefix, runNumber=run_number) or []
+            handles = _find_source_handles(source_prefix, run_number)
             if not handles:
                 raise RuntimeError(
-                    f"No {source_prefix} workspaces found in ADS for run {run_number}."
+                    f"No source workspaces found in ADS for run {run_number} "
+                    f"(tried: cropped, resampled, reduced)."
                 )
 
             registered: list[dict] = []
