@@ -1180,7 +1180,7 @@ class CampaignManagerModel:
 
         import numpy as np  # type: ignore
         from mantid.api import mtd  # type: ignore
-        from mantid.simpleapi import CloneWorkspace, SaveNexusProcessed  # type: ignore
+        from mantid.simpleapi import CloneWorkspace, DeleteWorkspace, SaveNexusProcessed  # type: ignore
 
         from snapwrap.reduction_artefacts.persistence import (  # type: ignore
             list_artefact_records,
