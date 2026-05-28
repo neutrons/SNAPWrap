@@ -1,15 +1,17 @@
 """Tests for postprocessing.py — pure-Python/numpy layer only.
 
 These tests cover the functions that do not require a live Mantid session:
-  _parse_spectra_list  — tokenises spectraLst strings
-  _load_notches        — reads swiss-cheese JSON into notch tuples
-  _find_zero_runs      — identifies contiguous near-zero regions in a spectrum
+  _parse_spectra_list       — tokenises spectraLst strings
+  _load_notches             — reads swiss-cheese JSON into notch tuples
+  _find_zero_runs           — identifies contiguous near-zero regions in a spectrum
+  compute_clip_background   — ClipPeaks background estimator (per-spectrum)
 
 Test groups
 -----------
 P1  _parse_spectra_list
 P2  _load_notches
 P3  _find_zero_runs
+P4  compute_clip_background
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from snapwrap.reduction_artefacts.postprocessing import (
     _find_zero_runs,
     _load_notches,
     _parse_spectra_list,
+    compute_clip_background,
 )
 
 
@@ -46,6 +49,28 @@ class _FakeWS:
 
     def readY(self, i: int) -> np.ndarray:  # noqa: N802
         return self._y
+
+    def getNumberHistograms(self) -> int:  # noqa: N802
+        return 1
+
+
+class _FakeMultiWS:
+    """Stub supporting multiple spectra with independent x/y arrays."""
+
+    def __init__(self, spectra: list[tuple[np.ndarray, np.ndarray]]):
+        self._spectra = [
+            (np.asarray(x, dtype=float), np.asarray(y, dtype=float))
+            for x, y in spectra
+        ]
+
+    def getNumberHistograms(self) -> int:  # noqa: N802
+        return len(self._spectra)
+
+    def readX(self, i: int) -> np.ndarray:  # noqa: N802
+        return self._spectra[i][0]
+
+    def readY(self, i: int) -> np.ndarray:  # noqa: N802
+        return self._spectra[i][1]
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +271,78 @@ class TestFindZeroRuns:
         ws = self._ws([1.0, 0.0, 1.0])
         gaps = _find_zero_runs(ws, 5)
         assert len(gaps) == 1
+
+
+# ---------------------------------------------------------------------------
+# P4 — compute_clip_background
+# ---------------------------------------------------------------------------
+
+
+class TestComputeClipBackground:
+    """Tests for the ClipPeaks background estimator.
+
+    All tests use _FakeWS / _FakeMultiWS — no Mantid required.
+    The win_dspacing→win_size conversion is exercised implicitly through the
+    searchsorted midpoint logic.
+    """
+
+    def _ws(self, y_vals: list[float], n_bins: int | None = None) -> _FakeWS:
+        """Build a FakeWS with uniform x spacing [0, 1, 2, …]."""
+        y = np.array(y_vals, dtype=float)
+        n = len(y) if n_bins is None else n_bins
+        x = np.arange(n + 1, dtype=float)
+        return _FakeWS(x, y)
+
+    def test_returns_one_array_per_spectrum(self):
+        ws = _FakeMultiWS([
+            (np.arange(51, dtype=float), np.ones(50, dtype=float)),
+            (np.arange(51, dtype=float), np.ones(50, dtype=float) * 2.0),
+        ])
+        bgs = compute_clip_background(ws, win_dspacing=5.0)
+        assert len(bgs) == 2
+        assert len(bgs[0]) == 50
+        assert len(bgs[1]) == 50
+
+    def test_flat_spectrum_background_approximates_level(self):
+        # Flat data at level 1.0 — background should be close to 1.0 everywhere
+        ws = self._ws([1.0] * 100)
+        bgs = compute_clip_background(ws, win_dspacing=10.0)
+        assert np.allclose(bgs[0], 1.0, atol=0.05)
+
+    def test_peak_is_clipped(self):
+        # Background level 1.0 with a narrow peak; ClipPeaks should return ~1.0
+        y = np.ones(200, dtype=float)
+        y[95:105] = 20.0
+        ws = self._ws(list(y))
+        bgs = compute_clip_background(ws, win_dspacing=15.0)
+        # Background outside the peak region should still be close to 1.0
+        bg = bgs[0]
+        assert np.allclose(bg[:90], 1.0, atol=0.1)
+        assert np.allclose(bg[110:], 1.0, atol=0.1)
+
+    def test_win_dspacing_zero_raises_or_uses_min_window(self):
+        # win_dspacing=0.0 → searchsorted gives right==mid → win_size=max(1,0)=1
+        # Should not crash; win_size is clamped to 1
+        ws = self._ws([1.0] * 50)
+        bgs = compute_clip_background(ws, win_dspacing=0.0)
+        assert len(bgs) == 1
+
+    def test_win_dspacing_converts_to_bins_at_midpoint(self):
+        # Uniform x=[0,1,...,100], midpoint=50, win_dspacing=10 → win_size=10
+        # Verify the function runs and returns correct length
+        x = np.arange(101, dtype=float)
+        y = np.ones(100, dtype=float)
+        ws = _FakeMultiWS([(x, y)])
+        bgs = compute_clip_background(ws, win_dspacing=10.0)
+        assert len(bgs[0]) == 100
+
+    def test_background_bounded_by_data_maximum(self):
+        # The rolling-sphere background should not exceed the overall data maximum
+        # (point-wise exceedances can occur due to the normalisation step in the
+        # algorithm, but the global maximum should be respected)
+        rng = np.random.default_rng(42)
+        y = rng.uniform(0.5, 2.0, 150) + np.sin(np.linspace(0, 4 * np.pi, 150))
+        y = np.clip(y, 0.1, None)
+        ws = self._ws(list(y))
+        bgs = compute_clip_background(ws, win_dspacing=10.0)
+        assert float(np.max(bgs[0])) <= float(np.max(y)) + 0.01

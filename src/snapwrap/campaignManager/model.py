@@ -159,6 +159,51 @@ def _is_readable_dir(path: Path) -> bool:
         return False
 
 
+def _apply_background(
+    source_ws_name: str,
+    bgnd_ws_name: str,
+    run_number: int,
+    group: str,
+    diagnostics: bool,
+) -> None:
+    """Subtract *bgnd_ws_name* from *source_ws_name* and create ``backsub_dsp_{group}_{run_number}``.
+
+    A positive constant offset is added so that all Y values are ≥ 0.
+    If *diagnostics* is False the background workspace is removed from ADS.
+    """
+    import numpy as np  # type: ignore
+    from mantid.api import mtd  # type: ignore
+    from mantid.simpleapi import CloneWorkspace, DeleteWorkspace  # type: ignore
+
+    out_ws_name = f"backsub_dsp_{group}_{run_number}"
+    CloneWorkspace(InputWorkspace=source_ws_name, OutputWorkspace=out_ws_name)
+    out_ws = mtd[out_ws_name]
+    bgnd_ws = mtd[bgnd_ws_name]
+
+    global_min = 0.0
+    for i in range(out_ws.getNumberHistograms()):
+        y_src = out_ws.readY(i).copy()
+        y_bg = bgnd_ws.readY(i)
+        n = min(len(y_src), len(y_bg))
+        y_sub = y_src[:n] - y_bg[:n]
+        global_min = min(global_min, float(np.nanmin(y_sub)))
+
+    offset = max(0.0, -global_min)
+    for i in range(out_ws.getNumberHistograms()):
+        y_src = out_ws.readY(i).copy()
+        y_bg = bgnd_ws.readY(i)
+        n = min(len(y_src), len(y_bg))
+        y_sub = y_src[:n] - y_bg[:n] + offset
+        out_ws.setY(i, y_sub)
+
+    print(
+        f"Group '{group}': background subtracted → '{out_ws_name}' "
+        f"(offset={offset:.4f})"
+    )
+    if not diagnostics:
+        DeleteWorkspace(Workspace=bgnd_ws_name)
+
+
 class CampaignManagerModel:
     """Pure-Python data model for the Campaign Manager."""
 
@@ -1054,6 +1099,180 @@ class CampaignManagerModel:
         )
         scope = f"run {run_number}" if run_number is not None else "all runs"
         return f"Retired {n} crop artefact(s) for {scope}."
+
+    @staticmethod
+    def postprocessBackground(
+        *,
+        ipts: int,
+        campaign_identifier: int | str,
+        run_number: int,
+        method: str = "clip",
+        win_dspacing: float = 0.05,
+        force_recompute: bool = False,
+        diagnostics: bool = False,
+        source_prefix: str = "cropped",
+        shared_root: str | Path | None = None,
+    ) -> str:
+        """Extract a ClipPeaks background and apply it to source workspaces.
+
+        For each focused workspace found in the ADS under *source_prefix*:
+          1. Estimates the background per spectrum using the rolling-sphere
+             algorithm (window width *win_dspacing* Å).
+          2. Saves the background to ``bgnd_clip_{group}_{run}.nxs`` in the
+             campaign artefact directory.
+          3. Registers a ``background.clip`` artefact (``bgnd-clip-run{N}-{group}``).
+          4. Creates ``backsub_dsp_{group}_{run}`` = source − background + offset,
+             where the positive offset ensures all Y ≥ 0.
+
+        If an active matching artefact already exists and *force_recompute* is
+        False, the stored background is loaded and re-applied without recomputing.
+
+        Args:
+            ipts: IPTS experiment number.
+            campaign_identifier: Campaign id or slug.
+            run_number: Run to process.
+            method: Extraction algorithm — currently only ``"clip"`` is supported.
+            win_dspacing: ClipPeaks half-window in Å (resampling-independent).
+            force_recompute: Always recompute, even if a matching artefact exists.
+            diagnostics: Keep the raw background workspace in ADS after execution.
+            source_prefix: Workspace prefix to read from (``"cropped"``,
+                ``"resampled"``, or ``"reduced"``).
+            shared_root: Override for the IPTS shared root (useful in tests).
+
+        Returns:
+            Log string summarising the operation.
+        """
+        import contextlib
+        import io
+
+        import numpy as np  # type: ignore
+        from mantid.api import mtd  # type: ignore
+        from mantid.simpleapi import CloneWorkspace, SaveNexusProcessed  # type: ignore
+
+        from snapwrap.reduction_artefacts.persistence import (  # type: ignore
+            list_artefact_records,
+            register_background_artefact,
+            retire_background_artefacts,
+        )
+        from snapwrap.reduction_artefacts.postprocessing import (  # type: ignore
+            compute_clip_background,
+        )
+        from snapwrap.utils import workspaceHandles  # type: ignore
+
+        if method != "clip":
+            return f"Background method '{method}' not yet implemented.\n"
+
+        artefact_dir = get_campaign_artefact_dir(
+            ipts=ipts,
+            campaign_identifier=campaign_identifier,
+            shared_root=shared_root,
+        )
+        artefact_dir.mkdir(parents=True, exist_ok=True)
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            # ── Try to reuse an existing matching background artefact ─────
+            if not force_recompute:
+                existing = [
+                    r for r in list_artefact_records(
+                        ipts=ipts,
+                        campaign_identifier=campaign_identifier,
+                        run_number=run_number,
+                        status="active",
+                        shared_root=shared_root,
+                    )
+                    if r.get("method") == "background.clip"
+                    and abs(float(r.get("metadata", {}).get("win_dspacing", -1)) - win_dspacing) < 1e-9
+                ]
+                if existing:
+                    handles = workspaceHandles(prefix=source_prefix, runNumber=run_number) or []
+                    reused: list[str] = []
+                    for handle in handles:
+                        group = handle.pixelGroup
+                        rec = next(
+                            (r for r in existing
+                             if r.get("metadata", {}).get("focus_group") == group),
+                            None,
+                        )
+                        if rec is None:
+                            print(f"WARNING: no stored background for group '{group}' — skipping")
+                            continue
+                        nxs_path = rec.get("path", "")
+                        if not nxs_path or not Path(nxs_path).exists():
+                            print(f"WARNING: background Nexus file missing for group '{group}' — skipping")
+                            continue
+                        from mantid.simpleapi import LoadNexus  # type: ignore
+                        bgnd_ws_name = f"bgnd_clip_dsp_{group}_{run_number}"
+                        LoadNexus(Filename=nxs_path, OutputWorkspace=bgnd_ws_name)
+                        _apply_background(handle.wsName, bgnd_ws_name, run_number, group, diagnostics)
+                        reused.append(rec["artefact_id"])
+                    if reused:
+                        ids = ", ".join(reused)
+                        return buf.getvalue() + f"\nReused {len(reused)} existing background artefact(s): {ids}.\n"
+
+            # ── Recompute: retire existing backgrounds, then extract ───────
+            n_retired = retire_background_artefacts(
+                ipts=ipts,
+                campaign_identifier=campaign_identifier,
+                run_number=run_number,
+                method="background.clip",
+                shared_root=shared_root,
+            )
+            if n_retired:
+                print(f"Retired {n_retired} previous background artefact(s) for run {run_number}.")
+
+            handles = workspaceHandles(prefix=source_prefix, runNumber=run_number) or []
+            if not handles:
+                raise RuntimeError(
+                    f"No {source_prefix} workspaces found in ADS for run {run_number}."
+                )
+
+            registered: list[dict] = []
+            for handle in handles:
+                group = handle.pixelGroup
+                source_ws = mtd[handle.wsName]
+                print(f"Group '{group}': computing ClipPeaks background (win_dspacing={win_dspacing} Å) …")
+
+                backgrounds = compute_clip_background(source_ws, win_dspacing=win_dspacing)
+
+                # Build background workspace (clone + overwrite Y)
+                bgnd_ws_name = f"bgnd_clip_dsp_{group}_{run_number}"
+                CloneWorkspace(InputWorkspace=handle.wsName, OutputWorkspace=bgnd_ws_name)
+                bgnd_ws = mtd[bgnd_ws_name]
+                for i, bg in enumerate(backgrounds):
+                    bgnd_ws.setY(i, bg)
+
+                # Save to Nexus
+                nxs_path = str(artefact_dir / f"bgnd_clip_{group}_{run_number}.nxs")
+                SaveNexusProcessed(InputWorkspace=bgnd_ws_name, Filename=nxs_path)
+
+                # Register artefact
+                artefact_id = f"bgnd-clip-run{run_number}-{group}"
+                record = register_background_artefact(
+                    ipts=ipts,
+                    campaign_identifier=campaign_identifier,
+                    artefact_id=artefact_id,
+                    ws_name=bgnd_ws_name,
+                    source_ws_name=handle.wsName,
+                    run_number=run_number,
+                    focus_group=group,
+                    nexus_path=nxs_path,
+                    method="background.clip",
+                    metadata={"win_dspacing": win_dspacing},
+                    shared_root=shared_root,
+                )
+                registered.append(record)
+                print(f"  Registered artefact '{artefact_id}', saved to {nxs_path}")
+
+                _apply_background(handle.wsName, bgnd_ws_name, run_number, group, diagnostics)
+
+        if not registered:
+            raise RuntimeError(
+                f"No {source_prefix} workspaces found in ADS for run {run_number}."
+            )
+
+        ids = ", ".join(r.get("artefact_id", "?") for r in registered)
+        return buf.getvalue() + f"\nRegistered {len(registered)} background artefact(s): {ids}.\n"
 
     @staticmethod
     def postprocessResample(

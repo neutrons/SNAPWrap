@@ -592,3 +592,49 @@ def apply_dspace_gaps(
     )
 
     return output_ws_name
+
+
+# ── ClipPeaks background extraction ───────────────────────────────────────────
+
+
+def compute_clip_background(
+    ws: Any,
+    win_dspacing: float,
+    use_lls: bool = True,
+    smoothing: float = 5.0,
+) -> list[Any]:
+    """Estimate a ClipPeaks rolling-sphere background for each spectrum.
+
+    The physical window width *win_dspacing* (Å) is converted to a bin count
+    at the spectrum mid-point so the result is independent of the resampling
+    factor or PGS-specific bin spacing.
+
+    Args:
+        ws: Workspace with ``getNumberHistograms``, ``readX``, ``readY`` —
+            either a Mantid workspace or a test stub.
+        win_dspacing: Rolling-sphere half-window width in Å.
+        use_lls: Apply log-log-square transform before clipping (recommended
+            for diffraction data with large intensity range).
+        smoothing: Triangle-kernel pre-smoothing width.  0 disables.
+
+    Returns:
+        List of 1-D numpy arrays, one estimated background per spectrum.
+    """
+    import numpy as np  # type: ignore
+    from snapwrap._inspectrum.background import estimate_background  # type: ignore
+
+    n_spec = ws.getNumberHistograms()
+    backgrounds = []
+    for i in range(n_spec):
+        x = ws.readX(i)
+        y = ws.readY(i)
+        # Build bin centres (histogram or point data)
+        x_c = 0.5 * (x[:-1] + x[1:]) if len(x) == len(y) + 1 else x
+        # Half-window in bins at the spectrum midpoint
+        mid = len(x_c) // 2
+        d_mid = float(x_c[mid])
+        right = int(np.searchsorted(x_c, d_mid + win_dspacing, side="left"))
+        win_size = max(1, right - mid)
+        bg, _ = estimate_background(y, win_size=win_size, lls=use_lls, smoothing=smoothing)
+        backgrounds.append(bg)
+    return backgrounds

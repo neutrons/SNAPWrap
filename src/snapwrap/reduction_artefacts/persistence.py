@@ -2620,3 +2620,145 @@ def retire_crop_artefacts(
                     fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
     return updated
+
+
+def register_background_artefact(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    artefact_id: str,
+    ws_name: str,
+    source_ws_name: str,
+    run_number: int | None,
+    focus_group: str,
+    nexus_path: str,
+    method: str,
+    metadata: dict | None = None,
+    shared_root: Path | str | None = None,
+    version: int = 1,
+    status: str = "active",
+) -> dict[str, Any]:
+    """Register a background artefact produced by post-processing.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        artefact_id: Unique identifier, e.g. ``"bgnd-clip-run65893-column"``.
+        ws_name: Name of the background workspace in the Mantid ADS.
+        source_ws_name: Source workspace the background was extracted from.
+        run_number: Run number (``None`` for campaign-scoped composite backgrounds).
+        focus_group: Focus-group name (e.g. ``"column"``).
+        nexus_path: Absolute path to the saved background Nexus file.
+        method: Extraction method tag, e.g. ``"background.clip"``.
+        metadata: Extra key-value pairs stored verbatim (e.g. ``win_dspacing``).
+        shared_root: Override for the IPTS shared root (useful in tests).
+        version: Record version (default 1).
+        status: Artefact status (default ``"active"``).
+    """
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    with paths.campaign_json.open("r", encoding="utf-8") as fh:
+        campaign = json.load(fh)
+    campaign_id = int(campaign.get("campaign_id", 0))
+
+    now = _utc_now_iso()
+    record: dict[str, Any] = {
+        "record_id": f"artefact-{artefact_id}-v{version}-{now}",
+        "timestamp": now,
+        "campaign_id": campaign_id,
+        "campaign_slug": campaign_slug,
+        "ipts": ipts,
+        "artefact_id": artefact_id,
+        "artefact_type": "other",
+        "intended_use": "post_reduction",
+        "method": method,
+        "version": version,
+        "status": status,
+        "run_context": {
+            "run_number": run_number,
+            "state_id": None,
+        },
+        "input_asset_ids": [],
+        "path": nexus_path,
+        "provenance": {
+            "created_by": "snapwrap",
+            "tool": f"postprocessing.{method}",
+        },
+        "metadata": {
+            **(dict(metadata) if metadata else {}),
+            "ws_name": ws_name,
+            "source_ws_name": source_ws_name,
+            "focus_group": focus_group,
+        },
+    }
+
+    append_jsonl_record(
+        paths.artefacts_index,
+        record,
+        schema_name="artefact_record.schema.json",
+    )
+    return record
+
+
+def retire_background_artefacts(
+    *,
+    ipts: int,
+    campaign_identifier: int | str,
+    run_number: int | None = None,
+    method: str | None = None,
+    shared_root: Path | str | None = None,
+) -> int:
+    """Set ``status="archived"`` on background artefact records.
+
+    Args:
+        ipts: IPTS experiment number.
+        campaign_identifier: Campaign id (int) or slug (str).
+        run_number: If given, only records whose ``run_context.run_number``
+            matches are retired.  ``None`` retires all background artefacts.
+        method: If given, only retire records whose ``method`` matches
+            (e.g. ``"background.clip"``).  ``None`` retires all methods.
+        shared_root: Override for the IPTS shared root (useful in tests).
+
+    Returns:
+        Number of records updated.
+    """
+    campaign_slug = resolve_campaign_slug(
+        ipts=ipts,
+        campaign_identifier=campaign_identifier,
+        shared_root=shared_root,
+    )
+    paths = _resolve_paths(ipts=ipts, campaign_slug=campaign_slug, shared_root=shared_root)
+
+    if not paths.artefacts_index.exists():
+        return 0
+
+    records = read_jsonl_records(paths.artefacts_index)
+    updated = 0
+    for rec in records:
+        if not str(rec.get("method", "")).startswith("background."):
+            continue
+        if method is not None and rec.get("method") != method:
+            continue
+        if run_number is not None:
+            if rec.get("run_context", {}).get("run_number") != run_number:
+                continue
+        if rec.get("status") == "archived":
+            continue
+        rec["status"] = "archived"
+        updated += 1
+
+    if updated:
+        lock_path = paths.artefacts_index.with_suffix(
+            paths.artefacts_index.suffix + ".lock"
+        )
+        with _exclusive_lock(lock_path):
+            with paths.artefacts_index.open("w", encoding="utf-8") as fh:
+                for rec in records:
+                    fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
+
+    return updated

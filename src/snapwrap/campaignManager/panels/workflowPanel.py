@@ -469,6 +469,7 @@ def _execute_queue_fn(
 
     step_types = [s["step_type"] for s in steps]
     has_resample = "resample" in step_types
+    has_crop = "crop" in step_types
 
     # Pull bin mask IDs from the Reduce step for use by Crop.
     reduce_bin_mask_ids: list[str] = []
@@ -521,7 +522,19 @@ def _execute_queue_fn(
             log_parts.append(result)
 
         elif stype == "background":
-            log_parts.append("  Background extraction not yet implemented.\n")
+            bg_source = "cropped" if has_crop else ("resampled" if has_resample else "reduced")
+            log_parts.append(f"  source_prefix: {bg_source}\n")
+            result = CampaignManagerModel.postprocessBackground(
+                ipts=ipts,
+                campaign_identifier=campaign_slug,
+                run_number=run_number,
+                method=params.get("method", "clip"),
+                win_dspacing=float(params.get("win_dspacing", 0.05)),
+                force_recompute=bool(params.get("force_recompute", False)),
+                diagnostics=bool(params.get("diagnostics", False)),
+                source_prefix=bg_source,
+            )
+            log_parts.append(result)
 
         else:
             log_parts.append(f"Unknown step type '{stype}' — skipped.\n")
