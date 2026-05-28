@@ -162,19 +162,40 @@ def _is_readable_dir(path: Path) -> bool:
 def _find_source_handles(preferred_prefix: str, run_number: int) -> list:
     """Return workspace handles for *run_number*, falling back through the pipeline.
 
-    Tries *preferred_prefix* first, then the full cascade ``cropped → resampled
-    → reduced`` so that a background-only queue works correctly even when the
-    source workspaces were produced by a prior queue execution.
-    """
-    from snapwrap.utils import workspaceHandles  # type: ignore
+    Scans the ADS directly (rather than via io.reducedRuns) so that workspaces
+    produced purely in-memory — such as 'cropped_dsp_*' created by apply_dspace_gaps
+    with no on-disk reduction record — are found correctly.
 
-    cascade = [preferred_prefix, "cropped", "resampled", "reduced"]
+    Tries *preferred_prefix* first, then cascades through cropped → resampled →
+    reduced until a non-empty set is found.
+    """
+    from mantid.api import mtd  # type: ignore
+
+    run_tokens = [str(run_number), f"{run_number:06d}"]
+
+    class _Handle:
+        def __init__(self, ws_name: str, group: str) -> None:
+            self.wsName = ws_name
+            self.pixelGroup = group
+
+    def _scan(pfx: str) -> list:
+        found = []
+        for name in mtd.getObjectNames():
+            # Pattern: {prefix}_dsp_{group}_{run}
+            if not name.startswith(f"{pfx}_dsp_"):
+                continue
+            if any(name.endswith(f"_{t}") for t in run_tokens):
+                parts = name.split("_")
+                if len(parts) >= 4:
+                    found.append(_Handle(name, parts[2]))
+        return found
+
     seen: set[str] = set()
-    for pfx in cascade:
+    for pfx in [preferred_prefix, "cropped", "resampled", "reduced"]:
         if pfx in seen:
             continue
         seen.add(pfx)
-        handles = workspaceHandles(prefix=pfx, runNumber=run_number) or []
+        handles = _scan(pfx)
         if handles:
             print(f"  source prefix: '{pfx}'")
             return handles
