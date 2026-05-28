@@ -637,7 +637,8 @@ def compute_clip_background(
         win_size = max(1, right - mid)
         # Replace non-finite values (NaN from gap regions) with linear
         # interpolation so they don't poison the smoothing step.
-        y_est = np.asarray(y, dtype=float)
+        # Must copy — readY() returns a read-only Mantid buffer view.
+        y_est = np.array(y, dtype=float)
         nan_mask = ~np.isfinite(y_est)
         if nan_mask.any() and not nan_mask.all():
             idx = np.arange(len(y_est))
