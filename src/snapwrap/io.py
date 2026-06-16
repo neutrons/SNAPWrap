@@ -21,6 +21,8 @@ from .wrapConfig import WrapConfig
 
 #Mantid interface
 
+_PREFIX_NUM_RE = re.compile(r'^(.+?)-(\d+)$')
+
 class redObject:
 
     #class that takes a workspace name and, if the name matches an expected pattern for 
@@ -49,6 +51,8 @@ class redObject:
             cleanTree = cleanTreeOverride
 
         self.wsName = wsName #need to keep this too
+        self.prefixNumberString = None
+        self.prefixNumber = None
 
         # reject everything that is inconsistent with the schema
         # and requested filters
@@ -76,12 +80,19 @@ class redObject:
             nElem = 5
 
         #process prefix
-        # prefix = parsed[0]
-        if parsed[0] != requiredPrefix:
+        _m = _PREFIX_NUM_RE.match(parsed[0])
+        if _m:
+            _base_prefix = _m.group(1)
+            self.prefixNumberString = _m.group(2)
+            self.prefixNumber = int(_m.group(2))
+        else:
+            _base_prefix = parsed[0]
+
+        if _base_prefix != requiredPrefix:
             self.isReducedDataWorkspace = False
             return
         else:
-            self.prefix = parsed[0]
+            self.prefix = _base_prefix
 
         #process units
         units = parsed[1]

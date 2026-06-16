@@ -242,7 +242,7 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
             else:
                 handle = io.redObject(name)
 
-            newName = f"slice{str(sliceID).zfill(3)}_{handle.units}_{handle.pixelGroup}_{handle.runNumberString}"
+            newName = f"slice-{str(sliceID).zfill(3)}_{handle.units}_{handle.pixelGroup}_{handle.runNumberString}"
             RenameWorkspace(InputWorkspace=name, OutputWorkspace=newName)
             outputWSNames.append(newName)
 
@@ -1104,7 +1104,8 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False, verbose
 
             # identify latest workspace in group and rename it.
             latest = runDict[pgs][0] #redObject for most recent workspace
-            wsKeep = f"{latest.prefix}_{latest.units}_{latest.pixelGroup}_{latest.runNumberString}"
+            _prefix_tag = f"{latest.prefix}-{latest.prefixNumberString}" if latest.prefixNumberString else latest.prefix
+            wsKeep = f"{_prefix_tag}_{latest.units}_{latest.pixelGroup}_{latest.runNumberString}"
             if deleteWorkspaces:
                 RenameWorkspace(InputWorkspace=latest.wsName,
                             OutputWorkspace=wsKeep)
