@@ -275,6 +275,20 @@ class redObject:
         self.crystalSpecies = [] #an empty list to hold a list ocf mantid crystal structure representing the crystal "species"
                                  #contributing to the data in the redObject.
 
+    def derivedName(self, newPrefix, includeTimestamp=True):
+        """Return a workspace name identical to this one but with a replaced prefix.
+
+        If this workspace has a prefixNumber, it is appended to newPrefix with
+        the original separator and zero-padding (e.g. "resampled-001").
+        includeTimestamp controls whether the timestamp token is appended; it is
+        only ever added when both includeTimestamp=True and self.timeStamp is set.
+        """
+        prefix_tag = f"{newPrefix}-{self.prefixNumberString}" if self.prefixNumberString else newPrefix
+        parts = [prefix_tag, self.units, self.pixelGroup, self.runNumberString]
+        if includeTimestamp and self.timeStamp:
+            parts.append(self.timeStamp)
+        return "_".join(parts)
+
     def wsProperties(self,wsName):
         #gets some useful attributes of workspace
 

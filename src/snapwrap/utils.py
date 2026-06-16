@@ -1104,8 +1104,7 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False, verbose
 
             # identify latest workspace in group and rename it.
             latest = runDict[pgs][0] #redObject for most recent workspace
-            _prefix_tag = f"{latest.prefix}-{latest.prefixNumberString}" if latest.prefixNumberString else latest.prefix
-            wsKeep = f"{_prefix_tag}_{latest.units}_{latest.pixelGroup}_{latest.runNumberString}"
+            wsKeep = latest.derivedName(latest.prefix, includeTimestamp=False)
             if deleteWorkspaces:
                 RenameWorkspace(InputWorkspace=latest.wsName,
                             OutputWorkspace=wsKeep)
@@ -1249,11 +1248,7 @@ def resample(sampleFactor=1,
 
                 print(f"inputWorkspace is: {redObj.wsName}")
 
-                cleanTree= WrapConfig.get("cleanTree")
-                if cleanTree:
-                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumberString}"
-                else:
-                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumberString}_{redObj.timeStamp}"
+                outWSName = redObj.derivedName("resampled")
 
                 print(f"outputWorkspace is: {outWSName}")
                 RebinRagged(InputWorkspace=redObj.wsName,
@@ -2271,6 +2266,8 @@ def reduce(runNumber,
 
     else:
         outputWSList = None
+
+    print("Diagnostic. Reduced workspace list: ", outputWSList)
 
     if verbose:       
         verboseStatus(Config,instrumentState,ingredients)
