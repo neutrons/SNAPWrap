@@ -21,6 +21,8 @@ from .wrapConfig import WrapConfig
 
 #Mantid interface
 
+_PREFIX_NUM_RE = re.compile(r'^(.+?)-(\d+)$')
+
 class redObject:
 
     #class that takes a workspace name and, if the name matches an expected pattern for 
@@ -49,6 +51,8 @@ class redObject:
             cleanTree = cleanTreeOverride
 
         self.wsName = wsName #need to keep this too
+        self.prefixNumberString = None
+        self.prefixNumber = None
 
         # reject everything that is inconsistent with the schema
         # and requested filters
@@ -76,12 +80,19 @@ class redObject:
             nElem = 5
 
         #process prefix
-        # prefix = parsed[0]
-        if parsed[0] != requiredPrefix:
+        _m = _PREFIX_NUM_RE.match(parsed[0])
+        if _m:
+            _base_prefix = _m.group(1)
+            self.prefixNumberString = _m.group(2)
+            self.prefixNumber = int(_m.group(2))
+        else:
+            _base_prefix = parsed[0]
+
+        if _base_prefix != requiredPrefix:
             self.isReducedDataWorkspace = False
             return
         else:
-            self.prefix = parsed[0]
+            self.prefix = _base_prefix
 
         #process units
         units = parsed[1]
@@ -263,6 +274,20 @@ class redObject:
 
         self.crystalSpecies = [] #an empty list to hold a list ocf mantid crystal structure representing the crystal "species"
                                  #contributing to the data in the redObject.
+
+    def derivedName(self, newPrefix, includeTimestamp=True):
+        """Return a workspace name identical to this one but with a replaced prefix.
+
+        If this workspace has a prefixNumber, it is appended to newPrefix with
+        the original separator and zero-padding (e.g. "resampled-001").
+        includeTimestamp controls whether the timestamp token is appended; it is
+        only ever added when both includeTimestamp=True and self.timeStamp is set.
+        """
+        prefix_tag = f"{newPrefix}-{self.prefixNumberString}" if self.prefixNumberString else newPrefix
+        parts = [prefix_tag, self.units, self.pixelGroup, self.runNumberString]
+        if includeTimestamp and self.timeStamp:
+            parts.append(self.timeStamp)
+        return "_".join(parts)
 
     def wsProperties(self,wsName):
         #gets some useful attributes of workspace

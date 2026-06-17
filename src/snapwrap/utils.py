@@ -242,7 +242,7 @@ def filterLite(runNumber, boundaries, **reduce_kwargs):
             else:
                 handle = io.redObject(name)
 
-            newName = f"slice{str(sliceID).zfill(3)}_{handle.units}_{handle.pixelGroup}_{handle.runNumberString}"
+            newName = f"slice-{str(sliceID).zfill(3)}_{handle.units}_{handle.pixelGroup}_{handle.runNumberString}"
             RenameWorkspace(InputWorkspace=name, OutputWorkspace=newName)
             outputWSNames.append(newName)
 
@@ -1104,7 +1104,7 @@ def cleanTheTree(prefix="reduced",removePGS=None,deleteWorkspaces=False, verbose
 
             # identify latest workspace in group and rename it.
             latest = runDict[pgs][0] #redObject for most recent workspace
-            wsKeep = f"{latest.prefix}_{latest.units}_{latest.pixelGroup}_{latest.runNumberString}"
+            wsKeep = latest.derivedName(latest.prefix, includeTimestamp=False)
             if deleteWorkspaces:
                 RenameWorkspace(InputWorkspace=latest.wsName,
                             OutputWorkspace=wsKeep)
@@ -1248,11 +1248,7 @@ def resample(sampleFactor=1,
 
                 print(f"inputWorkspace is: {redObj.wsName}")
 
-                cleanTree= WrapConfig.get("cleanTree")
-                if cleanTree:
-                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumberString}"
-                else:
-                    outWSName = f"resampled_{redObj.units}_{redObj.pixelGroup}_{redObj.runNumberString}_{redObj.timeStamp}"
+                outWSName = redObj.derivedName("resampled")
 
                 print(f"outputWorkspace is: {outWSName}")
                 RebinRagged(InputWorkspace=redObj.wsName,
@@ -2270,6 +2266,8 @@ def reduce(runNumber,
 
     else:
         outputWSList = None
+
+    print("Diagnostic. Reduced workspace list: ", outputWSList)
 
     if verbose:       
         verboseStatus(Config,instrumentState,ingredients)
