@@ -319,9 +319,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lz4-4.4.5-py312h3d67a73_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lz4-c-1.10.0-h5888daf_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lzo-2.10-h280c20c_1002.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantid-6.15.20260612.1302-np21py312h68643e6_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidqt-6.15.20260612.1302-py312h3be2853_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidworkbench-6.15.20260612.1302-py312h4bc209a_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantid-6.15.20260616.1626-np21py312h68643e6_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidqt-6.15.20260616.1626-py312h3be2853_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidworkbench-6.15.20260616.1626-py312h4bc209a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-3.10.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-it-py-4.2.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/markupsafe-3.0.3-py312h8a5da7c_1.conda
@@ -883,9 +883,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/lmfit-1.3.4-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lz4-c-1.10.0-h286801f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lzo-2.10-h925e9cb_1002.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantid-6.15.20260612.1302-np21py312h9097ce1_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidqt-6.15.20260612.1302-py312hf86d982_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidworkbench-6.15.20260612.1302-py312h7641f35_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantid-6.15.20260616.1626-np21py312h9097ce1_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidqt-6.15.20260616.1626-py312hf86d982_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidworkbench-6.15.20260616.1626-py312h7641f35_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-3.10.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-it-py-4.2.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/markupsafe-3.0.3-py312h04c11ed_1.conda
@@ -1467,9 +1467,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lz4-4.4.5-py312h3d67a73_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lz4-c-1.10.0-h5888daf_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/lzo-2.10-h280c20c_1002.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantid-6.15.20260612.1302-np21py312h68643e6_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidqt-6.15.20260612.1302-py312h3be2853_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidworkbench-6.15.20260612.1302-py312h4bc209a_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantid-6.15.20260616.1626-np21py312h68643e6_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidqt-6.15.20260616.1626-py312h3be2853_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidworkbench-6.15.20260616.1626-py312h4bc209a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-3.10.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-it-py-4.2.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/markupsafe-3.0.3-py312h8a5da7c_1.conda
@@ -2017,9 +2017,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/lmfit-1.3.4-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lz4-c-1.10.0-h286801f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/lzo-2.10-h925e9cb_1002.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantid-6.15.20260612.1302-np21py312h9097ce1_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidqt-6.15.20260612.1302-py312hf86d982_0.conda
-      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidworkbench-6.15.20260612.1302-py312h7641f35_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantid-6.15.20260616.1626-np21py312h9097ce1_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidqt-6.15.20260616.1626-py312hf86d982_0.conda
+      - conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidworkbench-6.15.20260616.1626-py312h7641f35_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-3.10.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-it-py-4.2.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/markupsafe-3.0.3-py312h04c11ed_1.conda
@@ -8632,9 +8632,9 @@ packages:
   purls: []
   size: 152755
   timestamp: 1753889267953
-- conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantid-6.15.20260612.1302-np21py312h68643e6_0.conda
-  sha256: b0188390f5452a9158463bdcdb351c2bb13e590d851b3c67726ac19b8791397a
-  md5: e26cc5cc1c694095d3998a4cb4d418ed
+- conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantid-6.15.20260616.1626-np21py312h68643e6_0.conda
+  sha256: 55b4409d45f929ee406201ab5e06c96769d31065d1e066261ed9db37bfc67db1
+  md5: 0d10090a2ff9ea198d61dd317fd5a2bc
   depends:
   - gsl >=2.8,<2.9.0a0
   - hdf4 >=4.2.15,<4.3.0a0
@@ -8687,11 +8687,11 @@ packages:
   - pyparsing <3.3.0
   - pystog >=0.6.3
   license: GPL-3.0-or-later
-  size: 38404089
-  timestamp: 1781302837217
-- conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantid-6.15.20260612.1302-np21py312h9097ce1_0.conda
-  sha256: a23075e1a9cfeb096189338bb67ed2014d435258e01e0e544af4f84693348309
-  md5: 2f6911871f542d22384476723d717143
+  size: 38403960
+  timestamp: 1781648435207
+- conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantid-6.15.20260616.1626-np21py312h9097ce1_0.conda
+  sha256: a68b3dbfaf7fb4ac0e31259099753a4fffc0d1471013b834655a8b7ec19fd63e
+  md5: ef2c57ecd72bfdf6a2db0708dfd29a49
   depends:
   - gsl >=2.8,<2.9.0a0
   - hdf4 >=4.2.15,<4.3.0a0
@@ -8737,13 +8737,13 @@ packages:
   - pyparsing <3.3.0
   - pystog >=0.6.3
   license: GPL-3.0-or-later
-  size: 28529148
-  timestamp: 1781302907404
-- conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidqt-6.15.20260612.1302-py312h3be2853_0.conda
-  sha256: 91532891e87af92609ae4f1ddcd185cde98779e9f00446f592d842f64aec562d
-  md5: 771479339bab5e8899aa8db53af180e0
+  size: 28529146
+  timestamp: 1781648469412
+- conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidqt-6.15.20260616.1626-py312h3be2853_0.conda
+  sha256: 3b173ee18b5183eef043626c364406d03b0d9516f0fbe81d9b70544e38484935
+  md5: 085ffd84a58f29268b41653c2e07c10d
   depends:
-  - mantid ==6.15.20260612.1302
+  - mantid ==6.15.20260616.1626
   - matplotlib 3.10.*
   - qscintilla2 ==2.14.1 *_0
   - qt-main >=5.15.15,<5.16.0a0
@@ -8763,19 +8763,19 @@ packages:
   - fonts-conda-ecosystem
   - libopenblas >=0.3.27,<1.0a0
   - xorg-libxxf86vm >=1.1.7,<2.0a0
-  - mantid ==6.15.20260612.1302 np21py312h68643e6_0
+  - mantid ==6.15.20260616.1626 np21py312h68643e6_0
   - pyqt >=5.15.9,<5.16.0a0
   - libboost-python >=1.88.0,<1.89.0a0
   - libgl >=1.7.0,<2.0a0
   - python_abi 3.12.* *_cp312
   license: GPL-3.0-or-later
-  size: 10528552
-  timestamp: 1781303260194
-- conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidqt-6.15.20260612.1302-py312hf86d982_0.conda
-  sha256: 85377221b1929ba0c054680515c39434dc90d155895c7b6b0325477d27e00cc3
-  md5: 956ce63c956d9a0cdf49eee03a81770b
+  size: 10528505
+  timestamp: 1781648852535
+- conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidqt-6.15.20260616.1626-py312hf86d982_0.conda
+  sha256: 460426ab86c8f2865ff5338a3cb4478f350bca0298e8a60e5c736e6db9f493b3
+  md5: caec81f97641141b32f9b0d1b7a53169
   depends:
-  - mantid ==6.15.20260612.1302
+  - mantid ==6.15.20260616.1626
   - matplotlib 3.10.*
   - qscintilla2 ==2.14.1 *_0
   - qt-main >=5.15.15,<5.16.0a0
@@ -8786,22 +8786,22 @@ packages:
   - qt-main >=5.15.15,<5.16.0a0
   - fontconfig >=2.17.1,<3.0a0
   - fonts-conda-ecosystem
-  - mantid ==6.15.20260612.1302 np21py312h9097ce1_0
+  - mantid ==6.15.20260616.1626 np21py312h9097ce1_0
   - libboost-python >=1.86.0,<1.87.0a0
   - libboost >=1.86.0,<1.87.0a0
   - pyqt >=5.15.9,<5.16.0a0
   - tbb >=2021.13.0
   - libopenblas >=0.3.27,<1.0a0
   license: GPL-3.0-or-later
-  size: 8159136
-  timestamp: 1781305190481
-- conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidworkbench-6.15.20260612.1302-py312h4bc209a_0.conda
-  sha256: f06df44a5a0f300ccfeded13c75fdd92fe17ac1fac836fccb07ee751044ce37f
-  md5: ed4f838ef842c9aaa2e079f2fbb1b8b2
+  size: 8159043
+  timestamp: 1781649435702
+- conda: https://conda.anaconda.org/mantid/label/nightly/linux-64/mantidworkbench-6.15.20260616.1626-py312h4bc209a_0.conda
+  sha256: 9ec0d097fcfc52b6a87cc87f4cb96335a2131b011b680a5a554e44b01ec0fa1e
+  md5: 35bf20a175d8ee56df1f18754f324101
   depends:
   - fontconfig 2.17.*
   - ipykernel
-  - mantidqt ==6.15.20260612.1302
+  - mantidqt ==6.15.20260616.1626
   - psutil >=5.8.0
   - python >=3.12.13,<3.13.0a0
   - matplotlib 3.10.*
@@ -8814,23 +8814,23 @@ packages:
   - lz4
   - xorg-libxxf86vm >=1.1.7,<2.0a0
   - tbb >=2021.13.0
-  - mantidqt ==6.15.20260612.1302 py312h3be2853_0
+  - mantidqt ==6.15.20260616.1626 py312h3be2853_0
   - xorg-libx11 >=1.8.13,<2.0a0
   - libgl >=1.7.0,<2.0a0
   - python_abi 3.12.* *_cp312
   constrains:
   - mslice >=2.14
-  - mantiddocs ==6.15.20260612.1302
+  - mantiddocs ==6.15.20260616.1626
   license: GPL-3.0-or-later
-  size: 2804203
-  timestamp: 1781320318398
-- conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidworkbench-6.15.20260612.1302-py312h7641f35_0.conda
-  sha256: cf0afee579c0076eb8055a54e0306ea394b4542daf689e796973322ca11d0892
-  md5: 85dff257f5682f70c1e2e7b6fd186bd8
+  size: 2804510
+  timestamp: 1781666046926
+- conda: https://conda.anaconda.org/mantid/label/nightly/osx-arm64/mantidworkbench-6.15.20260616.1626-py312h7641f35_0.conda
+  sha256: 4fb26b7e777ffa95b98f3ee0de8a5941d621d04146b9042d37f53730974ad9ce
+  md5: 8bd2071fc962268f3742991a4113f825
   depends:
   - fontconfig 2.17.*
   - ipykernel
-  - mantidqt ==6.15.20260612.1302
+  - mantidqt ==6.15.20260616.1626
   - psutil >=5.8.0
   - python >=3.12.13,<3.13.0a0
   - matplotlib 3.10.*
@@ -8840,15 +8840,15 @@ packages:
   - qtconsole >5.5.0
   - setuptools >=82.0.1,<82.1.0a0
   - python.app
-  - mantidqt ==6.15.20260612.1302 py312hf86d982_0
+  - mantidqt ==6.15.20260616.1626 py312hf86d982_0
   - python_abi 3.12.* *_cp312
   - tbb >=2021.13.0
   constrains:
   - mslice >=2.14
-  - mantiddocs ==6.15.20260612.1302
+  - mantiddocs ==6.15.20260616.1626
   license: GPL-3.0-or-later
-  size: 2791356
-  timestamp: 1781320365053
+  size: 2791397
+  timestamp: 1781666083610
 - conda: https://conda.anaconda.org/conda-forge/noarch/markdown-3.10.2-pyhcf101f3_0.conda
   sha256: 20e0892592a3e7c683e3d66df704a9425d731486a97c34fc56af4da1106b2b6b
   md5: ba0a9221ce1063f31692c07370d062f3
