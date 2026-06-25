@@ -321,6 +321,21 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
         calStatus["statusDetail"] = f"unexpected error reading calibration index: {indexPath}"
         return calStatus
 
+    ## case: index file exists but is empty -> corruption.
+    # An empty index must never occur and is distinct from an uncalibrated
+    # state (which has no index file at all, handled above for normcal).  A
+    # valid index always carries at least one entry: difcal always has the
+    # default geometric version 0, and normcal always has at least one real
+    # calibration.  An empty list is therefore a corrupted index and is
+    # reported as such, rather than falling through to timestamp inspection
+    # (which would raise a misleading "inconsistent timestamp types: set()").
+    if len(calIndexList) == 0:
+        raise ValueError(
+            f"Corrupt calibration index (empty) at {indexPath}. "
+            f"An empty index should never occur and is different from an "
+            f"uncalibrated state, which has no index file at all."
+        )
+
     ## case: difcal requested, state exists, but no difcal exists (only default)
     if len(calIndexList) == 1 and calType == "difcal":
 

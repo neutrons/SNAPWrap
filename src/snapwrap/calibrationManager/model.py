@@ -666,14 +666,21 @@ class CalibrationManagerModel:
         vFolderPath = os.path.join(calFolder, vFolderName)
 
         if dryRun:
-            return {
-                "ok": True,
-                "message": (
+            isLastVersion = sum(
+                1 for e in indexEntries if int(e.get("version", -1)) != version
+            ) == 0
+            if isLastVersion:
+                msg = (
+                    f"[DRY RUN] Version {version} is the only {calType} "
+                    f"calibration; would remove the entire folder {calFolder}."
+                )
+            else:
+                msg = (
                     f"[DRY RUN] Would delete folder {vFolderPath} and remove "
                     f"index entry for version {version}, then re-version remaining "
                     f"calibrations."
-                ),
-            }
+                )
+            return {"ok": True, "message": msg}
 
         # ── Actual deletion ──────────────────────────────────────
         # 1. Back up via the existing fixIndex backup machinery
@@ -700,6 +707,25 @@ class CalibrationManagerModel:
             ],
             key=lambda e: int(e.get("version", 0)),
         )
+
+        # If this was the last remaining version, the correct representation of
+        # an uncalibrated state is the ABSENCE of the index/folder, not an empty
+        # index file (checkCalibrationStatus reports an empty index as corrupt).
+        # Remove the entire calibration folder instead of writing "[]".
+        # Note: difcal cannot reach this branch — version 0 is protected above
+        # and always remains — so in practice this only fires for normalization.
+        if len(updatedEntries) == 0:
+            if os.path.isdir(calFolder):
+                shutil.rmtree(calFolder)
+            return {
+                "ok": True,
+                "message": (
+                    f"Deleted version {version} (the only {calType} "
+                    f"calibration) and removed the now-empty folder "
+                    f"{calFolder}. Backup at {backupDir}."
+                ),
+            }
+
         with open(indexPath, "w") as fh:
             json.dump(updatedEntries, fh, indent=2)
 
