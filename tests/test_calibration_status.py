@@ -21,12 +21,35 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
+import snapwrap.cycleDates as cd
 import snapwrap.snapStateMgr as ssm
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _resolution_follows_cycle_mock(monkeypatch):
+    """Make ``resolve_cycle_for_run`` follow whatever ``get_cycle_for_run`` is.
+
+    Gating now goes through the stopDate-aware ``resolve_cycle_for_run`` rather
+    than the open-ended ``get_cycle_for_run``.  These tests mock the latter to
+    control which cycle a run belongs to, so resolution is redirected to read
+    it *at call time* -- that way it picks up each test's mock without every
+    test having to patch two functions.
+
+    A mocked cycle of ``None`` becomes UNDECIDED, which is the fail-closed
+    outcome: the gate refuses rather than waving the run through.
+    """
+
+    def _resolve(runNumber, *args, **kwargs):
+        cycleID = ssm.get_cycle_for_run(runNumber)
+        if cycleID is None:
+            return cd.CycleResolution(None, cd.UNDECIDED, "test: cycle undecided")
+        return cd.CycleResolution(cycleID, cd.IN_CYCLE, "test: in cycle")
+
+    monkeypatch.setattr(ssm, "resolve_cycle_for_run", _resolve)
 
 def _make_index_entry(
     version: int,
@@ -288,9 +311,17 @@ class TestCheckCalibrationStatusCycleValidity:
     @patch("snapwrap.snapStateMgr.get_cycle_for_run")
     @patch("snapwrap.snapStateMgr.checkStateExists", return_value=True)
     @patch("snapwrap.snapStateMgr.stateDef", return_value=["abc123", {}])
-    def test_cycle_none_treated_as_no_restriction(
+    def test_unresolvable_cycle_fails_closed(
         self, mock_stateDef, mock_stateExists, mock_gcfr
     ):
+        """A run whose cycle cannot be established must NOT be calibrated.
+
+        This inverts the previous behaviour, where an unresolvable cycle
+        disabled the cycle filter entirely -- so the case we were least sure
+        about was the one that got waved through.  Per the 2026-08-05 decision
+        (MG), using an out-of-cycle calibration requires an explicit opt-in, and
+        "cycle undecided" is a refusal rather than a free pass.
+        """
         default = _make_index_entry(0, "50000", ">=0", "2024-01-01T00:00:00.000")
         v1 = _make_index_entry(1, "55000", ">=50000", "2024-03-01T10:00:00.000")
         index_data = [default, v1]
@@ -307,6 +338,31 @@ class TestCheckCalibrationStatusCycleValidity:
              patch("os.path.isfile", return_value=True):
             result = ssm.checkCalibrationStatus(
                 runNumber=56000, stateID=None, isLite=True, calType="difcal"
+            )
+
+        assert result["runIsCalibrated"] is False
+        assert "cycle could not be established" in result["statusDetail"]
+        # the message must point at the way out
+        assert "requireSameCycle=False" in result["statusDetail"]
+
+    @patch("snapwrap.snapStateMgr.get_cycle_for_run")
+    @patch("snapwrap.snapStateMgr.checkStateExists", return_value=True)
+    @patch("snapwrap.snapStateMgr.stateDef", return_value=["abc123", {}])
+    def test_unresolvable_cycle_overridable(
+        self, mock_stateDef, mock_stateExists, mock_gcfr
+    ):
+        """requireSameCycle=False is the explicit opt-in that restores access."""
+        default = _make_index_entry(0, "50000", ">=0", "2024-01-01T00:00:00.000")
+        v1 = _make_index_entry(1, "55000", ">=50000", "2024-03-01T10:00:00.000")
+        index_data = [default, v1]
+
+        mock_gcfr.side_effect = lambda rn: None if int(rn) == 56000 else "2024-A"
+
+        with patch("builtins.open", side_effect=_json_file_factory(index_data)), \
+             patch("os.path.isfile", return_value=True):
+            result = ssm.checkCalibrationStatus(
+                runNumber=56000, stateID=None, isLite=True, calType="difcal",
+                requireSameCycle=False,
             )
 
         assert result["runIsCalibrated"] is True

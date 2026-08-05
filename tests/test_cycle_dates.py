@@ -6,6 +6,7 @@ the ``odf`` library nor a real instrument calibration directory are needed.
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -368,3 +369,142 @@ class TestGetCycleForRun:
         cd.load_cycle_data(json_path=jp)
         # run 99999 should still map to 2025-A, not the future 2025-B
         assert cd.get_cycle_for_run(99999, json_path=jp) == "2025-A"
+
+
+# ---------------------------------------------------------------------------
+# resolve_cycle_for_run  --  stopDate-aware, fail-closed resolution
+# ---------------------------------------------------------------------------
+
+class TestResolveCycleForRun:
+    """The gating lookup, which must distinguish undecided from known.
+
+    ``get_cycle_for_run`` is open-ended and attributes any high run number to
+    the last registered cycle.  ``resolve_cycle_for_run`` must instead report
+    UNDECIDED once a run passes that cycle's stopDate, so a gate can refuse.
+    """
+
+    def _setup(self, tmp_path, rows=None):
+        cd.clear_cache()
+        cd.clear_run_date_cache()
+        validated = cd._validate_dataframe(pd.DataFrame(rows or _good_rows()))
+        jp = _write_json(tmp_path, validated)
+        cd.load_cycle_data(json_path=jp)
+        return jp
+
+    # -- bounded cycles: a later firstRun settles it, no date needed ---------
+
+    def test_bounded_run_is_in_cycle(self, tmp_path):
+        jp = self._setup(tmp_path)
+        res = cd.resolve_cycle_for_run(51999, json_path=jp)
+        assert res.status == cd.IN_CYCLE
+        assert res.cycleID == "2024-A"
+        assert res.isDecided
+
+    def test_bounded_run_needs_no_run_date(self, tmp_path):
+        """No NeXus lookup should happen for a run bounded from above."""
+        jp = self._setup(tmp_path)
+        with patch.object(cd, "_lookup_run_date", side_effect=AssertionError("should not be called")):
+            res = cd.resolve_cycle_for_run(52000, json_path=jp)
+        assert res.cycleID == "2024-B"
+
+    def test_run_before_record(self, tmp_path):
+        jp = self._setup(tmp_path)
+        res = cd.resolve_cycle_for_run(49999, json_path=jp)
+        assert res.status == cd.BEFORE_RECORD
+        assert res.cycleID is None
+        assert not res.isDecided
+
+    # -- the open-ended tail: stopDate is the only bound ---------------------
+
+    def test_tail_run_before_stopdate_is_in_cycle(self, tmp_path):
+        jp = self._setup(tmp_path)
+        res = cd.resolve_cycle_for_run(
+            55001, run_date=datetime.date(2025, 6, 1), json_path=jp
+        )
+        assert res.status == cd.IN_CYCLE
+        assert res.cycleID == "2025-A"
+
+    def test_tail_run_on_stopdate_is_in_cycle(self, tmp_path):
+        """stopDate is inclusive -- the last day of a cycle is still in it."""
+        jp = self._setup(tmp_path)
+        res = cd.resolve_cycle_for_run(
+            55001, run_date=datetime.date(2025, 6, 30), json_path=jp
+        )
+        assert res.status == cd.IN_CYCLE
+
+    def test_tail_run_after_stopdate_is_undecided(self, tmp_path):
+        """The regression this whole change exists for.
+
+        get_cycle_for_run reports 2025-A with confidence; resolve must not.
+        """
+        jp = self._setup(tmp_path)
+        assert cd.get_cycle_for_run(99999, json_path=jp) == "2025-A"
+
+        res = cd.resolve_cycle_for_run(
+            99999, run_date=datetime.date(2025, 8, 1), json_path=jp
+        )
+        assert res.status == cd.UNDECIDED
+        assert res.cycleID is None
+        assert not res.isDecided
+
+    def test_unknown_run_date_is_undecided_not_optimistic(self, tmp_path):
+        """Fail closed: an unreadable acquisition date must not pass as in-cycle."""
+        jp = self._setup(tmp_path)
+        with patch.object(cd, "_lookup_run_date", return_value=None):
+            res = cd.resolve_cycle_for_run(99999, json_path=jp)
+        assert res.status == cd.UNDECIDED
+        assert "could not be read" in res.detail
+
+    def test_run_date_looked_up_when_not_supplied(self, tmp_path):
+        jp = self._setup(tmp_path)
+        with patch.object(cd, "_lookup_run_date", return_value=datetime.date(2025, 1, 20)) as m:
+            res = cd.resolve_cycle_for_run(99999, json_path=jp)
+        m.assert_called_once()
+        assert res.status == cd.IN_CYCLE
+
+    def test_missing_stopdate_is_undecided(self, tmp_path):
+        rows = _good_rows()
+        jp = self._setup(tmp_path, rows)
+        # blank out the last cycle's stopDate in the cached records
+        cd._CYCLE_CACHE[-1]["stopDate"] = ""
+        res = cd.resolve_cycle_for_run(99999, json_path=jp)
+        assert res.status == cd.UNDECIDED
+        assert "no stopDate" in res.detail
+
+    def test_unparseable_stopdate_is_undecided(self, tmp_path):
+        jp = self._setup(tmp_path)
+        cd._CYCLE_CACHE[-1]["stopDate"] = "not-a-date"
+        res = cd.resolve_cycle_for_run(99999, json_path=jp)
+        assert res.status == cd.UNDECIDED
+        assert "unparseable" in res.detail
+
+    # -- degenerate data -----------------------------------------------------
+
+    def test_future_cycle_does_not_bound_the_tail(self, tmp_path):
+        """A cycle with firstRun: null cannot settle a run's cycle.
+
+        Its firstRun is undecided precisely because beam stability has not been
+        assessed, so it must not be treated as an upper bound.
+        """
+        jp = self._setup(tmp_path, _good_rows_with_future())
+        res = cd.resolve_cycle_for_run(
+            99999, run_date=datetime.date(2025, 8, 1), json_path=jp
+        )
+        assert res.status == cd.UNDECIDED
+
+    def test_no_dated_cycles_is_undecided(self, tmp_path):
+        cd.clear_cache()
+        cd.clear_run_date_cache()
+        rows = [
+            {"cycleID": "2025-B", "startDate": "2025-07-15",
+             "stopDate": "2025-12-31", "firstRun": float("nan")},
+        ]
+        validated = cd._validate_dataframe(pd.DataFrame(rows))
+        jp = _write_json(tmp_path, validated)
+        cd.load_cycle_data(json_path=jp)
+        res = cd.resolve_cycle_for_run(60000, json_path=jp)
+        assert res.status == cd.UNDECIDED
+
+    def test_accepts_string_run_number(self, tmp_path):
+        jp = self._setup(tmp_path)
+        assert cd.resolve_cycle_for_run("53000", json_path=jp).cycleID == "2024-B"

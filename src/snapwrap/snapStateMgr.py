@@ -22,7 +22,14 @@ from snapred.backend.data import LocalDataService as lds
 from snapred.backend.data.LocalDataService import LocalDataService
 from snapred.backend.dao.indexing.IndexEntry import IndexEntry
 
-from snapwrap.cycleDates import get_cycle_for_run, build_cycle_json, load_cycle_data
+from snapwrap.cycleDates import (
+    get_cycle_for_run,
+    build_cycle_json,
+    load_cycle_data,
+    resolve_cycle_for_run,
+    BEFORE_RECORD,
+    UNDECIDED,
+)
 
 
 class SNAPHome():
@@ -381,11 +388,21 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
 
     calStatus["calibIndexList"] = calIndexList
 
-    # Determine the cycle for the input run number (None if runNumber is None)
+    # Determine the cycle for the input run number (None if runNumber is None).
+    # resolve_cycle_for_run is stopDate-aware and fails closed, so a run that
+    # sits after the last registered cycle reports UNDECIDED rather than being
+    # silently attributed to that cycle.
     runCycleID = None
+    runCycleStatus = None
+    runCycleDetail = None
     if runNumber is not None:
-        runCycleID = get_cycle_for_run(runNumber)
+        resolution = resolve_cycle_for_run(runNumber)
+        runCycleID = resolution.cycleID
+        runCycleStatus = resolution.status
+        runCycleDetail = resolution.detail
     calStatus["runCycleID"] = runCycleID
+    calStatus["runCycleStatus"] = runCycleStatus
+    calStatus["runCycleDetail"] = runCycleDetail
 
     # If no runnumber only obtainable information relates to general state calibrations so return
     # with this
@@ -409,8 +426,22 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     # run number. The cycle of the calibration must also match the cycle of the input run (if known) unless
     # requireSameCycle is False.
 
-    effectiveCycleID = runCycleID if requireSameCycle else None
-    validIndex = matchingCalibrationIndex(calStatus["calibIndexList"], runNumber, requiredCycleID=effectiveCycleID)
+    # Fail closed when the run's cycle could not be established.  Previously an
+    # unresolvable cycle yielded requiredCycleID=None, which disabled the cycle
+    # filter altogether -- i.e. the case we are least sure about was the case
+    # that got waved through.  A run whose cycle is undecided (acquired after
+    # the last registered cycle) or that predates the cycle record now has no
+    # valid calibration unless the caller explicitly passes
+    # requireSameCycle=False.
+    cycleUnresolved = requireSameCycle and runCycleStatus in (UNDECIDED, BEFORE_RECORD)
+
+    if cycleUnresolved:
+        validIndex = None
+    else:
+        effectiveCycleID = runCycleID if requireSameCycle else None
+        validIndex = matchingCalibrationIndex(
+            calStatus["calibIndexList"], runNumber, requiredCycleID=effectiveCycleID
+        )
 
     if validIndex is None:
 
@@ -423,7 +454,27 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
         calStatus["latestValidCalibrationDict"] = {}
 
         # Determine *why* no valid calibration was found
-        if requireSameCycle and runCycleID is not None:
+        if cycleUnresolved:
+            # Would anything have matched on appliesTo alone?  Reported so the
+            # message distinguishes "nothing applies" from "something applies
+            # but we cannot confirm it is in cycle".
+            noCycleIndex = matchingCalibrationIndex(
+                calStatus["calibIndexList"], runNumber, requiredCycleID=None
+            )
+            if noCycleIndex is not None:
+                calStatus["statusDetail"] = (
+                    f"cycle could not be established for run {runNumber}, so an "
+                    f"out-of-cycle calibration cannot be ruled out ({runCycleDetail}). "
+                    f"A calibration matching appliesTo does exist "
+                    f"(cycle: {calStatus['calibIndexList'][noCycleIndex].get('cycleID', '?')}). "
+                    "Pass requireSameCycle=False to use it anyway."
+                )
+            else:
+                calStatus["statusDetail"] = (
+                    f"cycle could not be established for run {runNumber} "
+                    f"({runCycleDetail}), and no calibration matches appliesTo either"
+                )
+        elif requireSameCycle and runCycleID is not None:
             # Re-check without the cycle filter to see if appliesTo alone would have matched
             noCycleIndex = matchingCalibrationIndex(calStatus["calibIndexList"], runNumber, requiredCycleID=None)
             if noCycleIndex is not None:

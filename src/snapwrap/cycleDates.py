@@ -23,7 +23,7 @@ import datetime
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 import pandas as pd
 
@@ -334,6 +334,14 @@ def get_cycle_for_run(
     Lookup strategy: the cycle whose ``firstRun <= run_number`` and whose
     successor's ``firstRun > run_number`` (or is the last cycle) is the match.
 
+    .. warning::
+       This lookup is **open-ended**: it ignores ``stopDate``, so a run acquired
+       after the last registered cycle ended still resolves to that cycle rather
+       than reporting that its cycle is undecided.  Do not use it for gating --
+       use :func:`resolve_cycle_for_run`, which distinguishes the two and fails
+       closed.  This function is retained for display and annotation, where an
+       approximate answer is harmless.
+
     Parameters
     ----------
     run_number : int
@@ -367,6 +375,211 @@ def get_cycle_for_run(
             break  # all subsequent cycles have higher firstRun
 
     return match
+
+
+# ---------------------------------------------------------------------------
+# Cycle resolution (stopDate-aware)
+# ---------------------------------------------------------------------------
+#
+# ``get_cycle_for_run`` above is firstRun-based and open-ended: it has no
+# concept of "after the last known cycle", so a run acquired *after* the final
+# cycle's stopDate still resolves to that cycle.  That is a silent wrong answer
+# rather than a missing one -- a gate built on it can never notice that the
+# cycle is undecided, so it would never refuse.
+#
+# ``resolve_cycle_for_run`` below distinguishes three states and fails closed:
+# anything it cannot establish is UNDECIDED, never an optimistic cycleID.
+
+IN_CYCLE = "in_cycle"
+UNDECIDED = "undecided"
+BEFORE_RECORD = "before_record"
+
+
+class CycleResolution(NamedTuple):
+    """Outcome of resolving a run number to an operating cycle.
+
+    Attributes
+    ----------
+    cycleID : str or None
+        The cycle, when one could be established.  ``None`` unless
+        ``status == IN_CYCLE``.
+    status : str
+        One of :data:`IN_CYCLE`, :data:`UNDECIDED`, :data:`BEFORE_RECORD`.
+    detail : str
+        Human-readable explanation, suitable for a refusal message.
+    """
+
+    cycleID: Optional[str]
+    status: str
+    detail: str
+
+    @property
+    def isDecided(self) -> bool:
+        """True only when the run sits inside a known, registered cycle."""
+        return self.status == IN_CYCLE
+
+
+# run number -> acquisition date, populated lazily
+_RUN_DATE_CACHE: Dict[int, Optional[datetime.date]] = {}
+
+
+def _lookup_run_date(run_number: int) -> Optional[datetime.date]:
+    """Return a run's acquisition date from its NeXus file, or None.
+
+    Only consulted for runs in the open-ended tail after the last registered
+    cycle's ``firstRun``, so the cost is confined to the current cycle.
+    Returns None on any failure -- callers must treat that as UNDECIDED, not
+    as permission to proceed.
+    """
+    if run_number in _RUN_DATE_CACHE:
+        return _RUN_DATE_CACHE[run_number]
+
+    result: Optional[datetime.date] = None
+    try:
+        import glob
+
+        import h5py
+
+        matches = glob.glob(f"/SNS/SNAP/IPTS-*/nexus/SNAP_{run_number}.nxs.h5")
+        if matches:
+            with h5py.File(matches[0], "r") as fh:
+                raw = fh["entry/start_time"][0]
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            result = datetime.date.fromisoformat(str(raw)[:10])
+    except Exception:
+        result = None
+
+    _RUN_DATE_CACHE[run_number] = result
+    return result
+
+
+def resolve_cycle_for_run(
+    run_number: int,
+    run_date: Optional[datetime.date] = None,
+    rebuild: bool = False,
+    json_path: Optional[str] = None,
+) -> CycleResolution:
+    """Resolve *run_number* to a cycle, distinguishing "undecided" from "known".
+
+    Unlike :func:`get_cycle_for_run` this consults ``stopDate`` and so can tell
+    "inside cycle X" apart from "after the last cycle we know about".  It fails
+    closed: any run it cannot place is :data:`UNDECIDED`.
+
+    A run is IN_CYCLE when a later cycle's ``firstRun`` bounds it from above --
+    the run is then unambiguously inside the earlier cycle.  For the final
+    registered cycle there is no such bound, so the run's acquisition date is
+    compared against that cycle's ``stopDate``.
+
+    Parameters
+    ----------
+    run_number : int
+        The SNAP run number.
+    run_date : datetime.date, optional
+        Acquisition date.  Looked up from the NeXus file when omitted, and only
+        needed for runs past the last registered cycle's ``firstRun``.
+    rebuild : bool
+        Force a rebuild from the .ods before looking up.
+    json_path : str, optional
+        Path to the JSON file.
+
+    Returns
+    -------
+    CycleResolution
+    """
+    run_number = int(run_number)
+    cycles = load_cycle_data(json_path=json_path, rebuild=rebuild)
+
+    # Future cycles carry firstRun: null and cannot place a run.
+    dated = [c for c in cycles if c.get("firstRun") is not None]
+
+    if not dated:
+        return CycleResolution(
+            None, UNDECIDED, "no cycles with a firstRun are registered"
+        )
+
+    dated = sorted(dated, key=lambda c: c["firstRun"])
+
+    if run_number < dated[0]["firstRun"]:
+        return CycleResolution(
+            None,
+            BEFORE_RECORD,
+            f"run {run_number} predates the first registered cycle "
+            f"({dated[0]['cycleID']}, firstRun {dated[0]['firstRun']})",
+        )
+
+    # Last cycle whose firstRun does not exceed the run.
+    idx = 0
+    for i, cycle in enumerate(dated):
+        if run_number >= cycle["firstRun"]:
+            idx = i
+        else:
+            break
+
+    candidate = dated[idx]
+
+    # Bounded from above by the next cycle: unambiguous.
+    if idx + 1 < len(dated):
+        return CycleResolution(
+            candidate["cycleID"],
+            IN_CYCLE,
+            f"run {run_number} lies between firstRun {candidate['firstRun']} "
+            f"and {dated[idx + 1]['cycleID']}'s firstRun {dated[idx + 1]['firstRun']}",
+        )
+
+    # Open-ended tail: the run is at or after the last registered cycle's
+    # firstRun, with nothing above it.  stopDate is the only available bound.
+    stop_raw = candidate.get("stopDate")
+    if not stop_raw:
+        return CycleResolution(
+            None,
+            UNDECIDED,
+            f"run {run_number} is at or after the last registered cycle "
+            f"({candidate['cycleID']}), which has no stopDate to bound it",
+        )
+
+    try:
+        stop_date = datetime.date.fromisoformat(str(stop_raw)[:10])
+    except ValueError:
+        return CycleResolution(
+            None,
+            UNDECIDED,
+            f"run {run_number} is in the open-ended tail of "
+            f"{candidate['cycleID']}, whose stopDate {stop_raw!r} is unparseable",
+        )
+
+    if run_date is None:
+        run_date = _lookup_run_date(run_number)
+
+    if run_date is None:
+        return CycleResolution(
+            None,
+            UNDECIDED,
+            f"run {run_number} is at or after the last registered cycle "
+            f"({candidate['cycleID']}, stopDate {stop_date}) and its "
+            "acquisition date could not be read, so it cannot be placed",
+        )
+
+    if run_date <= stop_date:
+        return CycleResolution(
+            candidate["cycleID"],
+            IN_CYCLE,
+            f"run {run_number} acquired {run_date}, on or before "
+            f"{candidate['cycleID']}'s stopDate {stop_date}",
+        )
+
+    return CycleResolution(
+        None,
+        UNDECIDED,
+        f"run {run_number} acquired {run_date}, after the last registered "
+        f"cycle {candidate['cycleID']} ended ({stop_date}); the next cycle's "
+        "firstRun has not been decided yet",
+    )
+
+
+def clear_run_date_cache() -> None:
+    """Clear the cached run-number -> acquisition-date lookups."""
+    _RUN_DATE_CACHE.clear()
 
 
 def cache_version() -> Optional[int]:
