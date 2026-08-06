@@ -1491,6 +1491,87 @@ def _write_propagation_log(entry: dict) -> None:
     except Exception as e:
         printWarning(f"WARNING: failed to write propagation log entry: {e}")
 
+def _write_cycle_override_log(entry: dict) -> None:
+    """Append an out-of-cycle-calibration override to the calibration home log.
+
+    Using a calibration from a cycle other than the run's is permitted, but only
+    deliberately (requireSameCycle=False).  The decision has to outlive the
+    console session that made it, otherwise "which calibration was this reduced
+    with, and did anyone notice it was from another cycle?" is unanswerable
+    after the fact.  Written to
+    ``calibrationHome/.logs/cycle_override_log.jsonl``, mirroring
+    :func:`_write_propagation_log`.
+    """
+
+    try:
+        calibrationHome = Config["instrument.calibration.home"]
+        logDir = os.path.join(calibrationHome, ".logs")
+        os.makedirs(logDir, exist_ok=True)
+        logPath = os.path.join(logDir, "cycle_override_log.jsonl")
+
+        payload = dict(entry or {})
+        payload.setdefault("timestamp", datetime.now().isoformat(timespec="seconds"))
+        payload.setdefault("linux_user", getpass.getuser())
+
+        with open(logPath, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload) + "\n")
+    except Exception as e:
+        # Never let an audit-log failure take down a reduction.
+        print(f"WARNING: failed to write cycle override log entry: {e}")
+
+
+def _reportCycleOverride(runNumber, isLite, difcal, nrmcal):
+    """Record, and announce, any calibration used from outside the run's cycle.
+
+    Called only when requireSameCycle=False.  The override is not necessarily
+    *exercised* just because it was requested -- the calibration may well be
+    from the right cycle anyway -- so each calibration type is checked and only
+    genuine mismatches are logged.
+    """
+
+    runCycleID = None
+    runCycleStatus = None
+    for status in (difcal, nrmcal):
+        if isinstance(status, dict):
+            runCycleID = status.get("runCycleID", runCycleID)
+            runCycleStatus = status.get("runCycleStatus", runCycleStatus)
+
+    for calType, status in (("difcal", difcal), ("normcal", nrmcal)):
+        if not isinstance(status, dict):
+            continue
+        used = status.get("latestValidCalibrationDict") or {}
+        if not used:
+            continue
+
+        calCycleID = used.get("cycleID")
+        # A mismatch is either a different named cycle, or a run whose own cycle
+        # could not be established -- in which case "same cycle" is unprovable
+        # rather than merely false.
+        if runCycleID is not None and calCycleID == runCycleID:
+            continue
+
+        print(
+            f"\nNOTE: {calType} for run {runNumber} comes from cycle "
+            f"{calCycleID} while the run's cycle is "
+            f"{runCycleID if runCycleID is not None else runCycleStatus}. "
+            "Permitted by requireSameCycle=False; recorded in "
+            ".logs/cycle_override_log.jsonl\n"
+        )
+
+        _write_cycle_override_log({
+            "runNumber": str(runNumber),
+            "isLite": bool(isLite),
+            "calType": calType,
+            "runCycleID": runCycleID,
+            "runCycleStatus": runCycleStatus,
+            "calibrationCycleID": calCycleID,
+            "calibrationRunNumber": used.get("runNumber"),
+            "calibrationVersion": used.get("version"),
+            "stateID": status.get("stateID"),
+            "reason": status.get("runCycleDetail"),
+        })
+
+
 def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatus=False):
 
     #This will accept a reference Run number, determine a list of all existing 
@@ -1920,6 +2001,11 @@ def reduce(runNumber,
     difcal = calibrationStatus[2]
     nrmcal = calibrationStatus[3]
 
+    # An out-of-cycle calibration may only be used deliberately, and the
+    # decision has to be auditable after the console session has gone.
+    if not requireSameCycle:
+        _reportCycleOverride(runNumber, useLiteMode, difcal, nrmcal)
+
     if not any([calibrationStatus[0],continueNoDifcal]):  # difcal is absent and fallback not requested
         printWarning('noDifcal',runNumber,difcal)
         return _abort(
@@ -2020,8 +2106,6 @@ def reduce(runNumber,
         }
 
     if len(binMaskList) > 0:
-        # currently doesn't do anything, just runs empty hook in PreprocessReductionRecipe
-
         print("\nBIN MASK HOOK WILL BE APPLIED!!!!\n")
 
         binMaskHook = Hook(func=HookCollection.cheeseMask,

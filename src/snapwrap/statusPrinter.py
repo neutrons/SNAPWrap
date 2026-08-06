@@ -3,19 +3,45 @@ from mantid.kernel import PhysicalConstants
 import snapwrap.snapStateMgr as ssm
 import numpy as np
 
+def _cycleRemedy(details):
+    """Extra remedy line when a calibration was withheld for cycle reasons.
+
+    Without this the only advice on offer is "proceed without a calibration",
+    which throws away a perfectly good calibration whose only fault is being
+    from another cycle -- a strictly worse outcome than using it knowingly.
+    """
+    if not isinstance(details, dict):
+        return ""
+
+    statusDetail = details.get("statusDetail") or ""
+    cycleRelated = (
+        "out of cycle" in statusDetail
+        or "cycle could not be established" in statusDetail
+    )
+    if not cycleRelated:
+        return ""
+
+    return (
+        '\n    3. Set "requireSameCycle = False" to use the existing '
+        "calibration from another cycle\n"
+        "       (the override is recorded in the calibration home's "
+        ".logs/cycle_override_log.jsonl)"
+    )
+
+
 def printWarning(warningType,runNumber,details=None):
 
     snapHome = ssm.SNAPHome()
     if warningType == 'noDifcal':
 
-        print(f"""        
-ERROR: NO VALID DIFFRACTION CALIBRATION FOUND. 
+        print(f"""
+ERROR: NO VALID DIFFRACTION CALIBRATION FOUND.
 Reason: {details['statusDetail']}
-                            
+
 To proceed either::
     1. Run a diffraction calibration or
-    2. Set "continueNoDifcal = True" to proceed with diagnostic reduction
-              
+    2. Set "continueNoDifcal = True" to proceed with diagnostic reduction{_cycleRemedy(details)}
+
 INFO:
     - Calibration home: {snapHome.calib}
     - StateID: {ssm.stateDef(runNumber)[0]}
@@ -28,15 +54,14 @@ INFO:
 
     elif warningType == 'noNormcal':
 
-        print(f"""        
+        print(f"""
 ERROR: NO NORMALISATION CALIBRATION FOUND.
 Reason: {details['statusDetail']}
-                            
+
 To proceed either::
     1. Run a normalisation calibration or
     2. Set "continueNoVan = True" to proceed with diagnostic reduction using artificial normalisation
-    3. Set "noNorm = True" to proceed without any normalisation
-              
+    3. Set "noNorm = True" to proceed without any normalisation{_cycleRemedy(details).replace("    3. Set", "    4. Set")}
 
 INFO:
     - Calibration home: {snapHome.calib}

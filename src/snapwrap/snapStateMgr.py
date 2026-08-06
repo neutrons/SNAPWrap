@@ -481,7 +481,8 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
                 calStatus["statusDetail"] = (
                     f"valid calibration exists but is out of cycle "
                     f"(run cycle: {runCycleID}, "
-                    f"calibration cycle: {calStatus['calibIndexList'][noCycleIndex].get('cycleID', '?')})"
+                    f"calibration cycle: {calStatus['calibIndexList'][noCycleIndex].get('cycleID', '?')}). "
+                    "Pass requireSameCycle=False to use it anyway."
                 )
             else:
                 calStatus["statusDetail"] = "calibrations exist but no matching run range in appliesTo"
