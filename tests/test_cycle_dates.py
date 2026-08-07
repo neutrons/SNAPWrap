@@ -372,129 +372,123 @@ class TestGetCycleForRun:
 
 
 # ---------------------------------------------------------------------------
-# resolve_cycle_for_run  --  stopDate-aware, fail-closed resolution
+# resolve_cycle_for_run  --  run-number bounded, fail-closed resolution
 # ---------------------------------------------------------------------------
+
+def _rows_with_last_runs() -> list[dict]:
+    """Cycles with explicit lastRun, leaving deliberate gaps between them.
+
+    Mirrors the real table: 2024-A ends at a QA-chosen lastRun well before the
+    next cycle's firstRun, so the runs in between belong to no cycle.
+    """
+    return [
+        {"cycleID": "2024-A", "startDate": "2024-01-15", "stopDate": "2024-06-30",
+         "firstRun": 50000, "lastRun": 51500},
+        {"cycleID": "2024-B", "startDate": "2024-07-15", "stopDate": "2024-12-31",
+         "firstRun": 52000, "lastRun": 53500},
+        {"cycleID": "2025-A", "startDate": "2025-01-15", "stopDate": "2025-06-30",
+         "firstRun": 55000, "lastRun": 56000},
+    ]
+
 
 class TestResolveCycleForRun:
     """The gating lookup, which must distinguish undecided from known.
 
-    ``get_cycle_for_run`` is open-ended and attributes any high run number to
-    the last registered cycle.  ``resolve_cycle_for_run`` must instead report
-    UNDECIDED once a run passes that cycle's stopDate, so a gate can refuse.
+    Cycles are quantified by run number, not date -- that is how both SNAPWrap
+    and SNAPRed work -- so the upper bound is `lastRun`, a human QA judgement.
+    It cannot be derived: the beam goes off mid-cycle and planned cycle dates
+    get extended, so no rule over beam state reproduces it.
     """
 
     def _setup(self, tmp_path, rows=None):
         cd.clear_cache()
-        cd.clear_run_date_cache()
         validated = cd._validate_dataframe(pd.DataFrame(rows or _good_rows()))
         jp = _write_json(tmp_path, validated)
         cd.load_cycle_data(json_path=jp)
         return jp
 
-    # -- bounded cycles: a later firstRun settles it, no date needed ---------
+    # -- with lastRun set: cycles are closed, gaps are undecided -------------
 
-    def test_bounded_run_is_in_cycle(self, tmp_path):
-        jp = self._setup(tmp_path)
-        res = cd.resolve_cycle_for_run(51999, json_path=jp)
+    def test_run_inside_a_closed_cycle(self, tmp_path):
+        jp = self._setup(tmp_path, _rows_with_last_runs())
+        for run in (50000, 51000, 51500):
+            res = cd.resolve_cycle_for_run(run, json_path=jp)
+            assert res.status == cd.IN_CYCLE, run
+            assert res.cycleID == "2024-A"
+            assert res.isDecided
+
+    def test_run_in_the_gap_is_undecided(self, tmp_path):
+        """The regression this whole change exists for.
+
+        get_cycle_for_run attributes these to 2024-A with confidence; they
+        belong to no cycle at all.
+        """
+        jp = self._setup(tmp_path, _rows_with_last_runs())
+        for run in (51501, 51900, 51999):
+            assert cd.get_cycle_for_run(run, json_path=jp) == "2024-A"
+
+            res = cd.resolve_cycle_for_run(run, json_path=jp)
+            assert res.status == cd.UNDECIDED, run
+            assert res.cycleID is None
+            assert not res.isDecided
+            assert "2024-A" in res.detail and "2024-B" in res.detail
+
+    def test_next_cycle_firstRun_resumes_in_cycle(self, tmp_path):
+        jp = self._setup(tmp_path, _rows_with_last_runs())
+        res = cd.resolve_cycle_for_run(52000, json_path=jp)
         assert res.status == cd.IN_CYCLE
-        assert res.cycleID == "2024-A"
-        assert res.isDecided
-
-    def test_bounded_run_needs_no_run_date(self, tmp_path):
-        """No NeXus lookup should happen for a run bounded from above."""
-        jp = self._setup(tmp_path)
-        with patch.object(cd, "_lookup_run_date", side_effect=AssertionError("should not be called")):
-            res = cd.resolve_cycle_for_run(52000, json_path=jp)
         assert res.cycleID == "2024-B"
 
+    def test_after_final_lastRun_is_undecided(self, tmp_path):
+        """The live case: beam continues past the end of the last known cycle."""
+        jp = self._setup(tmp_path, _rows_with_last_runs())
+        res = cd.resolve_cycle_for_run(56001, json_path=jp)
+        assert res.status == cd.UNDECIDED
+        assert "has not been decided" in res.detail
+
     def test_run_before_record(self, tmp_path):
-        jp = self._setup(tmp_path)
+        jp = self._setup(tmp_path, _rows_with_last_runs())
         res = cd.resolve_cycle_for_run(49999, json_path=jp)
         assert res.status == cd.BEFORE_RECORD
         assert res.cycleID is None
-        assert not res.isDecided
 
-    # -- the open-ended tail: stopDate is the only bound ---------------------
+    # -- without lastRun: permissive, matching historical behaviour ----------
 
-    def test_tail_run_before_stopdate_is_in_cycle(self, tmp_path):
-        jp = self._setup(tmp_path)
-        res = cd.resolve_cycle_for_run(
-            55001, run_date=datetime.date(2025, 6, 1), json_path=jp
-        )
-        assert res.status == cd.IN_CYCLE
-        assert res.cycleID == "2025-A"
+    def test_no_lastRun_is_bounded_by_next_firstRun(self, tmp_path):
+        jp = self._setup(tmp_path)  # _good_rows() has no lastRun column
+        assert cd.resolve_cycle_for_run(51999, json_path=jp).cycleID == "2024-A"
+        assert cd.resolve_cycle_for_run(52000, json_path=jp).cycleID == "2024-B"
 
-    def test_tail_run_on_stopdate_is_in_cycle(self, tmp_path):
-        """stopDate is inclusive -- the last day of a cycle is still in it."""
-        jp = self._setup(tmp_path)
-        res = cd.resolve_cycle_for_run(
-            55001, run_date=datetime.date(2025, 6, 30), json_path=jp
-        )
-        assert res.status == cd.IN_CYCLE
+    def test_no_lastRun_on_final_cycle_stays_permissive(self, tmp_path):
+        """Absent an explicit end we cannot prove a run is out of cycle.
 
-    def test_tail_run_after_stopdate_is_undecided(self, tmp_path):
-        """The regression this whole change exists for.
-
-        get_cycle_for_run reports 2025-A with confidence; resolve must not.
+        Refusing everything past the last known firstRun would block routine
+        work; setting lastRun is what closes the cycle.
         """
         jp = self._setup(tmp_path)
-        assert cd.get_cycle_for_run(99999, json_path=jp) == "2025-A"
-
-        res = cd.resolve_cycle_for_run(
-            99999, run_date=datetime.date(2025, 8, 1), json_path=jp
-        )
-        assert res.status == cd.UNDECIDED
-        assert res.cycleID is None
-        assert not res.isDecided
-
-    def test_unknown_run_date_is_undecided_not_optimistic(self, tmp_path):
-        """Fail closed: an unreadable acquisition date must not pass as in-cycle."""
-        jp = self._setup(tmp_path)
-        with patch.object(cd, "_lookup_run_date", return_value=None):
-            res = cd.resolve_cycle_for_run(99999, json_path=jp)
-        assert res.status == cd.UNDECIDED
-        assert "could not be read" in res.detail
-
-    def test_run_date_looked_up_when_not_supplied(self, tmp_path):
-        jp = self._setup(tmp_path)
-        with patch.object(cd, "_lookup_run_date", return_value=datetime.date(2025, 1, 20)) as m:
-            res = cd.resolve_cycle_for_run(99999, json_path=jp)
-        m.assert_called_once()
+        res = cd.resolve_cycle_for_run(99999, json_path=jp)
         assert res.status == cd.IN_CYCLE
+        assert res.cycleID == "2025-A"
+        assert "no lastRun set" in res.detail
 
-    def test_missing_stopdate_is_undecided(self, tmp_path):
+    def test_mixed_table_only_closed_cycles_gate(self, tmp_path):
+        """A lastRun on one cycle must not imply one on another."""
         rows = _good_rows()
+        rows[0]["lastRun"] = 51500  # close 2024-A only
         jp = self._setup(tmp_path, rows)
-        # blank out the last cycle's stopDate in the cached records
-        cd._CYCLE_CACHE[-1]["stopDate"] = ""
-        res = cd.resolve_cycle_for_run(99999, json_path=jp)
-        assert res.status == cd.UNDECIDED
-        assert "no stopDate" in res.detail
-
-    def test_unparseable_stopdate_is_undecided(self, tmp_path):
-        jp = self._setup(tmp_path)
-        cd._CYCLE_CACHE[-1]["stopDate"] = "not-a-date"
-        res = cd.resolve_cycle_for_run(99999, json_path=jp)
-        assert res.status == cd.UNDECIDED
-        assert "unparseable" in res.detail
+        assert cd.resolve_cycle_for_run(51501, json_path=jp).status == cd.UNDECIDED
+        assert cd.resolve_cycle_for_run(52001, json_path=jp).cycleID == "2024-B"
 
     # -- degenerate data -----------------------------------------------------
 
-    def test_future_cycle_does_not_bound_the_tail(self, tmp_path):
-        """A cycle with firstRun: null cannot settle a run's cycle.
-
-        Its firstRun is undecided precisely because beam stability has not been
-        assessed, so it must not be treated as an upper bound.
-        """
+    def test_future_cycle_does_not_bound(self, tmp_path):
         jp = self._setup(tmp_path, _good_rows_with_future())
-        res = cd.resolve_cycle_for_run(
-            99999, run_date=datetime.date(2025, 8, 1), json_path=jp
-        )
-        assert res.status == cd.UNDECIDED
+        res = cd.resolve_cycle_for_run(99999, json_path=jp)
+        assert res.status == cd.IN_CYCLE
+        assert res.cycleID == "2025-A"
 
     def test_no_dated_cycles_is_undecided(self, tmp_path):
         cd.clear_cache()
-        cd.clear_run_date_cache()
         rows = [
             {"cycleID": "2025-B", "startDate": "2025-07-15",
              "stopDate": "2025-12-31", "firstRun": float("nan")},
@@ -502,9 +496,41 @@ class TestResolveCycleForRun:
         validated = cd._validate_dataframe(pd.DataFrame(rows))
         jp = _write_json(tmp_path, validated)
         cd.load_cycle_data(json_path=jp)
-        res = cd.resolve_cycle_for_run(60000, json_path=jp)
-        assert res.status == cd.UNDECIDED
+        assert cd.resolve_cycle_for_run(60000, json_path=jp).status == cd.UNDECIDED
 
     def test_accepts_string_run_number(self, tmp_path):
-        jp = self._setup(tmp_path)
-        assert cd.resolve_cycle_for_run("53000", json_path=jp).cycleID == "2024-B"
+        jp = self._setup(tmp_path, _rows_with_last_runs())
+        assert cd.resolve_cycle_for_run("51000", json_path=jp).cycleID == "2024-A"
+
+
+class TestLastRunValidation:
+
+    def test_lastRun_below_firstRun_rejected(self):
+        rows = _good_rows()
+        rows[0]["lastRun"] = 49999
+        with pytest.raises(ValueError, match="lastRun"):
+            cd._validate_dataframe(pd.DataFrame(rows))
+
+    def test_lastRun_overlapping_next_cycle_rejected(self):
+        rows = _good_rows()
+        rows[0]["lastRun"] = 52500  # runs past 2024-B's firstRun of 52000
+        with pytest.raises(ValueError, match="overlap"):
+            cd._validate_dataframe(pd.DataFrame(rows))
+
+    def test_lastRun_without_firstRun_rejected(self):
+        rows = _good_rows_with_future()
+        rows[-1]["lastRun"] = 99999  # that row has firstRun NaN
+        with pytest.raises(ValueError, match="firstRun is blank"):
+            cd._validate_dataframe(pd.DataFrame(rows))
+
+    def test_lastRun_absent_is_none(self):
+        records = cd._validate_dataframe(pd.DataFrame(_good_rows()))
+        assert all(r["lastRun"] is None for r in records)
+
+    def test_lastRun_blank_cell_is_none(self):
+        rows = _good_rows()
+        rows[0]["lastRun"] = 51500
+        rows[1]["lastRun"] = float("nan")
+        records = cd._validate_dataframe(pd.DataFrame(rows))
+        assert records[0]["lastRun"] == 51500
+        assert records[1]["lastRun"] is None

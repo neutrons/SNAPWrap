@@ -111,6 +111,7 @@ def _validate_dataframe(df: pd.DataFrame) -> List[Dict[str, Any]]:
     seen_ids: set = set()
     prev_end: Optional[datetime.date] = None
     prev_first_run: Optional[int] = None
+    prev_last_run: Optional[int] = None
 
     for i, row in df.iterrows():
         cycle_id = str(row["cycleID"]).strip()
@@ -140,11 +141,41 @@ def _validate_dataframe(df: pd.DataFrame) -> List[Dict[str, Any]]:
                     f"Row {i} ('{cycle_id}'): firstRun must be a positive integer, got {first_run}"
                 )
 
+        # lastRun — optional column, and optional per row.  Its absence means
+        # "this cycle has no recorded end", which is treated permissively (see
+        # resolve_cycle_for_run); setting it is what closes a cycle so that
+        # runs beyond it read as undecided rather than in-cycle.
+        last_run: Optional[int] = None
+        if "lastRun" in df.columns:
+            raw_last = row["lastRun"]
+            if pd.notna(raw_last):
+                try:
+                    last_run = int(raw_last)
+                except (ValueError, TypeError):
+                    raise ValueError(
+                        f"Row {i} ('{cycle_id}'): lastRun '{raw_last}' is not a valid integer"
+                    )
+                if first_run is None:
+                    raise ValueError(
+                        f"Row {i} ('{cycle_id}'): lastRun ({last_run}) set but firstRun is blank"
+                    )
+                if last_run < first_run:
+                    raise ValueError(
+                        f"Row {i} ('{cycle_id}'): lastRun ({last_run}) < firstRun ({first_run})"
+                    )
+
         # no overlapping date ranges
         if prev_end is not None and start <= prev_end:
             raise ValueError(
                 f"Row {i} ('{cycle_id}'): startDate ({start}) overlaps with previous cycle "
                 f"stopDate ({prev_end})"
+            )
+
+        # a cycle must end before the next one begins
+        if prev_last_run is not None and first_run is not None and first_run <= prev_last_run:
+            raise ValueError(
+                f"Row {i} ('{cycle_id}'): firstRun ({first_run}) is not greater than the "
+                f"previous cycle's lastRun ({prev_last_run}) — cycles would overlap"
             )
 
         # firstRun monotonically increasing (skip when either is None)
@@ -159,11 +190,13 @@ def _validate_dataframe(df: pd.DataFrame) -> List[Dict[str, Any]]:
             "startDate": start.isoformat(),
             "stopDate": stop.isoformat(),
             "firstRun": first_run,
+            "lastRun": last_run,
         })
 
         prev_end = stop
         if first_run is not None:
             prev_first_run = first_run
+        prev_last_run = last_run
 
     return records
 
@@ -378,17 +411,22 @@ def get_cycle_for_run(
 
 
 # ---------------------------------------------------------------------------
-# Cycle resolution (stopDate-aware)
+# Cycle resolution (run-number bounded)
 # ---------------------------------------------------------------------------
 #
 # ``get_cycle_for_run`` above is firstRun-based and open-ended: it has no
-# concept of "after the last known cycle", so a run acquired *after* the final
-# cycle's stopDate still resolves to that cycle.  That is a silent wrong answer
-# rather than a missing one -- a gate built on it can never notice that the
-# cycle is undecided, so it would never refuse.
+# concept of "after the end of a cycle", so a run taken once a cycle had
+# finished still resolves to that cycle.  That is a silent wrong answer rather
+# than a missing one -- a gate built on it can never notice that the cycle is
+# undecided, so it would never refuse.
 #
-# ``resolve_cycle_for_run`` below distinguishes three states and fails closed:
-# anything it cannot establish is UNDECIDED, never an optimistic cycleID.
+# ``resolve_cycle_for_run`` below distinguishes three states and fails closed.
+# It works purely in run-number space, because that is how both SNAPWrap and
+# SNAPRed quantify cycles; the dates in the table are descriptive, not the key.
+# The upper bound comes from the optional ``lastRun`` column, which -- like
+# ``firstRun`` -- is a human QA judgement and cannot be derived from the data:
+# the beam goes off mid-cycle and planned cycle dates get extended to
+# compensate, so no rule over beam state reproduces it.
 
 IN_CYCLE = "in_cycle"
 UNDECIDED = "undecided"
@@ -419,65 +457,29 @@ class CycleResolution(NamedTuple):
         return self.status == IN_CYCLE
 
 
-# run number -> acquisition date, populated lazily
-_RUN_DATE_CACHE: Dict[int, Optional[datetime.date]] = {}
-
-
-def _lookup_run_date(run_number: int) -> Optional[datetime.date]:
-    """Return a run's acquisition date from its NeXus file, or None.
-
-    Only consulted for runs in the open-ended tail after the last registered
-    cycle's ``firstRun``, so the cost is confined to the current cycle.
-    Returns None on any failure -- callers must treat that as UNDECIDED, not
-    as permission to proceed.
-    """
-    if run_number in _RUN_DATE_CACHE:
-        return _RUN_DATE_CACHE[run_number]
-
-    result: Optional[datetime.date] = None
-    try:
-        import glob
-
-        import h5py
-
-        matches = glob.glob(f"/SNS/SNAP/IPTS-*/nexus/SNAP_{run_number}.nxs.h5")
-        if matches:
-            with h5py.File(matches[0], "r") as fh:
-                raw = fh["entry/start_time"][0]
-            if isinstance(raw, bytes):
-                raw = raw.decode()
-            result = datetime.date.fromisoformat(str(raw)[:10])
-    except Exception:
-        result = None
-
-    _RUN_DATE_CACHE[run_number] = result
-    return result
-
-
 def resolve_cycle_for_run(
     run_number: int,
-    run_date: Optional[datetime.date] = None,
     rebuild: bool = False,
     json_path: Optional[str] = None,
 ) -> CycleResolution:
     """Resolve *run_number* to a cycle, distinguishing "undecided" from "known".
 
-    Unlike :func:`get_cycle_for_run` this consults ``stopDate`` and so can tell
-    "inside cycle X" apart from "after the last cycle we know about".  It fails
-    closed: any run it cannot place is :data:`UNDECIDED`.
+    Unlike :func:`get_cycle_for_run` this honours ``lastRun`` and so can tell
+    "inside cycle X" apart from "in the gap after cycle X ended".  It fails
+    closed: a run it cannot place is :data:`UNDECIDED`, never attributed
+    optimistically to the preceding cycle.
 
-    A run is IN_CYCLE when a later cycle's ``firstRun`` bounds it from above --
-    the run is then unambiguously inside the earlier cycle.  For the final
-    registered cycle there is no such bound, so the run's acquisition date is
-    compared against that cycle's ``stopDate``.
+    A cycle without a ``lastRun`` keeps the historical behaviour -- bounded from
+    above by the next cycle's ``firstRun``, or unbounded if it is the last cycle
+    registered.  That is deliberately permissive: absent an explicit end we
+    cannot prove a run is out of cycle, and refusing everything after the last
+    known ``firstRun`` would block routine work.  Setting ``lastRun`` is what
+    closes each cycle.
 
     Parameters
     ----------
     run_number : int
         The SNAP run number.
-    run_date : datetime.date, optional
-        Acquisition date.  Looked up from the NeXus file when omitted, and only
-        needed for runs past the last registered cycle's ``firstRun``.
     rebuild : bool
         Force a rebuild from the .ods before looking up.
     json_path : str, optional
@@ -517,69 +519,44 @@ def resolve_cycle_for_run(
             break
 
     candidate = dated[idx]
+    lastRun = candidate.get("lastRun")
 
-    # Bounded from above by the next cycle: unambiguous.
-    if idx + 1 < len(dated):
-        return CycleResolution(
-            candidate["cycleID"],
-            IN_CYCLE,
+    if lastRun is not None and run_number > lastRun:
+        nxt = dated[idx + 1] if idx + 1 < len(dated) else None
+        if nxt is not None:
+            detail = (
+                f"run {run_number} falls between the end of "
+                f"{candidate['cycleID']} (lastRun {lastRun}) and the start of "
+                f"{nxt['cycleID']} (firstRun {nxt['firstRun']}), so it belongs "
+                "to no registered cycle"
+            )
+        else:
+            detail = (
+                f"run {run_number} is after the end of {candidate['cycleID']} "
+                f"(lastRun {lastRun}) and the next cycle's firstRun has not "
+                "been decided yet"
+            )
+        return CycleResolution(None, UNDECIDED, detail)
+
+    if lastRun is not None:
+        detail = (
+            f"run {run_number} lies within {candidate['cycleID']} "
+            f"(runs {candidate['firstRun']}-{lastRun})"
+        )
+    elif idx + 1 < len(dated):
+        detail = (
             f"run {run_number} lies between firstRun {candidate['firstRun']} "
-            f"and {dated[idx + 1]['cycleID']}'s firstRun {dated[idx + 1]['firstRun']}",
+            f"and {dated[idx + 1]['cycleID']}'s firstRun "
+            f"{dated[idx + 1]['firstRun']}"
+        )
+    else:
+        detail = (
+            f"run {run_number} is at or after firstRun {candidate['firstRun']} "
+            f"and {candidate['cycleID']} has no lastRun set, so it is presumed "
+            "to be the current cycle"
         )
 
-    # Open-ended tail: the run is at or after the last registered cycle's
-    # firstRun, with nothing above it.  stopDate is the only available bound.
-    stop_raw = candidate.get("stopDate")
-    if not stop_raw:
-        return CycleResolution(
-            None,
-            UNDECIDED,
-            f"run {run_number} is at or after the last registered cycle "
-            f"({candidate['cycleID']}), which has no stopDate to bound it",
-        )
-
-    try:
-        stop_date = datetime.date.fromisoformat(str(stop_raw)[:10])
-    except ValueError:
-        return CycleResolution(
-            None,
-            UNDECIDED,
-            f"run {run_number} is in the open-ended tail of "
-            f"{candidate['cycleID']}, whose stopDate {stop_raw!r} is unparseable",
-        )
-
-    if run_date is None:
-        run_date = _lookup_run_date(run_number)
-
-    if run_date is None:
-        return CycleResolution(
-            None,
-            UNDECIDED,
-            f"run {run_number} is at or after the last registered cycle "
-            f"({candidate['cycleID']}, stopDate {stop_date}) and its "
-            "acquisition date could not be read, so it cannot be placed",
-        )
-
-    if run_date <= stop_date:
-        return CycleResolution(
-            candidate["cycleID"],
-            IN_CYCLE,
-            f"run {run_number} acquired {run_date}, on or before "
-            f"{candidate['cycleID']}'s stopDate {stop_date}",
-        )
-
-    return CycleResolution(
-        None,
-        UNDECIDED,
-        f"run {run_number} acquired {run_date}, after the last registered "
-        f"cycle {candidate['cycleID']} ended ({stop_date}); the next cycle's "
-        "firstRun has not been decided yet",
-    )
-
-
-def clear_run_date_cache() -> None:
-    """Clear the cached run-number -> acquisition-date lookups."""
-    _RUN_DATE_CACHE.clear()
+    return CycleResolution(candidate["cycleID"], IN_CYCLE, detail)
 
 
 def cache_version() -> Optional[int]:
