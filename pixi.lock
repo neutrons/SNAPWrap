@@ -8623,8 +8623,8 @@ packages:
   timestamp: 1775585605670
 - pypi: ./
   name: snapwrap
-  version: 2.4.0.dev20260810181525
-  sha256: 6cb0e8d2b1bfd22ebbe8934bc57b385d17b2c53fa6df9007d2316cfa89fb3748
+  version: 2.4.0.dev20260810181830
+  sha256: 378a1f41a8aaafe299b7b97fec8eaa97697fc6165757443f6c8c0203acbcc6e0
   requires_dist:
   - h5py
   - lmfit
