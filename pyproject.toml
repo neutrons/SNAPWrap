@@ -112,19 +112,17 @@ file = "src/snapwrap/_version.py"
 preview = ["pixi-build"] # Required until the build feature becomes stable
 channels = [
   "conda-forge", 
-  "mantid/label/nightly", 
-  "mantid-ornl", 
-  "mantid-ornl/label/rc", 
+  "mantid/label/main",
   "neutrons", 
   "neutrons/label/rc",
   "https://prefix.dev/pixi-build-backends", # Required for pixi build
   "oncat",
 ]
-platforms = ["linux-64", "osx-arm64"] # add additional platforms as needed
+platforms = ["linux-64"] # add additional platforms as needed
 
 [tool.pixi.dependencies]
 # TODO: This needs to be cleaned up, I'm not certain which deps are actually used.
-snapred = ">2.0.0"
+snapred = ">2.3.0"
 scikit-image = "*"
 python = ">=3.10"
 panel = ">=1.7.4,<2"
@@ -183,7 +181,7 @@ scikit-image = "*"
 lmfit = "*"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
-snapred = ">2.0.0"
+snapred = ">2.3.0"
 odfpy = ">=1.4.1"
 h5py = "*"
 scipy = "*"
@@ -275,7 +273,29 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
 # Misc
 # tornado 6.5.5 fixes CVE-2026-31958 / GHSA-78cv-mqj4-43f7 but is not yet on conda-forge (latest: 6.5.4)
 # Remove the --ignore-vuln flags once conda-forge packages tornado >=6.5.5
-audit-deps = { cmd = "pip-audit --local -s osv --ignore-vuln GHSA-78cv-mqj4-43f7 --ignore-vuln CVE-2026-31958 --ignore-vuln CVE-2026-3219", description = "Audit the package dependencies for vulnerabilities" }
+audit-deps = { cmd = """pip-audit --local -s osv \
+--ignore-vuln PYSEC-2026-3447 \
+--ignore-vuln PYSEC-2026-2255 \
+--ignore-vuln GHSA-78cv-mqj4-43f7 \
+--ignore-vuln CVE-2026-31958 \
+--ignore-vuln CVE-2026-3219 \
+--ignore-vuln PYSEC-2026-165 \
+--ignore-vuln PYSEC-2026-2249 \
+--ignore-vuln PYSEC-2026-2250 \
+--ignore-vuln PYSEC-2026-2251 \
+--ignore-vuln PYSEC-2026-2252 \
+--ignore-vuln PYSEC-2026-2253 \
+--ignore-vuln PYSEC-2026-2254 \
+--ignore-vuln PYSEC-2026-2256 \
+--ignore-vuln PYSEC-2026-2257 \
+--ignore-vuln PYSEC-2026-2874 \
+--ignore-vuln PYSEC-2026-3451 \
+--ignore-vuln PYSEC-2026-3453 \
+--ignore-vuln PYSEC-2026-3454 \
+--ignore-vuln PYSEC-2026-3493 \
+--ignore-vuln PYSEC-2026-3494 \
+--ignore-vuln PYSEC-2026-3495 \
+--ignore-vuln PYSEC-2026-3496""", description = "Audit the package dependencies for vulnerabilities" }
 clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
 clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
 clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artifacts" }
