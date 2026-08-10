@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: [next, qa, main]
+    branches: [dev, qa, main]
     tags: ["v*"]
 
 env:
@@ -30,7 +30,7 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@v0.9.4
         with:
-          pixi-version: v0.62.2
+          pixi-version: v0.75.0
           manifest-path: pyproject.toml
           # Workaround: Dynamic versioning (versioningit) causes lock file version mismatch.
           # We skip the editable package install and do it separately with pip.
@@ -69,7 +69,7 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@v0.9.4
         with:
-          pixi-version: v0.62.2
+          pixi-version: v0.75.0
           manifest-path: pyproject.toml
           # Workaround: Dynamic versioning (versioningit) causes lock file version mismatch.
           # We skip the editable package install and do it separately with pip.
@@ -106,7 +106,7 @@ jobs:
     name: Upload package to anaconda
     runs-on: ubuntu-latest
     needs: [tests, conda-build]
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/next'
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/dev'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -117,7 +117,7 @@ jobs:
       - name: Setup Pixi
         uses: prefix-dev/setup-pixi@v0.9.4
         with:
-          pixi-version: v0.62.2
+          pixi-version: v0.75.0
           manifest-path: pyproject.toml
           # Workaround: Dynamic versioning (versioningit) causes lock file version mismatch.
           # We skip the editable package install and do it separately with pip.
@@ -140,7 +140,7 @@ jobs:
           package-path: ${{ env.PKG_NAME }}-*.conda
 
       - name: Remove old packages
-        if: github.ref == 'refs/heads/next'
+        if: github.ref == 'refs/heads/dev'
         uses: neutrons/conda-actions/pkg-remove@v1
         with:
           anaconda_token: ${{ secrets.ANACONDA_TOKEN }}
@@ -153,7 +153,7 @@ jobs:
   deploy-dev:
     runs-on: ubuntu-latest
     needs: publish
-    if: github.ref == 'refs/heads/next'
+    if: github.ref == 'refs/heads/dev'
     steps:
       - name: Get Environment Name
         uses: neutrons/branch-mapper@main
