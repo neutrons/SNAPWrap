@@ -33,8 +33,8 @@ import snapwrap.snapStateMgr as ssm
 def _resolution_follows_cycle_mock(monkeypatch):
     """Make ``resolve_cycle_for_run`` follow whatever ``get_cycle_for_run`` is.
 
-    Gating now goes through the stopDate-aware ``resolve_cycle_for_run`` rather
-    than the open-ended ``get_cycle_for_run``.  These tests mock the latter to
+    Gating now goes through the fail-closed ``resolve_cycle_for_run`` rather
+    than the bare ``get_cycle_for_run``.  These tests mock the latter to
     control which cycle a run belongs to, so resolution is redirected to read
     it *at call time* -- that way it picks up each test's mock without every
     test having to patch two functions.

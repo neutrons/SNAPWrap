@@ -389,9 +389,9 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
     calStatus["calibIndexList"] = calIndexList
 
     # Determine the cycle for the input run number (None if runNumber is None).
-    # resolve_cycle_for_run is stopDate-aware and fails closed, so a run that
-    # sits after the last registered cycle reports UNDECIDED rather than being
-    # silently attributed to that cycle.
+    # resolve_cycle_for_run fails closed: a run it cannot place reports
+    # BEFORE_RECORD or UNDECIDED rather than a bare None that would disable the
+    # cycle filter altogether.
     runCycleID = None
     runCycleStatus = None
     runCycleDetail = None
