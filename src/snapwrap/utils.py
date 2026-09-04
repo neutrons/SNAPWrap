@@ -660,6 +660,10 @@ def getDetectorArcs(wsName,alias=True):
     else:
         arcLogs = ["BL3:Mot:vdet_arc1","BL3:Mot:vdet_arc2"]
 
+    # initialise, so that a missing log is reported as such instead of raising
+    # UnboundLocalError on the print below
+    arc1 = arc2 = None
+
     # print("\n Debug getDetectorArcs:")
     for log in logs:
 
@@ -668,23 +672,41 @@ def getDetectorArcs(wsName,alias=True):
         if log.name == arcLogs[1]:
             arc2 = log.value[0]
 
+    # test against None rather than falsiness: an arc parked at exactly 0.0 is
+    # a legitimate value that "not arc1" would wrongly reject
+    missing = [name for name, val in zip(arcLogs, [arc1, arc2]) if val is None]
+    if missing:
+        raise RuntimeError(
+            f"workspace {wsName} has no log(s) {missing}. Live data carries the "
+            f"det_arc aliases but not necessarily the raw BL3:Mot:vdet_arc PVs, "
+            f"so use alias=True unless the pristine values are really needed."
+            )
+
     print("arc1",arc1)
     print("arc2",arc2)
-    if not arc1 or not arc2:
-        print(f"Error: did not find logs {arcLogs}")
 
-    return [arc1,arc2]    
+    return [arc1,arc2]
 
-def resetDetectorArcs(donorWSName):
+def resetDetectorArcs(donorWSName,isLite=True):
 
     # will set detector arcs equal to original pv log values
     # and reload instrument to apply them
+    #
+    # A live (still collecting) dataset carries the det_arc aliases but not the
+    # raw BL3:Mot:vdet_arc PVs, so fall back to the aliases rather than failing.
+    # Note this only recovers the arcs as they stand NOW: if the caller has
+    # already overwritten the aliases it should restore its own saved values
+    # instead of calling this.
 
-    #first get original pv log values
-    [origArc1,origArc2] = getDetectorArcs(donorWSName,alias=False)
+    try:
+        [origArc1,origArc2] = getDetectorArcs(donorWSName,alias=False)
+    except RuntimeError as err:
+        print(f"resetDetectorArcs: {err}")
+        print("resetDetectorArcs: falling back to the det_arc aliases")
+        [origArc1,origArc2] = getDetectorArcs(donorWSName,alias=True)
 
     # then update to these values
-    updateDetectorArcs(donorWSName,origArc1,origArc2)
+    updateDetectorArcs(donorWSName,origArc1,origArc2,isLite=isLite)
 
 def updateDetectorArcs(donorWSName,arc1,arc2,isLite=True):
 
@@ -832,7 +854,7 @@ def makeResolutionWorkspace(prefix,
     arc1 = oldArc1 + beamTilt #note: arc1 and arc2 have opposite senses, so adding to both is the correct way to apply tilt
     arc2 = oldArc2 + beamTilt
 
-    updateDetectorArcs(donorWSName,arc1,arc2)
+    updateDetectorArcs(donorWSName,arc1,arc2,isLite=isLite)
 
     arc1, arc2 = getDetectorArcs(donorWSName)
     print(f"beam tilt of {beamTilt} deg. was applied during resolution calculation")
@@ -850,7 +872,11 @@ def makeResolutionWorkspace(prefix,
                                 PartialResolutionWorkspaces="partial",
                                 OutputWorkspace="delDOverD_ERD_Output")
 
-    resetDetectorArcs(donorWSName) #reset detector arcs to original values
+    # restore the arcs this function saved before applying the tilt, rather than
+    # re-reading them from the logs. resetDetectorArcs() reads the raw
+    # BL3:Mot:vdet_arc PVs, which a live dataset does not carry -- and it is not
+    # needed anyway, since oldArc1/oldArc2 above are exactly the values wanted.
+    updateDetectorArcs(donorWSName,oldArc1,oldArc2,isLite=isLite)
 
     delDOverD= CloneWorkspace(InputWorkspace="omega") #make clone to use its x-values
 
