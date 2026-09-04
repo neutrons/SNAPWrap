@@ -2,6 +2,7 @@
 
 import numpy as np
 from mantid.simpleapi import *
+from scipy.interpolate import make_smoothing_spline
 from snapwrap.utils import workspaceHandles
 
 def excludeROI(wsName, wsIndex, roiList, createExcludedWS=False):
@@ -46,6 +47,73 @@ def excludeROI(wsName, wsIndex, roiList, createExcludedWS=False):
         excluded_ws.setMarkerStyle("circle")
 
     # print(f"Debug: excluded {excludedPoints} points in total from spectrum {wsIndex} of workspace {wsName}")
+
+def smoothBackground(wsName, roiList, smoothing_parameter, outputWorkspace=None):
+    """
+    Produce a smooth background estimate by excluding peak regions and fitting a spline.
+
+    For every spectrum in the input workspace the bins that fall inside any ROI
+    are masked out, a smoothing spline is fitted to the surviving points, and the
+    spline is evaluated over the full x-range.  The result is a histogram workspace
+    with identical binning to the input — suitable for direct subtraction.
+
+    Parameters
+    ----------
+    wsName : str
+        Name of the input histogram workspace (units typically dSpacing).
+    roiList : list of [float, float]
+        Exclusion regions ``[[xMin, xMax], ...]``.  Bins whose left edge
+        falls inside any region are excluded from the spline fit.
+    smoothing_parameter : float
+        The ``lam`` parameter passed to ``scipy.interpolate.make_smoothing_spline``.
+        Larger values produce smoother backgrounds.
+    outputWorkspace : str or None
+        Name for the output workspace.  If *None*, defaults to
+        ``"smooth_" + wsName``.
+
+    Returns
+    -------
+    str
+        The name of the output workspace held in the Mantid ADS.
+    """
+
+    if outputWorkspace is None:
+        outputWorkspace = "smooth_" + wsName
+
+    CloneWorkspace(InputWorkspace=wsName, OutputWorkspace=outputWorkspace)
+
+    ws_in = mtd[wsName]
+    ws_out = mtd[outputWorkspace]
+    nSpec = ws_in.getNumberHistograms()
+
+    for idx in range(nSpec):
+        x = ws_in.readX(idx)
+        y = ws_in.readY(idx).copy()
+        xMid = (x[:-1] + x[1:]) / 2.0
+
+        # build mask: True = keep, False = exclude
+        mask = np.ones(len(y), dtype=bool)
+        for roi in roiList:
+            mask &= ~((xMid >= roi[0]) & (xMid <= roi[1]))
+
+        x_keep = xMid[mask]
+        y_keep = y[mask]
+
+        if len(y_keep) == 0:
+            print(f"Warning: all data excluded for spectrum {idx}, output set to zero.")
+            ws_out.setY(idx, np.zeros_like(y))
+            continue
+
+        tck = make_smoothing_spline(x_keep, y_keep, lam=smoothing_parameter)
+        smoothed = tck(xMid, extrapolate=False)
+
+        # replace any NaN from extrapolation and negative artifacts with zero
+        smoothed = np.nan_to_num(smoothed, nan=0.0)
+        smoothed[smoothed < 0] = 0.0
+
+        ws_out.setY(idx, smoothed)
+
+    return outputWorkspace
 
 def replacePrefix(wsName,newPrefix):
     #update SNAPRed style ws name
@@ -140,7 +208,8 @@ def compositeBackground(handles,dMin=0.65,
                         dMax=10.0,
                         minFractionOfMaxIntensity=0.00,
                         extentScale=1.0,
-                        createExcludedWS=False):
+                        createExcludedWS=False,
+                        splineSmooth=1e-4):
 
     #calculate exclusion ROI's using crystalSpecies
     #calculation runs as a for loop over number of input spectra that are specified by the handles list 
@@ -177,6 +246,8 @@ def compositeBackground(handles,dMin=0.65,
             excludeList = []
             for creature in handle.crystalSpeciesList:
 
+                creatureTickWS = f"ticks_{creature.name}_run{runInt}_spec{specID}"
+
                 print(f"\nProcessing species {creature.name} for spectrum {specID} of run {runInt}")
                 
                 #apply dLimit override if specified taking care to retain original dMin,dMax values        
@@ -193,11 +264,21 @@ def compositeBackground(handles,dMin=0.65,
                                         dMax=dMaxOverride,
                                         minFractionOfMaxIntensity=minFractionOfMaxIntensity)
                 
+                tickYPos = 0.005*np.ones_like(creature.dSpacings) #how to set this?
+                CreateWorkspace(OutputWorkspace=creatureTickWS,
+                                DataX=creature.dSpacings,
+                                DataY=tickYPos)
+
+                tickws = mtd[creatureTickWS]
+                tickws.setPlotType("marker")
+
                 for d in creature.dSpacings:
                     extent = extentScale*d*creature.extentOverPosition
                     roi = [d-extent/2,d+extent/2]
-                    excludeList.append(roi)      
+                    excludeList.append(roi)
 
+            smoothWS = replacePrefix(wsName,"smooth")
+            smoothBackground(wsName,excludeList,smoothing_parameter=splineSmooth,outputWorkspace=smoothWS)
             excludeROI(dePeakWS,specID,excludeList,createExcludedWS=createExcludedWS) #will set x-ranges in excludeList in spectrum specID to NAN
             print(f"for spec: {specID}, {len(excludeList)} regions were excluded")              
 
@@ -234,23 +315,9 @@ def compositeBackground(handles,dMin=0.65,
     
     for specID in range(nSpec):
         deNAN("avgBgnd_interp",specID,5)
-    
-    # wsBgd = mtd["avgBgnd"]
-    # bgnd = wsBgd.dataY(0)
-    
-    # #Finally export data for refinement
-    # for handle in handles:
-    #     wsName = handle.wsName
-    #     runNo = handle.runNumber
-    #     runInt = int(runNo.strip())
-    
-    #     if runInt in runs:
-    #         wsName_bs = replacePrefix(wsName,"backSub")
-    #         CloneWorkspace(InputWorkspace=wsName,
-    #             OutputWorkspace=wsName_bs)
-    #         ws = mtd[wsName_bs]
-    #         y0 = ws.dataY(0)
-    #         e0 = ws.dataE(0)
-            
-    #         ws.setY(0,100*(y0-bgnd)+1.0) #rb. scale factor and adding 1.0 to avoid zeros from back sub
-    #         ws.setE(0,100*e0)
+
+    #finally apply some gentle smoothing
+
+    SmoothData(InputWorkspace="avgBgnd_interp",
+               OutputWorkspace="avgBgnd_interp",
+               NPoints=5)

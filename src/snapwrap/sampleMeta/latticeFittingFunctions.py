@@ -4,25 +4,42 @@
 import numpy as np
 
 def cubic_d2Inv(ref,a): #calculates 1/d^^2 given reflection ref and lattice param a
-
-    return (ref.h**2+ref.h*ref.k+ref.l**2)/a**2
+    # correct formula for cubic: (h^2 + k^2 + l^2) / a^2
+    return (ref.h**2 + ref.k**2 + ref.l**2) / a**2
 
 def residual_cubic(params,reflectionList):
+    """
+    Residual function for cubic lattice fitting.
 
-    a = params #single parameter
+    Returns a list of per-reflection residuals (d^-2 calculated - observed d^-2),
+    optionally weighted by the reported extentOverPosition similar to residual_hex.
+    """
+    # unpack parameter (least_squares will pass an array-like)
+    try:
+        a = float(params[0]) if hasattr(params, '__len__') else float(params)
+    except Exception:
+        a = float(params)
+
     residuals = []
 
-    NObs = 0
-    diff = 0
+    # validate inputs and compute weighted residuals per reflection
     for ref in reflectionList:
-        d2Inv_calc = cubic_d2Inv(ref,a)
-        d2Inv_obs = 1/ref.dObs**2
-        diff += np.sqrt((d2Inv_calc - d2Inv_obs)**2)
-        NObs += 1
-    
-    residual = diff/NObs
+        if not isinstance(ref.dObs, (float, np.floating)):
+            raise TypeError(f"Error: d-spacing {ref.dObs!r} is not a float")
 
-    return residual
+        d2Inv_calc = cubic_d2Inv(ref, a)
+        d2Inv_obs = 1.0 / ref.dObs**2
+
+        # use extentOverPosition as a proxy for uncertainty if available (same as hex)
+        if ref.extentOverPosition is None:
+            weight = 1.0
+        else:
+            uncertainty = 0.3 * ref.extentOverPosition * ref.dObs
+            weight = 1.0 / uncertainty if uncertainty > 0 else 1.0
+
+        residuals.append(weight * (d2Inv_calc - d2Inv_obs))
+
+    return residuals
 
 def hex_d2Inv(ref,a,c):
 

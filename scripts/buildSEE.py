@@ -26,6 +26,11 @@ pace = pressureController(manufacturer="pace",
                          pvLogs=["BL3:SE:PACE1:PressSet",
                                  "BL3:SE:PACE1:Pressure"])
 
+sitec = pressureController(manufacturer="SITEC",
+                         model="", serialNumber="",
+                         pvLogs=["BL3:SE:SITEC:SetPressure",
+                                 "BL3:SE:PACE1:PressSet"])
+
 lakeshore = temperatureController(manufacturer="Lakeshore", #TODO: need a nickname property
                                  model="", serialNumber="",
                                  pvLogs=["BL3:SE:Lakeshore:SETP4",
@@ -170,7 +175,7 @@ cyl = cylinder(material="BeCu",innerDiameter=numVal(7.0, "mm"),
                   height=numVal(30, "mm")
                   )
 
-cell1 = assembly.CylinderCell(components=[cyl],
+cell1 = assembly.CylinderCell(components=[cyl,sitec],
                              comment="CuBe H2 gas cell",
                              )
 cell1.primaryCategory = "gasCell"

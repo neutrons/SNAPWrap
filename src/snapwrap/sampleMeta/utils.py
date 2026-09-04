@@ -211,12 +211,43 @@ class crystalSpecies:
 
         #need to handle each system separately
         if cell.crystalSystem == "cubic":
+            #simple approach was not giving satisfying results, so use a randomized
+            #search to improve chances.
+            num_trials = 100
+            a_bounds = (1.0, 10.0)
 
-            initialGuess = 5.0 # guess at a lattice param
-            result = least_squares(lff.residual_cubic, initialGuess, args = (reflectionList,))
+            best_result = {
+                "a": None,
+                "residual": np.inf,
+                "success": False
+            }
 
-            if result.success:
-                a = result.x[0]
+            for trial in range(num_trials):
+                initial_a = np.random.uniform(*a_bounds)
+                initial_guess = [initial_a]
+
+                try:
+                    result = least_squares(
+                        lff.residual_cubic,
+                        initial_guess,
+                        args=(reflectionList,),
+                        bounds=([a_bounds[0]], [a_bounds[1]])
+                    )
+
+                    if result.success:
+                        residual_sum = np.sum(np.square(result.fun))
+                        if residual_sum < best_result["residual"]:
+                            best_result.update({
+                                "a": result.x[0],
+                                "residual": residual_sum,
+                                "success": True
+                            })
+
+                except Exception as e:
+                    print(f"Trial {trial + 1}/{num_trials} failed: {e}")
+
+            if best_result["success"]:
+                a = best_result["a"]
                 cell.a = a
                 cell.b = a
                 cell.c = a
@@ -224,7 +255,7 @@ class crystalSpecies:
                 return cell
             else:
                 self.valid["unitCell"] = False
-                print("Fit failed")
+                print("All fits failed")
 
         if cell.crystalSystem in ["trigonal","hexagonal"]:
 
