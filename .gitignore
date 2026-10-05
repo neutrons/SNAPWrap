@@ -175,3 +175,7 @@ cython_debug/
 src/packagenamepy/_version.py
 
 pyproject.toml.pre-inspectrum
+
+# conda package archives and local channel from pixi publish
+*.conda
+local-channel/
