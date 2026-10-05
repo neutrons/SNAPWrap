@@ -1,7 +1,7 @@
 """Data-layer for the Calibration Manager UI.
 
 This module is a *thin aggregation layer* over the existing functions in
-:mod:`snapwrap.snapStateMgr` and :mod:`snapwrap.cycleDates`.  It adds no
+:mod:`snapwrap.snapStateMgr`.  It adds no
 duplicated business logic — it calls through to the existing backend and
 reshapes the output into simple data structures that are easy for
 ``QAbstractTableModel`` to consume.
@@ -17,7 +17,6 @@ import re
 from typing import Any, Dict, List, Optional
 
 import snapwrap.snapStateMgr as ssm
-from snapwrap.cycleDates import load_cycle_data
 from snapwrap.calibrationManager.constants import (
     CalStatus,
     CalTypeStatus,
@@ -61,12 +60,16 @@ class CalibrationManagerModel:
     def getCycleList() -> List[str]:
         """Return a list of cycle IDs, most recent first.
 
-        Uses :func:`cycleDates.load_cycle_data` which caches after first
-        call.
+        Read from ``SNAPInstPrm`` via :func:`ssm.registeredCycles`, which is
+        the authority for cycle bounds. Previously this came from the
+        ``cycleDates`` spreadsheet in the calibration home; that table is being
+        retired in favour of the instrument-parameter index.
+
+        May be empty -- a state of the instrument where no cycles have been
+        registered yet is legitimate, so the UI must handle an empty list
+        rather than assume at least one cycle exists.
         """
-        cycles = load_cycle_data()
-        # load_cycle_data returns records sorted by firstRun ascending
-        return [c["cycleID"] for c in reversed(cycles)]
+        return ssm.registeredCycles()
 
     @staticmethod
     def cycleForRun(runNumber) -> Optional[str]:

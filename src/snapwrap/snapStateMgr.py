@@ -897,8 +897,71 @@ def frankenRecord(donorRun,
 
 
 # ---------------------------------------------------------------------------
-# Cycle-date helpers
+# Cycle helpers
 # ---------------------------------------------------------------------------
+
+#: A facility cycle ID: four digits, a hyphen, one uppercase letter. Mirrors
+#: snapred's ``Cycle.CYCLE_ID_PATTERN``. The ``Cycle.NO_CYCLE`` sentinel
+#: ("unknown") deliberately does not match, so filtering on this pattern drops
+#: it, and the fixed width makes a lexicographic sort chronological.
+_CYCLE_ID_RE = re.compile(r"^\d{4}-[A-Z]$")
+
+
+def orderCycleIDs(cycleIDs):
+    """Distinct, well-formed cycle IDs, most recent first.
+
+    Anything that is not a real cycle ID is dropped -- notably snapred's
+    ``Cycle.NO_CYCLE`` sentinel, and ``None`` from an entry that carries no
+    cycle. Because every ID is ``YYYY-L``, reverse lexicographic order is
+    chronological, so no date lookup is needed.
+    """
+
+    return sorted(
+        {c for c in (cycleIDs or []) if isinstance(c, str) and _CYCLE_ID_RE.match(c)},
+        reverse=True,
+    )
+
+
+def registeredCycles():
+    """Cycle IDs registered in ``SNAPInstPrm``, most recent first.
+
+    The authority for cycle bounds is the instrument-parameter index, not a
+    spreadsheet in the calibration home: each cycle is an entry whose
+    ``appliesTo`` bounds its runs and whose body carries the ``cycle``. This
+    reads every version and collects the distinct cycles found.
+
+    Entries without a cycle -- the configuration-epoch entries that cycle
+    entries overlay -- contribute nothing, which is what makes a run outside
+    every cycle read as out-of-cycle.
+
+    Returns an empty list when no cycles are registered yet, so a caller must
+    cope with that rather than assume the instrument has cycles.
+
+    Requires a snapred carrying ``InstrumentConfig.cycle``; against an older
+    one every entry simply has no cycle attribute and the result is empty.
+    """
+
+    localDataService = LocalDataService()
+    indexer = localDataService.instrumentParameterIndexer()
+
+    cycleIDs = []
+    for version in indexer.allVersions():
+        try:
+            instrumentConfig = localDataService.readInstrumentParametersVersion(version)
+        except AttributeError:
+            # snapred predates readInstrumentParametersVersion: nothing to read.
+            return []
+        except Exception as e:
+            # One unreadable version must not hide the rest.
+            print(f"SNAPInstPrm: WARNING could not read version {version}: {e}")
+            continue
+
+        cycle = getattr(instrumentConfig, "cycle", None)
+        if cycle is not None:
+            cycleIDs.append(getattr(cycle, "cycleID", None))
+
+    return orderCycleIDs(cycleIDs)
+
 
 def cycleForRun(runNumber):
     """Return the facility operating-cycle ID for a given SNAP run number.
