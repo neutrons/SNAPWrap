@@ -32,7 +32,7 @@ import snapwrap.pixelResolution.mantid_utils as pixRes
 from snapred.backend.dao.ingredients.ArtificialNormalizationIngredients import ArtificialNormalizationIngredients
 from snapred.backend.dao.request import ReductionExportRequest
 from snapred.backend.dao import SNAPRequest
-from snapred.backend.dao.request.ReductionRequest import ReductionRequest
+from snapred.backend.dao.request.ReductionRequest import ReductionRequest, Versions
 from snapred.backend.data.DataFactoryService import DataFactoryService
 from snapred.backend.error.ContinueWarning import ContinueWarning
 from snapred.backend.recipe.ReductionRecipe import ReductionRecipe
@@ -1516,6 +1516,46 @@ def _write_propagation_log(entry: dict) -> None:
     except Exception as e:
         printWarning(f"WARNING: failed to write propagation log entry: {e}")
 
+def _pinnedVersions(difcal, nrmcal, *, difcalFound, normcalFound, skipNormalization):
+    """The calibration versions wrap validated, for SNAPRed's ReductionRequest.
+
+    SNAPRed's `ReductionRequest.versions` defaults to
+    `Versions(VersionState.LATEST, VersionState.LATEST)`, which makes SNAPRed
+    re-resolve the calibration itself through `Indexer.latestApplicableVersion`
+    -- and that takes the most recently *written* applicable entry, with no
+    regard to cycle. wrap's cycle filtering was therefore discarded at the
+    handoff: wrap decided *whether* to reduce, SNAPRed decided *which*
+    calibration, and the two could disagree silently. A run with a perfectly
+    good in-cycle calibration could be reduced against an out-of-cycle one
+    purely because that entry was written later.
+
+    Pinning the version wrap validated closes that, and makes the reduction
+    reproducible as a side effect: the version is recorded rather than
+    re-derived at run time.
+
+    `VersionState.LATEST` is retained wherever there is genuinely nothing to
+    pin, so SNAPRed keeps its existing fallback behaviour:
+
+    * no difcal found, proceeding via `continueNoDifcal` -- SNAPRed falls back
+      to its default calibration
+    * normalization skipped (`noNorm`) or synthesised (`continueNoVan`)
+    * a status dict carrying no usable version, which should not happen but
+      must not turn into a hard failure if it does
+    """
+
+    def _version(found, status):
+        if not found:
+            return VersionState.LATEST
+        used = (status or {}).get("latestValidCalibrationDict") or {}
+        version = used.get("version")
+        return version if isinstance(version, int) else VersionState.LATEST
+
+    return Versions(
+        _version(difcalFound, difcal),
+        VersionState.LATEST if skipNormalization else _version(normcalFound, nrmcal),
+    )
+
+
 def propagateDifcal(donorRunNumber,isLite=True,propagate=False,includeGuideStatus=True):
 
     #This will accept a reference Run number, determine a list of all existing 
@@ -1985,6 +2025,16 @@ def reduce(runNumber,
     print("ContinueFlags")
     print(continueFlags)
 
+    # Pin the calibration versions wrap validated rather than letting SNAPRed
+    # re-resolve them cycle-blind. See _pinnedVersions.
+    versions = _pinnedVersions(
+        difcal, nrmcal,
+        difcalFound=bool(calibrationStatus[0]),
+        normcalFound=bool(calibrationStatus[1]),
+        skipNormalization=bool(continueNoVan or noNorm),
+    )
+    print(f"Pinned calibration versions: difcal={versions.calibration}, normalization={versions.normalization}")
+
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # process input arguments
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -2083,6 +2133,7 @@ def reduce(runNumber,
             focusGroupAllowList=None,
             convertUnitsTo=convertUnitsTo,
             artificialNormalizationIngredients=artificialNormalizationIngredients,
+            versions=versions,
             hooks = hooks,
         )
     
@@ -2112,6 +2163,7 @@ def reduce(runNumber,
             focusGroupAllowList=focusGroupAllowList,
             convertUnitsTo=convertUnitsTo,
             artificialNormalizationIngredients=artificialNormalizationIngredients,
+            versions=versions,
             hooks = hooks,
         )
 
