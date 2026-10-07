@@ -273,6 +273,9 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
 # Misc
 # tornado 6.5.5 fixes CVE-2026-31958 / GHSA-78cv-mqj4-43f7 but is not yet on conda-forge (latest: 6.5.4)
 # Remove the --ignore-vuln flags once conda-forge packages tornado >=6.5.5
+# multidict 6.9.1 fixes CVE-2026-104874 (reference leak in items-view union/subtraction) but is
+# not yet on conda-forge (latest: 6.7.1); it is pulled in by aiohttp. Remove that flag once
+# conda-forge packages multidict >=6.9.1.
 audit-deps = { cmd = """pip-audit --local -s osv \
 --ignore-vuln PYSEC-2026-3447 \
 --ignore-vuln PYSEC-2026-2255 \
@@ -295,7 +298,8 @@ audit-deps = { cmd = """pip-audit --local -s osv \
 --ignore-vuln PYSEC-2026-3493 \
 --ignore-vuln PYSEC-2026-3494 \
 --ignore-vuln PYSEC-2026-3495 \
---ignore-vuln PYSEC-2026-3496""", description = "Audit the package dependencies for vulnerabilities" }
+--ignore-vuln PYSEC-2026-3496 \
+--ignore-vuln CVE-2026-104874""", description = "Audit the package dependencies for vulnerabilities" }
 clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
 clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
 clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artifacts" }
