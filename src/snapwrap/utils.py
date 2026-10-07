@@ -1516,6 +1516,19 @@ def _write_propagation_log(entry: dict) -> None:
     except Exception as e:
         printWarning(f"WARNING: failed to write propagation log entry: {e}")
 
+def _recordCycleArgs(dataFactoryService, runNumber):
+    """Extra arguments SNAPRed's record getters need for ``runNumber``.
+
+    SNAPRed after PR #678 requires ``cycleID`` on ``getCalibrationRecord`` and
+    ``getNormalizationRecord``, and raises unless it equals SNAPRed's own
+    ``getCycle(runId).cycleID`` -- so it is taken from there. SNAPRed 2.3.1 has
+    no such parameter, and gets nothing extra.
+    """
+    if "cycleID" not in inspect.signature(dataFactoryService.getCalibrationRecord).parameters:
+        return {}
+    return {"cycleID": dataFactoryService.getCycle(str(runNumber)).cycleID}
+
+
 def _pinnedVersions(difcal, nrmcal, *, difcalFound, normcalFound, skipNormalization):
     """The calibration versions wrap validated, for SNAPRed's ReductionRequest.
 
@@ -2224,11 +2237,13 @@ def reduce(runNumber,
                 state = stateID
             )
     # print(calibrationPath)
+    recordArgs = _recordCycleArgs(dataFactoryService, runNumber)
     calibrationRecord = dataFactoryService.getCalibrationRecord(
                 runId=runNumber, 
                 useLiteMode=useLiteMode, 
                 version = VersionState.LATEST,
-                state = stateID
+                state = stateID,
+                **recordArgs
             )
     
     if calibrationRecord.version == 0 and not continueNoDifcal:
@@ -2246,7 +2261,8 @@ def reduce(runNumber,
                 runId=runNumber, 
                 useLiteMode=useLiteMode, 
                 version = VersionState.LATEST,
-                state = stateID
+                state = stateID,
+                **recordArgs
             )
     
     if normalizationRecord is None and not (continueNoVan or noNorm):
