@@ -525,15 +525,16 @@ class TestGetStateSummaryDoublePropagated:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Phase 2 — removeDoublePropagatedEntries()
+# Phase 2 — invalidateDoublePropagatedEntries()
 # ═══════════════════════════════════════════════════════════════════════
 
 
-class TestRemoveDoublePropagatedEntries:
-    """Unit tests for model.removeDoublePropagatedEntries().
+class TestInvalidateDoublePropagatedEntries:
+    """Unit tests for model.invalidateDoublePropagatedEntries().
 
-    ``deleteCalibrationVersion`` does real filesystem work; we patch it
-    on the model class so no files are touched.
+    ``invalidateCalibrationVersion`` does real filesystem work; we patch it
+    on the model class so no files are touched.  Its own behaviour is
+    covered for real in ``test_invalidate_version.py``.
     """
 
     _STATE_ID = "abcd1234abcd1234"
@@ -581,13 +582,13 @@ class TestRemoveDoublePropagatedEntries:
         ]
         model = self._model()
         with self._patch_ssm(entries):
-            result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
+            result = model.invalidateDoublePropagatedEntries(self._STATE_ID, dryRun=True)
         assert result["ok"] is True
         assert result["versions"] == []
         assert "No double-propagated" in result["summary"]
 
     def test_dry_run_reports_versions_without_deleting(self):
-        """Dry-run returns the correct version list; deleteCalibrationVersion not called live."""
+        """Dry-run returns the correct version list; nothing is written."""
         entries = [
             {"version": "1", "comments": "measured on site"},
             {"version": "3", "comments": self._DP_COMMENT},
@@ -596,22 +597,22 @@ class TestRemoveDoublePropagatedEntries:
         from unittest.mock import patch as _patch
         with self._patch_ssm(entries):
             with _patch.object(
-                model.__class__, "deleteCalibrationVersion",
-                return_value={"ok": True, "message": "[DRY RUN] Would delete…"},
-            ) as mock_delete:
-                result = model.removeDoublePropagatedEntries(
+                model.__class__, "invalidateCalibrationVersion",
+                return_value={"ok": True, "message": "[DRY RUN] Would invalidate…"},
+            ) as mock_invalidate:
+                result = model.invalidateDoublePropagatedEntries(
                     self._STATE_ID, dryRun=True,
                 )
         assert result["ok"] is True
         assert result["versions"] == [3]
         assert "[DRY RUN]" in result["summary"]
-        # deleteCalibrationVersion should have been called once (dry-run=True)
-        mock_delete.assert_called_once_with(
+        # invalidateCalibrationVersion should have been called once (dry-run=True)
+        mock_invalidate.assert_called_once_with(
             self._STATE_ID, "difcal", 3, isLite=True, dryRun=True,
         )
 
-    def test_live_run_calls_delete_for_each_version(self):
-        """Live run calls deleteCalibrationVersion for each DP version."""
+    def test_live_run_calls_invalidate_for_each_version(self):
+        """Live run calls invalidateCalibrationVersion for each DP version."""
         entries = [
             {"version": "1", "comments": "measured on site"},
             {"version": "2", "comments": self._DP_COMMENT},
@@ -621,21 +622,22 @@ class TestRemoveDoublePropagatedEntries:
         from unittest.mock import patch as _patch, call
         with self._patch_ssm(entries):
             with _patch.object(
-                model.__class__, "deleteCalibrationVersion",
-                return_value={"ok": True, "message": "Deleted."},
-            ) as mock_delete:
-                result = model.removeDoublePropagatedEntries(
+                model.__class__, "invalidateCalibrationVersion",
+                return_value={"ok": True, "message": "Invalidated."},
+            ) as mock_invalidate:
+                result = model.invalidateDoublePropagatedEntries(
                     self._STATE_ID, dryRun=False,
                 )
         assert result["ok"] is True
         assert set(result["versions"]) == {2, 4}
-        # Should be called highest-first (4 then 2) so re-numbering is safe
-        calls = mock_delete.call_args_list
-        assert calls[0] == call(self._STATE_ID, "difcal", 4, isLite=True, dryRun=False)
-        assert calls[1] == call(self._STATE_ID, "difcal", 2, isLite=True, dryRun=False)
+        # Invalidation re-numbers nothing, so ascending order is fine and the
+        # old highest-first ordering requirement no longer applies.
+        calls = mock_invalidate.call_args_list
+        assert calls[0] == call(self._STATE_ID, "difcal", 2, isLite=True, dryRun=False)
+        assert calls[1] == call(self._STATE_ID, "difcal", 4, isLite=True, dryRun=False)
 
     def test_partial_failure_propagates_ok_false(self):
-        """If any deletion fails, ok=False is returned."""
+        """If any invalidation fails, ok=False is returned."""
         entries = [
             {"version": "1", "comments": "measured on site"},
             {"version": "2", "comments": self._DP_COMMENT},
@@ -644,16 +646,16 @@ class TestRemoveDoublePropagatedEntries:
         from unittest.mock import patch as _patch
         with self._patch_ssm(entries):
             with _patch.object(
-                model.__class__, "deleteCalibrationVersion",
+                model.__class__, "invalidateCalibrationVersion",
                 return_value={"ok": False, "message": "File not found."},
             ):
-                result = model.removeDoublePropagatedEntries(
+                result = model.invalidateDoublePropagatedEntries(
                     self._STATE_ID, dryRun=False,
                 )
         assert result["ok"] is False
         assert result["versions"] == [2]
 
-    def test_version_zero_never_deleted(self):
+    def test_version_zero_never_invalidated(self):
         """Version 0 must never be targeted even if its comment matches."""
         entries = [
             {"version": "0", "comments": self._DP_COMMENT},
@@ -661,7 +663,7 @@ class TestRemoveDoublePropagatedEntries:
         ]
         model = self._model()
         with self._patch_ssm(entries):
-            result = model.removeDoublePropagatedEntries(self._STATE_ID, dryRun=True)
+            result = model.invalidateDoublePropagatedEntries(self._STATE_ID, dryRun=True)
         assert result["versions"] == []
 
 

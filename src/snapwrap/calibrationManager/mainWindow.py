@@ -352,7 +352,7 @@ class CalibrationManager(QDialog):
         self._topPanel.deleteStateRequested.connect(self._onDeleteStateRequested)
         self._topPanel.refreshBtn.clicked.connect(self._refresh)
         self._topPanel.contextChanged.connect(self._onContextChanged)
-        self._bottomPanel.deleteVersionRequested.connect(self._onDeleteVersion)
+        self._bottomPanel.invalidateVersionRequested.connect(self._onInvalidateVersion)
 
         # ── populate cycles ───────────────────────────────────────
         try:
@@ -596,20 +596,20 @@ class CalibrationManager(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, "Delete State", f"Deletion failed: {exc}")
 
-    def _onDeleteVersion(self, stateID: str, calType: str, version: int) -> None:
-        """Handle a version-deletion request from the detail panel."""
+    def _onInvalidateVersion(self, stateID: str, calType: str, version: int) -> None:
+        """Handle a version-invalidation request from the detail panel."""
         # Dry run
         try:
-            result = self._model.deleteCalibrationVersion(
+            result = self._model.invalidateCalibrationVersion(
                 stateID, calType, version, isLite=self._isLite, dryRun=True,
             )
         except Exception as exc:
-            QMessageBox.warning(self, "Delete Version", f"Pre-check failed: {exc}")
+            QMessageBox.warning(self, "Invalidate Version", f"Pre-check failed: {exc}")
             return
 
         reply = QMessageBox.question(
             self,
-            "Confirm Delete",
+            "Confirm Invalidate",
             f"{result.get('message', '')}\n\nProceed?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -618,7 +618,7 @@ class CalibrationManager(QDialog):
             return
 
         try:
-            result = self._model.deleteCalibrationVersion(
+            result = self._model.invalidateCalibrationVersion(
                 stateID, calType, version, isLite=self._isLite, dryRun=False,
             )
             if result["ok"]:
@@ -631,9 +631,9 @@ class CalibrationManager(QDialog):
                 )
                 self._topPanel.updateRow(stateID, updated)
             else:
-                QMessageBox.warning(self, "Delete Version", result["message"])
+                QMessageBox.warning(self, "Invalidate Version", result["message"])
         except Exception as exc:
-            QMessageBox.warning(self, "Delete Version", f"Delete failed: {exc}")
+            QMessageBox.warning(self, "Invalidate Version", f"Invalidation failed: {exc}")
 
     def _refresh(self) -> None:
         """Full refresh triggered by the Refresh button.

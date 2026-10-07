@@ -7,8 +7,8 @@ reshapes the output into simple data structures that are easy for
 ``QAbstractTableModel`` to consume.
 
 The only genuinely *new* business logic here is
-:meth:`CalibrationManagerModel.deleteCalibrationVersion`, which does not
-have a pre-existing counterpart in ``snapStateMgr``.
+:meth:`CalibrationManagerModel.invalidateCalibrationVersion`, which does
+not have a pre-existing counterpart in ``snapStateMgr``.
 """
 
 from __future__ import annotations
@@ -529,39 +529,41 @@ class CalibrationManagerModel:
             "summary": f"Propagation executed for {len(preview.get('recipients', []))} recipient state(s).",
         }
 
-    # ── New functionality: remove double-propagated entries ─────────
+    # ── New functionality: invalidate double-propagated entries ─────
 
-    def removeDoublePropagatedEntries(
+    def invalidateDoublePropagatedEntries(
         self,
         stateID: str,
         isLite: bool = True,
         dryRun: bool = True,
     ) -> Dict[str, Any]:
-        """Delete all double-propagated difcal versions from a state's index.
+        """Invalidate all double-propagated difcal versions in a state's index.
 
         A double-propagated entry is one whose ``comments`` field is itself
         a propagation comment (copy-of-a-copy).  These entries are
-        structurally invalid and must be removed before re-propagating
-        from the correct donor.
+        semantically invalid and must be taken out of use before
+        re-propagating from the correct donor.
 
-        Versions are deleted from highest to lowest so that the
-        ``fixIndex`` re-numbering after each deletion does not shift the
-        version numbers of entries still to be removed.
+        Versions are processed in ascending order.  The former
+        ``removeDoublePropagatedEntries`` had to work from highest to lowest
+        because each deletion triggered a ``fixIndex`` re-numbering that
+        shifted the versions still to be removed; invalidation re-numbers
+        nothing, so order no longer matters.
 
         Parameters
         ----------
         dryRun : bool
-            If ``True`` (default), only report what *would* be deleted.
+            If ``True`` (default), only report what *would* be invalidated.
             No files are modified.
 
         Returns
         -------
         dict
-            * ``ok`` – ``True`` if all deletions succeeded (or dry-run).
+            * ``ok`` – ``True`` if all invalidations succeeded (or dry-run).
             * ``versions`` – sorted list of version numbers that are / would
-              be deleted.
+              be invalidated.
             * ``messages`` – per-version result messages from
-              :meth:`deleteCalibrationVersion`.
+              :meth:`invalidateCalibrationVersion`.
             * ``summary`` – human-readable one-line summary.
         """
         calStatus = ssm.checkCalibrationStatus(
@@ -569,13 +571,10 @@ class CalibrationManagerModel:
         )
         entries = calStatus.get("calibIndexList", [])
         dp_versions = sorted(
-            [
-                int(e.get("version", -1))
-                for e in entries
-                if int(e.get("version", -1)) != 0
-                and is_double_propagated(e.get("comments", ""))
-            ],
-            reverse=True,  # highest first so re-numbering doesn't affect remaining targets
+            int(e.get("version", -1))
+            for e in entries
+            if int(e.get("version", -1)) != 0
+            and is_double_propagated(e.get("comments", ""))
         )
 
         if not dp_versions:
@@ -589,62 +588,88 @@ class CalibrationManagerModel:
         messages = []
         all_ok = True
         for version in dp_versions:
-            result = self.deleteCalibrationVersion(
+            result = self.invalidateCalibrationVersion(
                 stateID, "difcal", version, isLite=isLite, dryRun=dryRun,
             )
             messages.append(result.get("message", ""))
             if not result.get("ok"):
                 all_ok = False
 
-        prefix = "[DRY RUN] Would delete" if dryRun else "Deleted"
+        prefix = "[DRY RUN] Would invalidate" if dryRun else "Invalidated"
         summary = (
             f"{prefix} {len(dp_versions)} double-propagated difcal version(s) "
-            f"from state {stateID}: {sorted(dp_versions)}."
+            f"in state {stateID}: {dp_versions}."
         )
         return {
             "ok": all_ok,
-            "versions": sorted(dp_versions),
+            "versions": dp_versions,
             "messages": messages,
             "summary": summary,
         }
 
-    # ── New functionality: delete a calibration version ──────────────
+    # ── New functionality: invalidate a calibration version ──────────
 
     @staticmethod
-    def deleteCalibrationVersion(
+    def invalidateCalibrationVersion(
         stateID: str,
         calType: str,
         version: int,
         isLite: bool = True,
         dryRun: bool = True,
     ) -> Dict[str, Any]:
-        """Delete a single version from a state's calibration index.
+        """Retire a calibration version without destroying it.
 
-        Removes the version folder and its index entry, then calls
-        ``fixIndex`` to re-number remaining versions and rebuild the index.
+        Replaces the former ``deleteCalibrationVersion``. Deleting a version
+        removed its folder and re-numbered everything above it, which broke
+        provenance: a run reduced against "version N" could no longer be tied
+        to the calibration that produced it, because a different calibration
+        had since become version N.
+
+        Invalidation leaves the version number, folder and record in place and
+        instead makes the entry unselectable — ``appliesTo`` becomes
+        ``<0``, which no run can satisfy, and the comment is prefixed with
+        ``(INVALIDATED)``. ``Indexer._isApplicableEntry`` compares run numbers
+        numerically, so the entry is filtered out of every lookup while the
+        history stays readable.
+
+        Because nothing is removed, version numbering stays contiguous and no
+        ``fixIndex`` re-versioning pass is needed.
+
+        The ``indexEntry`` is duplicated in three places inside the version
+        folder alongside the index itself, and ``validateIndex`` flags any
+        mismatch, so all four copies are rewritten together:
+
+        1. the entry in ``CalibrationIndex.json`` / ``NormalizationIndex.json``
+        2. ``<Cal|Norm>Record.json`` → ``indexEntry``
+        3. ``<Cal|Norm>Record.json`` → ``calculationParameters.indexEntry``
+        4. ``<Cal|Norm>Parameters.json`` → ``indexEntry``
 
         Parameters
         ----------
         version : int
-            The version to delete.  Version 0 (geometric default for
-            difcal) cannot be deleted.
+            The version to invalidate.  Version 0 (the geometric default for
+            difcal) cannot be invalidated.
         dryRun : bool
             If True (default), only report what *would* happen.
 
         Returns
         -------
         dict
-            ``ok``, ``message``, and the ``fixIndex`` report (if
-            re-versioning was triggered).
+            ``ok``, ``message``, and on success ``updatedFiles`` — the paths
+            actually rewritten — plus ``backupDir``.
         """
         import json
         import os
         import shutil
 
-        if calType == "difcal" and version == 0:
-            return {"ok": False, "message": "Cannot delete the default geometric calibration (version 0)."}
+        from snapwrap.indexComments import NEVER_APPLIES, mark_invalidated
 
-        # Build path
+        if calType == "difcal" and version == 0:
+            return {
+                "ok": False,
+                "message": "Cannot invalidate the default geometric calibration (version 0).",
+            }
+
         calStatus = ssm.checkCalibrationStatus(
             runNumber=None, stateID=stateID, isLite=isLite, calType=calType,
         )
@@ -652,7 +677,6 @@ class CalibrationManagerModel:
         indexPath = calStatus["indexPath"]
         indexEntries = calStatus.get("calibIndexList", [])
 
-        # Find the entry
         target = None
         for entry in indexEntries:
             if int(entry.get("version", -1)) == version:
@@ -662,57 +686,101 @@ class CalibrationManagerModel:
         if target is None:
             return {"ok": False, "message": f"Version {version} not found in index."}
 
+        if str(target.get("appliesTo", "")).strip() == NEVER_APPLIES:
+            return {
+                "ok": False,
+                "message": f"Version {version} is already invalidated.",
+            }
+
         vFolderName = f"v_{str(version).zfill(4)}"
         vFolderPath = os.path.join(calFolder, vFolderName)
+        newComment = mark_invalidated(target.get("comments", ""))
 
         if dryRun:
             return {
                 "ok": True,
                 "message": (
-                    f"[DRY RUN] Would delete folder {vFolderPath} and remove "
-                    f"index entry for version {version}, then re-version remaining "
-                    f"calibrations."
+                    f"[DRY RUN] Would invalidate version {version}: set appliesTo to "
+                    f"'{NEVER_APPLIES}' and prefix its comment with '(INVALIDATED)', in the "
+                    f"index and in the record files under {vFolderPath}.\n\n"
+                    f"The version folder is kept and remaining versions are NOT re-numbered, "
+                    f"so provenance for already-reduced runs is preserved."
                 ),
             }
 
-        # ── Actual deletion ──────────────────────────────────────
-        # 1. Back up via the existing fixIndex backup machinery
+        # ── back up before touching anything ──────────────────────
         backupDir = ssm._session_backup_dir(stateID, calType)
         if os.path.isdir(vFolderPath):
-            shutil.copytree(vFolderPath, os.path.join(backupDir, vFolderName))
+            backupTarget = os.path.join(backupDir, vFolderName)
+            if not os.path.exists(backupTarget):
+                # Records are small; the bulk of a version folder is nexus data
+                # that invalidation never touches, so copy only the JSON.
+                os.makedirs(backupTarget, exist_ok=True)
+                for fn in os.listdir(vFolderPath):
+                    if fn.endswith(".json"):
+                        shutil.copy2(os.path.join(vFolderPath, fn),
+                                     os.path.join(backupTarget, fn))
+        try:
+            shutil.copy2(indexPath, os.path.join(backupDir, os.path.basename(indexPath)))
+        except Exception:
+            pass
 
-        # 2. Remove the version folder
-        if os.path.isdir(vFolderPath):
-            shutil.rmtree(vFolderPath)
-
-        # 3. Remove the entry from the index and rewrite
-        #    Strip the 'cycleID' annotation that checkCalibrationStatus
-        #    added — it's not part of the on-disk schema and validateIndex
-        #    will flag it as an extra key.
-        #    Sort ascending by version to match the native snapred index order.
+        # ── 1. the index itself ───────────────────────────────────
         _INDEX_KEYS = {"version", "runNumber", "useLiteMode",
                        "appliesTo", "comments", "author", "timestamp"}
-        updatedEntries = sorted(
-            [
-                {k: v for k, v in e.items() if k in _INDEX_KEYS}
-                for e in indexEntries
-                if int(e.get("version", -1)) != version
-            ],
-            key=lambda e: int(e.get("version", 0)),
-        )
+        updatedEntries = []
+        newEntry = None
+        for e in sorted(indexEntries, key=lambda e: int(e.get("version", 0))):
+            clean = {k: v for k, v in e.items() if k in _INDEX_KEYS}
+            if int(e.get("version", -1)) == version:
+                clean["appliesTo"] = NEVER_APPLIES
+                clean["comments"] = newComment
+                newEntry = clean
+            updatedEntries.append(clean)
+
         with open(indexPath, "w") as fh:
             json.dump(updatedEntries, fh, indent=2)
 
-        # 4. Re-number via fixIndex (non-dry-run)
-        fixReport = ssm.fixIndex(
-            runNumber=None, stateID=stateID, isLite=isLite,
-            calType=calType, dryRun=False,
+        updatedFiles = [indexPath]
+
+        # ── 2-4. the copies embedded in the version folder ────────
+        recordName, paramsName = (
+            ("CalibrationRecord.json", "CalibrationParameters.json")
+            if calType == "difcal"
+            else ("NormalizationRecord.json", "NormalizationParameters.json")
         )
+
+        recordPath = os.path.join(vFolderPath, recordName)
+        if os.path.isfile(recordPath):
+            with open(recordPath) as fh:
+                rec = json.load(fh)
+            if isinstance(rec.get("indexEntry"), dict):
+                rec["indexEntry"] = newEntry
+            calcParams = rec.get("calculationParameters")
+            if isinstance(calcParams, dict) and isinstance(calcParams.get("indexEntry"), dict):
+                calcParams["indexEntry"] = newEntry
+            with open(recordPath, "w") as fh:
+                json.dump(rec, fh, indent=2)
+            updatedFiles.append(recordPath)
+
+        paramsPath = os.path.join(vFolderPath, paramsName)
+        if os.path.isfile(paramsPath):
+            with open(paramsPath) as fh:
+                par = json.load(fh)
+            if isinstance(par.get("indexEntry"), dict):
+                par["indexEntry"] = newEntry
+                with open(paramsPath, "w") as fh:
+                    json.dump(par, fh, indent=2)
+                updatedFiles.append(paramsPath)
 
         return {
             "ok": True,
-            "message": f"Deleted version {version}. Backup at {backupDir}.",
-            "fixReport": fixReport,
+            "message": (
+                f"Invalidated version {version} (appliesTo '{NEVER_APPLIES}'). "
+                f"Folder retained, versions not re-numbered. Backup at {backupDir}."
+            ),
+            "updatedFiles": updatedFiles,
+            "backupDir": backupDir,
         }
 
     @staticmethod
