@@ -2237,11 +2237,14 @@ def reduce(runNumber,
                 state = stateID
             )
     # print(calibrationPath)
+    # Read the records at the versions pinned above, so the checks and the status
+    # printout describe the calibration the reduction actually uses. LATEST here
+    # would report SNAPRed's cycle-blind choice instead.
     recordArgs = _recordCycleArgs(dataFactoryService, runNumber)
     calibrationRecord = dataFactoryService.getCalibrationRecord(
                 runId=runNumber, 
                 useLiteMode=useLiteMode, 
-                version = VersionState.LATEST,
+                version = versions.calibration,
                 state = stateID,
                 **recordArgs
             )
@@ -2260,7 +2263,7 @@ def reduce(runNumber,
     normalizationRecord = dataFactoryService.getNormalizationRecord(
                 runId=runNumber, 
                 useLiteMode=useLiteMode, 
-                version = VersionState.LATEST,
+                version = versions.normalization,
                 state = stateID,
                 **recordArgs
             )
