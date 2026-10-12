@@ -66,6 +66,10 @@ default-tag = "0.1.0"
 [tool.versioningit.next-version]
 method = "minor"
 
+[tool.versioningit.tag2version]
+# maps "exp" tags (e.g. "v2.4.0exp1") to PEP 440 compliant versions (e.g. "2.4.0+exp.1")
+method = { module = "versioning", value = "tag2version", module-dir = "tools" }
+
 [tool.versioningit.format]
 distance = "{next_version}.dev{committer_date:%Y%m%d%H%M%S}"
 # Since pixi builds currently require the package version to be set statically in pyproject.toml,
@@ -115,6 +119,7 @@ channels = [
   "mantid/label/main",
   "neutrons", 
   "neutrons/label/rc",
+  "neutrons/label/exp",
   "https://prefix.dev/pixi-build-backends", # Required for pixi build
   "oncat",
 ]
@@ -122,7 +127,7 @@ platforms = ["linux-64"] # add additional platforms as needed
 
 [tool.pixi.dependencies]
 # TODO: This needs to be cleaned up, I'm not certain which deps are actually used.
-snapred = "==2.3.1"
+snapred = "==2.4.0+exp.1.cycle.aware.calib"
 scikit-image = "*"
 python = ">=3.10"
 panel = ">=1.7.4,<2"
@@ -181,7 +186,7 @@ scikit-image = "*"
 lmfit = "*"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
-snapred = "==2.3.1"
+snapred = "==2.4.0+exp.1.cycle.aware.calib"
 odfpy = ">=1.4.1"
 h5py = "*"
 scipy = "*"
