@@ -130,11 +130,11 @@ class _DetailTab(QWidget):
 
     Signals
     -------
-    deleteRequested(int)
+    invalidateRequested(int)
         Emitted with the version number when the user clicks Delete.
     """
 
-    deleteRequested = Signal(int)
+    invalidateRequested = Signal(int)
 
     def __init__(self, calType: str, parent=None):
         super().__init__(parent)
@@ -164,42 +164,42 @@ class _DetailTab(QWidget):
         # ── action buttons ────────────────────────────────────────
         btnLayout = QHBoxLayout()
         btnLayout.addStretch()
-        self.deleteBtn = QPushButton("Delete Selected Version")
-        self.deleteBtn.setEnabled(False)
-        btnLayout.addWidget(self.deleteBtn)
+        self.invalidateBtn = QPushButton("Invalidate Selected Version")
+        self.invalidateBtn.setEnabled(False)
+        btnLayout.addWidget(self.invalidateBtn)
         layout.addLayout(btnLayout)
 
         # ── wiring ────────────────────────────────────────────────
         self.tableView.selectionModel().selectionChanged.connect(
             self._onSelectionChanged
         )
-        self.deleteBtn.clicked.connect(self._onDelete)
+        self.invalidateBtn.clicked.connect(self._onInvalidate)
 
     def setEntries(self, entries: List[Dict[str, Any]]) -> None:
         self.tableModel.setEntries(entries)
-        self.deleteBtn.setEnabled(False)
+        self.invalidateBtn.setEnabled(False)
 
     def _onSelectionChanged(self, selected, _deselected):
         rows = selected.indexes()
         if not rows:
-            self.deleteBtn.setEnabled(False)
+            self.invalidateBtn.setEnabled(False)
             return
         entry = self.tableModel.entryForRow(rows[0].row())
         if entry is None:
-            self.deleteBtn.setEnabled(False)
+            self.invalidateBtn.setEnabled(False)
             return
-        # Cannot delete version 0 for difcal
+        # Version 0 (the geometric default) cannot be invalidated
         ver = int(entry.get("version", -1))
-        can_delete = not (self.calType == "difcal" and ver == 0)
-        self.deleteBtn.setEnabled(can_delete)
+        can_invalidate = not (self.calType == "difcal" and ver == 0)
+        self.invalidateBtn.setEnabled(can_invalidate)
 
-    def _onDelete(self):
+    def _onInvalidate(self):
         rows = self.tableView.selectionModel().selectedRows()
         if not rows:
             return
         entry = self.tableModel.entryForRow(rows[0].row())
         if entry is not None:
-            self.deleteRequested.emit(int(entry["version"]))
+            self.invalidateRequested.emit(int(entry["version"]))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -211,11 +211,11 @@ class CalibrationDetailPanel(QWidget):
 
     Signals
     -------
-    deleteVersionRequested(str, str, int)
-        (stateID, calType, version) — emitted when the user requests deletion.
+    invalidateVersionRequested(str, str, int)
+        (stateID, calType, version) — emitted when the user requests invalidation.
     """
 
-    deleteVersionRequested = Signal(str, str, int)
+    invalidateVersionRequested = Signal(str, str, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -240,11 +240,11 @@ class CalibrationDetailPanel(QWidget):
 
         # ── signal forwarding ─────────────────────────────────────
         self._currentStateID: Optional[str] = None
-        self.difcalTab.deleteRequested.connect(
-            lambda ver: self._emitDelete("difcal", ver)
+        self.difcalTab.invalidateRequested.connect(
+            lambda ver: self._emitInvalidate("difcal", ver)
         )
-        self.normcalTab.deleteRequested.connect(
-            lambda ver: self._emitDelete("normcal", ver)
+        self.normcalTab.invalidateRequested.connect(
+            lambda ver: self._emitInvalidate("normcal", ver)
         )
 
     # ── public API ────────────────────────────────────────────────
@@ -279,6 +279,6 @@ class CalibrationDetailPanel(QWidget):
 
     # ── internal ──────────────────────────────────────────────────
 
-    def _emitDelete(self, calType: str, version: int) -> None:
+    def _emitInvalidate(self, calType: str, version: int) -> None:
         if self._currentStateID:
-            self.deleteVersionRequested.emit(self._currentStateID, calType, version)
+            self.invalidateVersionRequested.emit(self._currentStateID, calType, version)

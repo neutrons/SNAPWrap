@@ -23,6 +23,7 @@ from snapwrap.statusPrinter import (printWarning,
                             verboseStatus)
 
 import snapwrap.snapStateMgr as ssm
+from snapwrap.indexComments import strip_invalidated
 import snapwrap.io as io
 import snapwrap.maskUtils as mut
 import snapwrap.pixelResolution.mantid_utils as pixRes
@@ -1495,7 +1496,10 @@ def _is_propagated_entry(entry: dict) -> bool:
     if not isinstance(comments, str):
         return False
 
-    return bool(_PROPAGATED_ENTRY_RE.match(comments.strip()))
+    # An invalidated entry keeps its original comment behind the
+    # "(INVALIDATED)" marker; strip it so a retired propagated calibration
+    # is still recognised as propagated.
+    return bool(_PROPAGATED_ENTRY_RE.match(strip_invalidated(comments).strip()))
 
 
 def _write_propagation_log(entry: dict) -> None:

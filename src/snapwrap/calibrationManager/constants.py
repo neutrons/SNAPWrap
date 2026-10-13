@@ -3,6 +3,8 @@
 import re
 from enum import Enum, auto
 
+from snapwrap.indexComments import strip_invalidated
+
 
 # ── Double-propagation detection ─────────────────────────────────────────
 
@@ -23,12 +25,17 @@ def is_double_propagated(comment: str) -> bool:
 
         (copied from run:68979 version:2) original comments: (copied from run:12345 …
 
+    An invalidated entry keeps its original comment behind the
+    ``(INVALIDATED)`` marker, so the marker is stripped before matching —
+    retiring a double-propagated entry must not stop it being recognised
+    as one.
+
     Parameters
     ----------
     comment : str
         The ``comments`` field of a calibration index entry.
     """
-    return bool(_DOUBLE_PROP_RE.match(comment))
+    return bool(_DOUBLE_PROP_RE.match(strip_invalidated(comment) or ""))
 
 
 class CalStatus(Enum):
