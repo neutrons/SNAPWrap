@@ -543,8 +543,9 @@ class pvLog:
     so values can be copied straight from a ``.db`` record. All are optional: give
     the ones that matter, e.g. drive limits a record leaves unset.
 
-    ``recordType`` is None when unknown (e.g. a bare PV name); otherwise only
-    analog-output (``ao``) records are supported for now.
+    ``recordType`` is None when unknown (e.g. a bare PV name); otherwise analog
+    output (``ao``) or analog input (``ai``). DRVH, DRVL and DOL are output fields,
+    so an ``ai`` refuses them.
 
     DESC : description.
     EGU  : engineering units, e.g. "bar".
@@ -559,7 +560,8 @@ class pvLog:
     DRVL: Optional[float] = None
     DOL: Optional[float] = None
 
-    _RECORD_TYPES: ClassVar[set[str]] = {"ao"}
+    _RECORD_TYPES: ClassVar[set[str]] = {"ao", "ai"}
+    _OUTPUT_FIELDS: ClassVar[Tuple[str, ...]] = ("DRVH", "DRVL", "DOL")
 
     def __post_init__(self):
         if not isinstance(self.name, str) or not self.name.strip():
@@ -567,7 +569,11 @@ class pvLog:
         if self.recordType is not None and self.recordType not in self._RECORD_TYPES:
             raise ValueError(f"pvLog recordType {self.recordType!r} not supported yet; "
                              f"supported: {sorted(self._RECORD_TYPES)}")
-        for f in ("DRVH", "DRVL", "DOL"):
+        if self.recordType == "ai":
+            given = [f for f in self._OUTPUT_FIELDS if getattr(self, f) is not None]
+            if given:
+                raise ValueError(f"pvLog {self.name}: {given} are output fields; an ai record has none")
+        for f in self._OUTPUT_FIELDS:
             v = getattr(self, f)
             if v is not None:
                 object.__setattr__(self, f, float(v))  # a .db record writes them as strings

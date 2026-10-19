@@ -30,8 +30,8 @@ def teledyneFor(cellType):
     lim = TELEDYNE_LIMITS[cellType]
     c = pressureController(manufacturer="teledyne",
                            model="", serialNumber="",
-                           pvLogs=[pvLog(name="BL3:SE:Teledyne1:PressSet", recordType="ao"),
-                                   "BL3:SE:Teledyne1:Pressure",
+                           pvLogs=["BL3:SE:Teledyne1:PressSet",  # record type to confirm; its readback is PressSet_RBV (ai, bar)
+                                   pvLog(name="BL3:SE:Teledyne1:Pressure", recordType="ai", EGU="bar"),
                                    pvLog(name="BL3:SE:Teledyne1:PCPressSet", recordType="ao", DESC="Synchronized setpoint",
                                          EGU="bar", DRVL=lim["press"][0], DRVH=lim["press"][1]),
                                    pvLog(name="BL3:SE:Teledyne1:MaxFlow", recordType="ao", EGU="ml/min",

@@ -34,10 +34,16 @@ def test_drive_low_above_drive_high_is_refused():
 
 
 @pytest.mark.parametrize("kwargs,match", [({"name": ""}, "needs a PV name"),
-                                          ({"name": "BL3:X", "recordType": "ai"}, "not supported yet")])
+                                          ({"name": "BL3:X", "recordType": "bo"}, "not supported yet"),
+                                          ({"name": "BL3:X", "recordType": "ai", "DRVH": 1}, "output fields")])
 def test_bad_pvlogs_are_refused(kwargs, match):
     with pytest.raises(ValueError, match=match):
         component.pvLog(**kwargs)
+
+
+def test_an_input_record_takes_its_units():
+    p = component.pvLog(name="BL3:SE:Teledyne1:Pressure", recordType="ai", EGU="bar")
+    assert (p.recordType, p.EGU, p.DRVH) == ("ai", "bar", None)
 
 
 def test_bare_pv_names_still_work():
