@@ -130,14 +130,22 @@ def _coerce_init_kwargs(kls: Type, payload: Dict[str, Any]) -> Dict[str, Any]:
         hinted = hints.get(name, f.type)
         dcls = _is_dataclass_type(hinted)
         if dcls and isinstance(val, Mapping):
-            # Prefer custom from_dict if available
-            if hasattr(dcls, "from_dict"):
-                kwargs[name] = dcls.from_dict(val)  # type: ignore
-            else:
-                kwargs[name] = dcls(**val)  # naive
+            kwargs[name] = _hydrate(dcls, val)
+        elif get_origin(hinted) in (list, List) and isinstance(val, list):
+            # List[<dataclass>], e.g. Collimator.apertureDimensions: List[numVal]
+            (arg,) = get_args(hinted) or (None,)
+            ecls = _is_dataclass_type(arg)
+            kwargs[name] = [_hydrate(ecls, v) if ecls and isinstance(v, Mapping) else v for v in val]
         else:
             kwargs[name] = val
     return kwargs
+
+
+def _hydrate(dcls: Type, val: Mapping[str, Any]) -> Any:
+    """A dataclass from its dict, by its own from_dict if it has one."""
+    if hasattr(dcls, "from_dict"):
+        return dcls.from_dict(val)  # type: ignore
+    return dcls(**val)  # naive
 
 @dataclass(slots=True)
 class Component:

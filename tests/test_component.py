@@ -67,3 +67,11 @@ def test_cylinder_invalid_material():
                            innerDiameter=component.numVal(2.0, "mm"), 
                            outerDiameter=component.numVal(3.0, "mm"), 
                            height=component.numVal(5.0, "mm"))
+
+def test_collimator_round_trips_through_its_dict():
+    """apertureDimensions is a List[numVal]; from_dict must rebuild the numVals (DAC.json failed to load)."""
+    coll = component.Collimator(material="testCrystal", apertureShape="circle",
+                                apertureDimensions=[component.numVal(0.5, "mm"), component.numVal(0.5, "mm")])
+    back = component.Component.from_dict(coll.to_dict())
+    assert back.apertureDimensions == coll.apertureDimensions
+    assert all(isinstance(d, component.numVal) for d in back.apertureDimensions)
