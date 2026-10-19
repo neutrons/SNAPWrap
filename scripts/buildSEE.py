@@ -16,35 +16,64 @@ jsonDir = WrapConfig.get("SEE/json/home")
 # Build Pressure controller and Temperature controller:
 ###################################################################
 
-teledyne = pressureController(manufacturer="teledyne", 
-                              model="", serialNumber="",
-                              pvLogs=["BL3:SE:Teledyne1:PressSet",
-                                      "BL3:SE:Teledyne1:Pressure"])
+# The Teledyne pump's limits depend on the cell it drives, so there is one controller
+# per cell type. Values from MG's table, 2026-10-19 (the three PE columns, VX3 single
+# toroid, VX3 double toroid and VX5, are identical).
+TELEDYNE_LIMITS = {
+    #       PCPressSet DRVL, DRVH (bar)   MaxFlow DRVL, DRVH (ml/min)   BDetPThresh DOL (bar)
+    "DAC": {"press": (0, 50),   "flow": (0, 1),  "blowout": 5},
+    "PE":  {"press": (0, 1500), "flow": (0, 10), "blowout": 30},
+}
 
+def teledyneFor(cellType):
+    """The Teledyne1 pressure controller, with the drive limits for ``cellType``."""
+    lim = TELEDYNE_LIMITS[cellType]
+    c = pressureController(manufacturer="teledyne",
+                           model="", serialNumber="",
+                           pvLogs=[pvLog(name="BL3:SE:Teledyne1:PressSet", recordType="ao", EGU="bar"),  # the request
+                                   pvLog(name="BL3:SE:Teledyne1:PressSet_RBV", recordType="ai", EGU="bar"),
+                                   pvLog(name="BL3:SE:Teledyne1:Pressure", recordType="ai", EGU="bar"),
+                                   pvLog(name="BL3:SE:Teledyne1:PCPressSet", recordType="ao", DESC="Synchronized setpoint",
+                                         EGU="bar", DRVL=lim["press"][0], DRVH=lim["press"][1]),
+                                   pvLog(name="BL3:SE:Teledyne1:MaxFlow", recordType="ao", EGU="ml/min",
+                                         DRVL=lim["flow"][0], DRVH=lim["flow"][1]),
+                                   pvLog(name="BL3:SE:Teledyne1:BDetPThresh", recordType="ao", DESC="Blowout pressure threshold",
+                                         EGU="bar", DOL=lim["blowout"])])
+    c.nickname = f"teledyne_{cellType}"
+    return c
+
+teledyneDAC = teledyneFor("DAC")
+teledynePE = teledyneFor("PE")
+
+# record types, units and limits from the IOC .db files (bl3-SE-PACEPump.db, SITEC.db)
 pace = pressureController(manufacturer="pace", 
                          model="", serialNumber="",
-                         pvLogs=["BL3:SE:PACE1:PressSet",
-                                 "BL3:SE:PACE1:Pressure"])
+                         pvLogs=[pvLog(name="BL3:SE:PACE1:PressSet", recordType="ao", EGU="bar"),  # the request
+                                 pvLog(name="BL3:SE:PACE1:PressSet_RBV", recordType="ai", EGU="bar"),
+                                 pvLog(name="BL3:SE:PACE1:Pressure", recordType="ai", EGU="bar")])
 
 sitec = pressureController(manufacturer="SITEC",
                          model="", serialNumber="",
-                         pvLogs=["BL3:SE:SITEC:SetPressure",
-                                 "BL3:SE:PACE1:PressSet"])
+                         pvLogs=[pvLog(name="BL3:SE:SITEC:SetPressure", recordType="longout",  # the request
+                                       DESC="Set the pressure", DRVL=0, DRVH=10000),
+                                 pvLog(name="BL3:SE:SITEC:SP", recordType="ai", DESC="Get Actual SP", EGU="bar"),
+                                 pvLog(name="BL3:SE:SITEC:SA", recordType="ai", DESC="Get Sample", EGU="bar")])
 
 lakeshore = temperatureController(manufacturer="Lakeshore", #TODO: need a nickname property
                                  model="", serialNumber="",
                                  pvLogs=["BL3:SE:Lakeshore:SETP4",
                                           "BL3:SE:Lakeshore:TempSet"])
 
-#save these as separate jsons
-for controller in [teledyne, pace, lakeshore]:
+#save these as separate jsons (the Teledynes by cell type: teledyne_DAC.json, teledyne_PE.json)
+for controller in [teledyneDAC, teledynePE, pace, sitec, lakeshore]:
     print("Created component:")
     print(controller.stringDescriptor)
 
     # serialize and save
     payload = controller.to_dict()
     #save json
-    json = f"{jsonDir}/components/{controller.manufacturer}.json"
+    name = controller.nickname if controller.nickname != "None" else controller.manufacturer
+    json = f"{jsonDir}/components/{name}.json"
     utils.SEEMetaSaver(payload,json)
 
 ###################################################################
@@ -83,7 +112,7 @@ cryoDAC = assembly.DAC(components=[anvil, gasket, coll, pace,lakeshore],
 cryoDAC.primaryCategory = "DAC"
 cryoDAC.nickname = "cryoDAC"
 
-DAC = assembly.DAC(components=[anvil, gasket, coll, teledyne], 
+DAC = assembly.DAC(components=[anvil, gasket, coll, teledyneDAC], 
                comment="DAC template", 
                model="markVI", 
                serialNumber="001",
@@ -116,13 +145,13 @@ singleToroid_gasket = makeToroidGasket(singleToroid_CBN)
 
 # assemble
 PE_ST_VX5 = assembly.PE(
-            components=[singleToroid_CBN, singleToroid_gasket, teledyne], 
+            components=[singleToroid_CBN, singleToroid_gasket, teledynePE], 
             comment="PE single toroid template", 
             model="VX5", 
             serialNumber="")
 
 PE_ST_VX3 = assembly.PE(
-            components=[singleToroid_CBN, singleToroid_gasket, teledyne], 
+            components=[singleToroid_CBN, singleToroid_gasket, teledynePE], 
             comment="PE single toroid template", 
             model="VX3", 
             serialNumber="")
@@ -136,12 +165,12 @@ doubleToroid_sd = toroidAnvil(material='sinteredDiamond',
 doubleToroid_gasket = makeToroidGasket(doubleToroid_sd)
 
 # assemble
-PE_DT_VX5 = assembly.PE(components=[doubleToroid_sd, doubleToroid_gasket, teledyne], 
+PE_DT_VX5 = assembly.PE(components=[doubleToroid_sd, doubleToroid_gasket, teledynePE], 
                comment="PE double toroid template", 
                model="VX5", 
                serialNumber="")
 
-PE_DT_VX3 = assembly.PE(components=[doubleToroid_sd, doubleToroid_gasket, teledyne], 
+PE_DT_VX3 = assembly.PE(components=[doubleToroid_sd, doubleToroid_gasket, teledynePE], 
                comment="PE double toroid template", 
                model="VX3", 
                serialNumber="")

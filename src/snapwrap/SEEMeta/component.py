@@ -130,14 +130,22 @@ def _coerce_init_kwargs(kls: Type, payload: Dict[str, Any]) -> Dict[str, Any]:
         hinted = hints.get(name, f.type)
         dcls = _is_dataclass_type(hinted)
         if dcls and isinstance(val, Mapping):
-            # Prefer custom from_dict if available
-            if hasattr(dcls, "from_dict"):
-                kwargs[name] = dcls.from_dict(val)  # type: ignore
-            else:
-                kwargs[name] = dcls(**val)  # naive
+            kwargs[name] = _hydrate(dcls, val)
+        elif get_origin(hinted) in (list, List) and isinstance(val, list):
+            # List[<dataclass>], e.g. Collimator.apertureDimensions: List[numVal]
+            (arg,) = get_args(hinted) or (None,)
+            ecls = _is_dataclass_type(arg)
+            kwargs[name] = [_hydrate(ecls, v) if ecls and isinstance(v, Mapping) else v for v in val]
         else:
             kwargs[name] = val
     return kwargs
+
+
+def _hydrate(dcls: Type, val: Mapping[str, Any]) -> Any:
+    """A dataclass from its dict, by its own from_dict if it has one."""
+    if hasattr(dcls, "from_dict"):
+        return dcls.from_dict(val)  # type: ignore
+    return dcls(**val)  # naive
 
 @dataclass(slots=True)
 class Component:
@@ -525,6 +533,75 @@ def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> toroidG
     return g
 
 
+# ---------- Process variables (EPICS PVs) logged by auxiliary equipment ----------
+
+@dataclass(frozen=True, slots=True)
+class pvLog:
+    """One EPICS process variable that a piece of auxiliary equipment drives or logs.
+
+    Fields after ``name`` and ``recordType`` are named after the EPICS record fields,
+    so values can be copied straight from a ``.db`` record. All are optional: give
+    the ones that matter, e.g. drive limits a record leaves unset.
+
+    ``recordType`` is None when unknown (e.g. a bare PV name); otherwise analog
+    output (``ao``), integer output (``longout``) or analog input (``ai``). DRVH,
+    DRVL and DOL are output fields, so an ``ai`` refuses them.
+
+    DESC : description.
+    EGU  : engineering units, e.g. "bar".
+    DRVH, DRVL : drive high / low limits: the range a setpoint is clamped to.
+    DOL  : desired output location; for these records a constant initial value.
+    """
+    name: str
+    recordType: Optional[str] = None
+    DESC: Optional[str] = None
+    EGU: Optional[str] = None
+    DRVH: Optional[float] = None
+    DRVL: Optional[float] = None
+    DOL: Optional[float] = None
+
+    _RECORD_TYPES: ClassVar[set[str]] = {"ao", "longout", "ai"}
+    _OUTPUT_FIELDS: ClassVar[Tuple[str, ...]] = ("DRVH", "DRVL", "DOL")
+
+    def __post_init__(self):
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("pvLog needs a PV name, e.g. 'BL3:SE:Teledyne2:PCPressSet'")
+        if self.recordType is not None and self.recordType not in self._RECORD_TYPES:
+            raise ValueError(f"pvLog recordType {self.recordType!r} not supported yet; "
+                             f"supported: {sorted(self._RECORD_TYPES)}")
+        if self.recordType == "ai":
+            given = [f for f in self._OUTPUT_FIELDS if getattr(self, f) is not None]
+            if given:
+                raise ValueError(f"pvLog {self.name}: {given} are output fields; an ai record has none")
+        for f in self._OUTPUT_FIELDS:
+            v = getattr(self, f)
+            if v is not None:
+                object.__setattr__(self, f, float(v))  # a .db record writes them as strings
+        if self.DRVH is not None and self.DRVL is not None and self.DRVL > self.DRVH:
+            raise ValueError(f"pvLog {self.name}: DRVL ({self.DRVL}) is above DRVH ({self.DRVH})")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "pvLog":
+        return cls(**{f.name: d[f.name] for f in fields(cls) if f.name in d})
+
+    @classmethod
+    def coerce(cls, value: Any) -> "pvLog":
+        """A pvLog from a pvLog, a dict, or a bare PV name (the original form of pvLogs)."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(name=value)
+        if isinstance(value, Mapping):
+            return cls.from_dict(value)
+        raise TypeError(f"pvLogs entries must be pvLog, dict or PV name; got {type(value).__name__}")
+
+    def __str__(self):
+        return self.name
+
+
 # ---------- Auxiliary equipment components ----------
 
 @register
@@ -532,22 +609,21 @@ def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> toroidG
 class auxiliaryEquipment(Component):
     """Base class for auxiliary equipment that may carry PV/log entries."""
     kind: ClassVar[str] = "auxiliary.equipment"
-    # pvLogs will hold PV/log objects (defined elsewhere) — default to empty list
-    pvLogs: List[Any] = field(default_factory=list)
+    # version 2: pvLogs entries are pvLog objects (version 1 held bare PV names)
+    version: ClassVar[int] = 2
+    pvLogs: List[pvLog] = field(default_factory=list)
     stringDescriptor: str = field(init=False)
 
+    @classmethod
+    def upgrade(cls, payload: Dict[str, Any], from_version: int) -> Dict[str, Any]:
+        if from_version == 1:
+            payload = dict(payload)
+            payload["pvLogs"] = [{"name": p} if isinstance(p, str) else p for p in payload.get("pvLogs") or []]
+        return payload
+
     def __post_init__(self):
-        # ensure pvLogs is a list (caller may pass other iterable)
-        if self.pvLogs is None:
-            self.pvLogs = []
-        else:
-            # coerce to list if necessary
-            if not isinstance(self.pvLogs, list):
-                try:
-                    self.pvLogs = list(self.pvLogs)
-                except Exception:
-                    # keep original - validation of elements left to PV/log type later
-                    pass
+        # bare PV names (the original form) and dicts (from JSON) become pvLog objects
+        self.pvLogs = [pvLog.coerce(p) for p in (self.pvLogs or [])]
         # derived descriptor (include model/serial if available)
         model = getattr(self, "model", None) or "unknown"
         sn = getattr(self, "serialNumber", None)
