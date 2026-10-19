@@ -45,15 +45,19 @@ def teledyneFor(cellType):
 teledyneDAC = teledyneFor("DAC")
 teledynePE = teledyneFor("PE")
 
+# record types, units and limits from the IOC .db files (bl3-SE-PACEPump.db, SITEC.db)
 pace = pressureController(manufacturer="pace", 
                          model="", serialNumber="",
-                         pvLogs=["BL3:SE:PACE1:PressSet",
-                                 "BL3:SE:PACE1:Pressure"])
+                         pvLogs=[pvLog(name="BL3:SE:PACE1:PressSet", recordType="ao", EGU="bar"),  # the request
+                                 pvLog(name="BL3:SE:PACE1:PressSet_RBV", recordType="ai", EGU="bar"),
+                                 pvLog(name="BL3:SE:PACE1:Pressure", recordType="ai", EGU="bar")])
 
 sitec = pressureController(manufacturer="SITEC",
                          model="", serialNumber="",
-                         pvLogs=["BL3:SE:SITEC:SetPressure",
-                                 "BL3:SE:PACE1:PressSet"])
+                         pvLogs=[pvLog(name="BL3:SE:SITEC:SetPressure", recordType="longout",  # the request
+                                       DESC="Set the pressure", DRVL=0, DRVH=10000),
+                                 pvLog(name="BL3:SE:SITEC:SP", recordType="ai", DESC="Get Actual SP", EGU="bar"),
+                                 pvLog(name="BL3:SE:SITEC:SA", recordType="ai", DESC="Get Sample", EGU="bar")])
 
 lakeshore = temperatureController(manufacturer="Lakeshore", #TODO: need a nickname property
                                  model="", serialNumber="",

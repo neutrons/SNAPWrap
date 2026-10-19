@@ -46,6 +46,13 @@ def test_an_input_record_takes_its_units():
     assert (p.recordType, p.EGU, p.DRVH) == ("ai", "bar", None)
 
 
+def test_an_integer_output_takes_drive_limits():
+    """SITEC's setpoint is a longout."""
+    p = component.pvLog(name="BL3:SE:SITEC:SetPressure", recordType="longout", DESC="Set the pressure",
+                        DRVL=0, DRVH=10000)
+    assert (p.recordType, p.DRVL, p.DRVH) == ("longout", 0.0, 10000.0)
+
+
 def test_bare_pv_names_still_work():
     """The original form of pvLogs, as scripts/buildSEE.py writes it."""
     pvLog, (_, MAX_FLOW, _) = component.pvLog, _records()

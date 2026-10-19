@@ -544,8 +544,8 @@ class pvLog:
     the ones that matter, e.g. drive limits a record leaves unset.
 
     ``recordType`` is None when unknown (e.g. a bare PV name); otherwise analog
-    output (``ao``) or analog input (``ai``). DRVH, DRVL and DOL are output fields,
-    so an ``ai`` refuses them.
+    output (``ao``), integer output (``longout``) or analog input (``ai``). DRVH,
+    DRVL and DOL are output fields, so an ``ai`` refuses them.
 
     DESC : description.
     EGU  : engineering units, e.g. "bar".
@@ -560,7 +560,7 @@ class pvLog:
     DRVL: Optional[float] = None
     DOL: Optional[float] = None
 
-    _RECORD_TYPES: ClassVar[set[str]] = {"ao", "ai"}
+    _RECORD_TYPES: ClassVar[set[str]] = {"ao", "longout", "ai"}
     _OUTPUT_FIELDS: ClassVar[Tuple[str, ...]] = ("DRVH", "DRVL", "DOL")
 
     def __post_init__(self):
