@@ -525,6 +525,68 @@ def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> toroidG
     return g
 
 
+# ---------- Process variables (EPICS PVs) logged by auxiliary equipment ----------
+
+@dataclass(frozen=True, slots=True)
+class pvLog:
+    """One EPICS process variable that a piece of auxiliary equipment drives or logs.
+
+    Fields after ``name`` and ``recordType`` are named after the EPICS record fields,
+    so values can be copied straight from a ``.db`` record. All are optional: give
+    the ones that matter, e.g. drive limits a record leaves unset.
+
+    Only analog-output (``ao``) records are supported for now.
+
+    DESC : description.
+    EGU  : engineering units, e.g. "bar".
+    DRVH, DRVL : drive high / low limits: the range a setpoint is clamped to.
+    DOL  : desired output location; for these records a constant initial value.
+    """
+    name: str
+    recordType: str = "ao"
+    DESC: Optional[str] = None
+    EGU: Optional[str] = None
+    DRVH: Optional[float] = None
+    DRVL: Optional[float] = None
+    DOL: Optional[float] = None
+
+    _RECORD_TYPES: ClassVar[set[str]] = {"ao"}
+
+    def __post_init__(self):
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("pvLog needs a PV name, e.g. 'BL3:SE:Teledyne2:PCPressSet'")
+        if self.recordType not in self._RECORD_TYPES:
+            raise ValueError(f"pvLog recordType {self.recordType!r} not supported yet; "
+                             f"supported: {sorted(self._RECORD_TYPES)}")
+        for f in ("DRVH", "DRVL", "DOL"):
+            v = getattr(self, f)
+            if v is not None:
+                object.__setattr__(self, f, float(v))  # a .db record writes them as strings
+        if self.DRVH is not None and self.DRVL is not None and self.DRVL > self.DRVH:
+            raise ValueError(f"pvLog {self.name}: DRVL ({self.DRVL}) is above DRVH ({self.DRVH})")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "pvLog":
+        return cls(**{f.name: d[f.name] for f in fields(cls) if f.name in d})
+
+    @classmethod
+    def coerce(cls, value: Any) -> "pvLog":
+        """A pvLog from a pvLog, a dict, or a bare PV name (the original form of pvLogs)."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(name=value)
+        if isinstance(value, Mapping):
+            return cls.from_dict(value)
+        raise TypeError(f"pvLogs entries must be pvLog, dict or PV name; got {type(value).__name__}")
+
+    def __str__(self):
+        return self.name
+
+
 # ---------- Auxiliary equipment components ----------
 
 @register
@@ -532,22 +594,21 @@ def makeToroidGasket(anvil: "toroidAnvil", *, material: str = "TiZr") -> toroidG
 class auxiliaryEquipment(Component):
     """Base class for auxiliary equipment that may carry PV/log entries."""
     kind: ClassVar[str] = "auxiliary.equipment"
-    # pvLogs will hold PV/log objects (defined elsewhere) — default to empty list
-    pvLogs: List[Any] = field(default_factory=list)
+    # version 2: pvLogs entries are pvLog objects (version 1 held bare PV names)
+    version: ClassVar[int] = 2
+    pvLogs: List[pvLog] = field(default_factory=list)
     stringDescriptor: str = field(init=False)
 
+    @classmethod
+    def upgrade(cls, payload: Dict[str, Any], from_version: int) -> Dict[str, Any]:
+        if from_version == 1:
+            payload = dict(payload)
+            payload["pvLogs"] = [{"name": p} if isinstance(p, str) else p for p in payload.get("pvLogs") or []]
+        return payload
+
     def __post_init__(self):
-        # ensure pvLogs is a list (caller may pass other iterable)
-        if self.pvLogs is None:
-            self.pvLogs = []
-        else:
-            # coerce to list if necessary
-            if not isinstance(self.pvLogs, list):
-                try:
-                    self.pvLogs = list(self.pvLogs)
-                except Exception:
-                    # keep original - validation of elements left to PV/log type later
-                    pass
+        # bare PV names (the original form) and dicts (from JSON) become pvLog objects
+        self.pvLogs = [pvLog.coerce(p) for p in (self.pvLogs or [])]
         # derived descriptor (include model/serial if available)
         model = getattr(self, "model", None) or "unknown"
         sn = getattr(self, "serialNumber", None)
