@@ -28,8 +28,9 @@ jobs:
           fetch-tags: true
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
         with:
+          pixi-version: v0.81.0
           manifest-path: pyproject.toml
           # Workaround: Dynamic versioning (versioningit) causes lock file version mismatch.
           # We skip the editable package install and do it separately with pip.
@@ -66,8 +67,9 @@ jobs:
           fetch-tags: true
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
         with:
+          pixi-version: v0.81.0
           manifest-path: pyproject.toml
           # Workaround: Dynamic versioning (versioningit) causes lock file version mismatch.
           # We skip the editable package install and do it separately with pip.
@@ -91,14 +93,14 @@ jobs:
       # installed (and micromamba on PATH); pkg-install sets both up.
       - name: Install built conda package
         id: install
-        uses: neutrons/gh-actions/pkg-install@eb7a7c6fcfd0cda1a7b238329afc0afd09a4f4af # v2
+        uses: neutrons/gh-actions/pkg-install@46e28a74c8872901c571e0493d26871afe2662fb # v2.1
         with:
           package-name: ${{ env.PKG_NAME }}
           local-channel: ./local-channel
           extra-channels: mantid/label/nightly mantid-ornl mantid-ornl/label/rc neutrons neutrons/label/rc
 
       - name: Verify conda package
-        uses: neutrons/gh-actions/pkg-verify@eb7a7c6fcfd0cda1a7b238329afc0afd09a4f4af # v2
+        uses: neutrons/gh-actions/pkg-verify@46e28a74c8872901c571e0493d26871afe2662fb # v2.1
         with:
           package-name: ${{ env.PKG_NAME }}
           module-name: ${{ env.MODULE_NAME }}
@@ -123,8 +125,9 @@ jobs:
           fetch-tags: true
 
       - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        uses: prefix-dev/setup-pixi@9dabb60412d3d2d967a8d682f7ce01317af40514 # v0.11.0
         with:
+          pixi-version: v0.81.0
           manifest-path: pyproject.toml
           # Workaround: Dynamic versioning (versioningit) causes lock file version mismatch.
           # We skip the editable package install and do it separately with pip.
@@ -140,7 +143,7 @@ jobs:
           name: artifact-conda-package
 
       - name: Upload package to anaconda
-        uses: neutrons/conda-actions/publish@main
+        uses: neutrons/gh-actions/publish@46e28a74c8872901c571e0493d26871afe2662fb # v2.1
         with:
           anaconda-token: ${{ secrets.ANACONDA_TOKEN }}
           organization: neutrons
@@ -148,11 +151,11 @@ jobs:
 
       - name: Remove old packages
         if: github.ref == 'refs/heads/next'
-        uses: neutrons/conda-actions/pkg-remove@v1
+        uses: neutrons/gh-actions/pkg-remove@46e28a74c8872901c571e0493d26871afe2662fb # v2.1
         with:
-          anaconda_token: ${{ secrets.ANACONDA_TOKEN }}
+          anaconda-token: ${{ secrets.ANACONDA_TOKEN }}
           organization: neutrons
-          package_name: ${{ env.PKG_NAME }}
+          package-name: ${{ env.PKG_NAME }}
           label: ${{ env.CONDA_LABEL }}
           keep: 5
 
@@ -163,7 +166,7 @@ jobs:
     if: github.ref == 'refs/heads/next'
     steps:
       - name: Get Environment Name
-        uses: neutrons/branch-mapper@main
+        uses: neutrons/gh-actions/branch-mapper@46e28a74c8872901c571e0493d26871afe2662fb # v2.1
         id: env_name
         with:
           prefix: snapwrap
