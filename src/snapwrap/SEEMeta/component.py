@@ -543,7 +543,8 @@ class pvLog:
     so values can be copied straight from a ``.db`` record. All are optional: give
     the ones that matter, e.g. drive limits a record leaves unset.
 
-    Only analog-output (``ao``) records are supported for now.
+    ``recordType`` is None when unknown (e.g. a bare PV name); otherwise only
+    analog-output (``ao``) records are supported for now.
 
     DESC : description.
     EGU  : engineering units, e.g. "bar".
@@ -551,7 +552,7 @@ class pvLog:
     DOL  : desired output location; for these records a constant initial value.
     """
     name: str
-    recordType: str = "ao"
+    recordType: Optional[str] = None
     DESC: Optional[str] = None
     EGU: Optional[str] = None
     DRVH: Optional[float] = None
@@ -563,7 +564,7 @@ class pvLog:
     def __post_init__(self):
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("pvLog needs a PV name, e.g. 'BL3:SE:Teledyne2:PCPressSet'")
-        if self.recordType not in self._RECORD_TYPES:
+        if self.recordType is not None and self.recordType not in self._RECORD_TYPES:
             raise ValueError(f"pvLog recordType {self.recordType!r} not supported yet; "
                              f"supported: {sorted(self._RECORD_TYPES)}")
         for f in ("DRVH", "DRVL", "DOL"):

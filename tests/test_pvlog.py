@@ -14,9 +14,9 @@ def _records():
     """The three Teledyne2 analog-output records."""
     pvLog = component.pvLog
     return (
-        pvLog(name="BL3:SE:Teledyne2:PCPressSet", DESC="Synchronized setpoint", EGU="bar", DRVH=0, DRVL=0),
-        pvLog(name="BL3:SE:Teledyne2:MaxFlow", EGU="ml/min", DRVH=50, DRVL=0),
-        pvLog(name="BL3:SE:Teledyne2:BDetPThresh", DESC="Blowout pressure threshold", EGU="bar", DOL="5.0"),
+        pvLog(name="BL3:SE:Teledyne2:PCPressSet", recordType="ao", DESC="Synchronized setpoint", EGU="bar", DRVH=0, DRVL=0),
+        pvLog(name="BL3:SE:Teledyne2:MaxFlow", recordType="ao", EGU="ml/min", DRVH=50, DRVL=0),
+        pvLog(name="BL3:SE:Teledyne2:BDetPThresh", recordType="ao", DESC="Blowout pressure threshold", EGU="bar", DOL="5.0"),
     )
 
 
@@ -45,6 +45,7 @@ def test_bare_pv_names_still_work():
     pvLog, (_, MAX_FLOW, _) = component.pvLog, _records()
     c = component.pressureController(manufacturer="teledyne", pvLogs=["BL3:SE:Teledyne1:PressSet", MAX_FLOW])
     assert c.pvLogs == [pvLog(name="BL3:SE:Teledyne1:PressSet"), MAX_FLOW]
+    assert c.pvLogs[0].recordType is None  # a bare name says nothing about its record
 
 
 def test_round_trip_through_json():
