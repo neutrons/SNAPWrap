@@ -20,7 +20,7 @@ jsonDir = WrapConfig.get("SEE/json/home")
 # per cell type. Values from MG's table, 2026-10-19 (the three PE columns, VX3 single
 # toroid, VX3 double toroid and VX5, are identical).
 TELEDYNE_LIMITS = {
-    #       PCPressSet DRVL, DRVH (bar)   MaxFlow DRVL, DRVH   BDetPThresh DOL (bar)
+    #       PCPressSet DRVL, DRVH (bar)   MaxFlow DRVL, DRVH (ml/min)   BDetPThresh DOL (bar)
     "DAC": {"press": (0, 50),   "flow": (0, 1),  "blowout": 5},
     "PE":  {"press": (0, 1500), "flow": (0, 10), "blowout": 30},
 }
@@ -30,11 +30,11 @@ def teledyneFor(cellType):
     lim = TELEDYNE_LIMITS[cellType]
     c = pressureController(manufacturer="teledyne",
                            model="", serialNumber="",
-                           pvLogs=["BL3:SE:Teledyne1:PressSet",
+                           pvLogs=[pvLog(name="BL3:SE:Teledyne1:PressSet", recordType="ao"),
                                    "BL3:SE:Teledyne1:Pressure",
                                    pvLog(name="BL3:SE:Teledyne1:PCPressSet", recordType="ao", DESC="Synchronized setpoint",
                                          EGU="bar", DRVL=lim["press"][0], DRVH=lim["press"][1]),
-                                   pvLog(name="BL3:SE:Teledyne1:MaxFlow", recordType="ao",
+                                   pvLog(name="BL3:SE:Teledyne1:MaxFlow", recordType="ao", EGU="ml/min",
                                          DRVL=lim["flow"][0], DRVH=lim["flow"][1]),
                                    pvLog(name="BL3:SE:Teledyne1:BDetPThresh", recordType="ao", DESC="Blowout pressure threshold",
                                          EGU="bar", DOL=lim["blowout"])])
