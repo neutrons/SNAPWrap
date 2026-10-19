@@ -65,7 +65,7 @@ lakeshore = temperatureController(manufacturer="Lakeshore", #TODO: need a nickna
                                           "BL3:SE:Lakeshore:TempSet"])
 
 #save these as separate jsons (the Teledynes by cell type: teledyne_DAC.json, teledyne_PE.json)
-for controller in [teledyneDAC, teledynePE, pace, lakeshore]:
+for controller in [teledyneDAC, teledynePE, pace, sitec, lakeshore]:
     print("Created component:")
     print(controller.stringDescriptor)
 
