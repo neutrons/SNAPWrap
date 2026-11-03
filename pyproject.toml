@@ -164,6 +164,10 @@ packaging = "*"
 pyyaml = "*"
 # NOTE: this dep SHOULD have been in snapred, but was missed
 "ruamel.yaml" = "*"
+# brotli 1.2.1 fixes advisories against 1.2.0; without this floor the solver keeps 1.2.0
+brotli = ">=1.2.1"
+# uv 0.13.4 fixes PYSEC-2026-4321; pulled in by hatch via python-uv
+uv = ">=0.13.4"
 
 [tool.pixi.pypi-dependencies]
 snapwrap = { path = ".", editable = true }
@@ -276,34 +280,19 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
 ] }
 
 # Misc
-# tornado 6.5.5 fixes CVE-2026-31958 / GHSA-78cv-mqj4-43f7 but is not yet on conda-forge (latest: 6.5.4)
-# Remove the --ignore-vuln flags once conda-forge packages tornado >=6.5.5
-# multidict 6.9.1 fixes CVE-2026-104874 (reference leak in items-view union/subtraction) but is
-# not yet on conda-forge (latest: 6.7.1); it is pulled in by aiohttp. Remove that flag once
-# conda-forge packages multidict >=6.9.1.
+# Each --ignore-vuln below is blocked upstream; remove it once the blocker clears.
+# setuptools: mantidworkbench 6.16.x (required by snapred) pins setuptools >=82.0.1,<82.1.0a0.
+#   PYSEC-2026-3447 (CVE-2026-59890) is fixed in 83.0.0; GHSA-xmj3-9gf7-h52w is fixed in 84.1.0.
+# tornado: CVE-2026-116577, CVE-2026-116578, CVE-2026-115927 are fixed in 6.6, which is not yet
+#   on conda-forge (latest: 6.5.10).
+# multidict: CVE-2026-104874 (PYSEC-2026-4244) is fixed in 6.9.1, which is not yet on conda-forge
+#   (latest: 6.7.1); it is pulled in by aiohttp.
 audit-deps = { cmd = """pip-audit --local -s osv \
 --ignore-vuln PYSEC-2026-3447 \
---ignore-vuln PYSEC-2026-2255 \
---ignore-vuln GHSA-78cv-mqj4-43f7 \
---ignore-vuln CVE-2026-31958 \
---ignore-vuln CVE-2026-3219 \
---ignore-vuln PYSEC-2026-165 \
---ignore-vuln PYSEC-2026-2249 \
---ignore-vuln PYSEC-2026-2250 \
---ignore-vuln PYSEC-2026-2251 \
---ignore-vuln PYSEC-2026-2252 \
---ignore-vuln PYSEC-2026-2253 \
---ignore-vuln PYSEC-2026-2254 \
---ignore-vuln PYSEC-2026-2256 \
---ignore-vuln PYSEC-2026-2257 \
---ignore-vuln PYSEC-2026-2874 \
---ignore-vuln PYSEC-2026-3451 \
---ignore-vuln PYSEC-2026-3453 \
---ignore-vuln PYSEC-2026-3454 \
---ignore-vuln PYSEC-2026-3493 \
---ignore-vuln PYSEC-2026-3494 \
---ignore-vuln PYSEC-2026-3495 \
---ignore-vuln PYSEC-2026-3496 \
+--ignore-vuln GHSA-xmj3-9gf7-h52w \
+--ignore-vuln CVE-2026-116577 \
+--ignore-vuln CVE-2026-116578 \
+--ignore-vuln CVE-2026-115927 \
 --ignore-vuln CVE-2026-104874""", description = "Audit the package dependencies for vulnerabilities" }
 clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
 clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
