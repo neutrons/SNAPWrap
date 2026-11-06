@@ -593,7 +593,7 @@ environments:
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantid-6.16.1-np21py312h68643e6_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidqt-6.16.1-py312h3be2853_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidworkbench-6.16.1-py312h9e94620_0.conda
-      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.1.cycle.aware.calib-pyh4616a5c_0.conda
+      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.2.cycle.aware.calib-pyh4616a5c_0.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/09/15/ab14dfdfd6756389e0a5467417863cf6fffa18ecfba0a68bfdc15dc5895a/pytest_playwright-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/14/2f/967ba146e6d58cf6a652da73885f52fc68001525b4197effc174321d70b4/jmespath-1.1.0-py3-none-any.whl
@@ -1183,7 +1183,7 @@ environments:
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantid-6.16.1-np21py312h68643e6_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidqt-6.16.1-py312h3be2853_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidworkbench-6.16.1-py312h9e94620_0.conda
-      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.1.cycle.aware.calib-pyh4616a5c_0.conda
+      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.2.cycle.aware.calib-pyh4616a5c_0.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/09/15/ab14dfdfd6756389e0a5467417863cf6fffa18ecfba0a68bfdc15dc5895a/pytest_playwright-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/19/47/034be51bc2b40279fd1417397d3f330b73906774bd6eaecd26ed93c1491f/bm4d-4.2.5-py3-none-any.whl
@@ -4163,7 +4163,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/nh3?source=compressed-mapping
+  - pkg:pypi/nh3?source=hash-mapping
   run_exports: {}
   size: 690746
   timestamp: 1787526819319
@@ -5216,7 +5216,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/ruamel-yaml-clib?source=compressed-mapping
+  - pkg:pypi/ruamel-yaml-clib?source=hash-mapping
   run_exports: {}
   size: 158648
   timestamp: 1788881211578
@@ -5230,8 +5230,7 @@ packages:
   - __glibc >=2.17
   license: MIT
   license_family: MIT
-  purls:
-  - pkg:pypi/ruff?source=compressed-mapping
+  purls: []
   run_exports: {}
   size: 8926625
   timestamp: 1791586553873
@@ -6942,7 +6941,7 @@ packages:
   license: Apache-2.0
   license_family: APACHE
   purls:
-  - pkg:pypi/cyclopts?source=compressed-mapping
+  - pkg:pypi/cyclopts?source=hash-mapping
   run_exports: {}
   size: 231123
   timestamp: 1791332988811
@@ -7484,7 +7483,7 @@ packages:
   license: BSD-2-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/imageio?source=hash-mapping
+  - pkg:pypi/imageio?source=compressed-mapping
   run_exports: {}
   size: 321602
   timestamp: 1791477236274
@@ -7496,7 +7495,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/imagesize?source=hash-mapping
+  - pkg:pypi/imagesize?source=compressed-mapping
   run_exports: {}
   size: 21467
   timestamp: 1787649248672
@@ -7782,7 +7781,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/jsonpointer?source=compressed-mapping
+  - pkg:pypi/jsonpointer?source=hash-mapping
   run_exports: {}
   size: 14728
   timestamp: 1791676993658
@@ -8722,7 +8721,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/platformdirs?source=compressed-mapping
+  - pkg:pypi/platformdirs?source=hash-mapping
   run_exports: {}
   size: 34027
   timestamp: 1791727231159
@@ -8779,7 +8778,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/pre-commit?source=compressed-mapping
+  - pkg:pypi/pre-commit?source=hash-mapping
   run_exports: {}
   size: 201879
   timestamp: 1786408353117
@@ -8928,7 +8927,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/pydantic-settings?source=compressed-mapping
+  - pkg:pypi/pydantic-settings?source=hash-mapping
   run_exports: {}
   size: 60984
   timestamp: 1786146776076
@@ -8980,7 +8979,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/pyproject-hooks?source=hash-mapping
+  - pkg:pypi/pyproject-hooks?source=compressed-mapping
   run_exports: {}
   size: 17061
   timestamp: 1791576869230
@@ -9186,7 +9185,7 @@ packages:
   license: BSD-2-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/python-json-logger?source=hash-mapping
+  - pkg:pypi/python-json-logger?source=compressed-mapping
   run_exports: {}
   size: 19367
   timestamp: 1786872772907
@@ -10363,7 +10362,7 @@ packages:
   license: Apache-2.0
   license_family: APACHE
   purls:
-  - pkg:pypi/websocket-client?source=compressed-mapping
+  - pkg:pypi/websocket-client?source=hash-mapping
   run_exports: {}
   size: 78254
   timestamp: 1788531123810
@@ -10402,7 +10401,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/wslink?source=compressed-mapping
+  - pkg:pypi/wslink?source=hash-mapping
   run_exports: {}
   size: 37316
   timestamp: 1791494709196
@@ -10550,9 +10549,9 @@ packages:
   license: GPL-3.0-or-later
   size: 2804028
   timestamp: 1782951515896
-- conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.1.cycle.aware.calib-pyh4616a5c_0.conda
-  sha256: ebf49ba1238ac4d6485c279d903c95aad83e76d4a6a46d9ceb3d1adfe236ba80
-  md5: 0468409444c8b260b453b4dddec1f7d7
+- conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.2.cycle.aware.calib-pyh4616a5c_0.conda
+  sha256: 0ec77b3212be3de742a67f4ea58e6e7c1c9cc626c48d4af6d02c28a9132c524e
+  md5: 6f7f5792a4f45422ab6bef2976ae32c2
   depends:
   - mantidworkbench >=6.16.0,<6.17
   - pydantic >=2.7.3,<3
@@ -10560,8 +10559,8 @@ packages:
   - python >=3.10
   - python *
   license: GPL-3.0-only
-  size: 305950
-  timestamp: 1791573528244
+  size: 315477
+  timestamp: 1793984348570
 - pypi: ./
   name: snapwrap
   requires_dist:
