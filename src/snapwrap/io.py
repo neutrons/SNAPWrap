@@ -23,6 +23,21 @@ from .wrapConfig import WrapConfig
 
 _PREFIX_NUM_RE = re.compile(r'^(.+?)-(\d+)$')
 
+
+def reductionHome(ipts):
+    """SNAPRed's reduction output directory for an IPTS directory, ending in "/".
+
+    ``instrument.reduction.home`` with ``{IPTS}`` replaced by the IPTS directory's
+    last component -- the same substitution SNAPRed makes in
+    ``LocalDataService._constructReductionStateRoot``. With the default config this
+    is ``/SNS/SNAP/IPTS-<n>/shared/SNAPRed/``, which is what wrap used to hard-code;
+    an override (e.g. a test harness) now moves wrap's reads and exports with it.
+    """
+    pathFmt = str(Config["instrument.reduction.home"])
+    if "{IPTS}" in pathFmt:
+        pathFmt = pathFmt.format(IPTS=os.path.basename(os.path.normpath(str(ipts))))
+    return pathFmt.rstrip("/") + "/"
+
 class redObject:
 
     #class that takes a workspace name and, if the name matches an expected pattern for 
@@ -258,11 +273,11 @@ class redObject:
         #create a dictionary to hold metadata to include as a comment in output files
 
         if self.isLite:
-            self.redRecord = (f"{self.ipts}shared/SNAPRed/{self.stateID}/"
+            self.redRecord = (f"{reductionHome(self.ipts)}{self.stateID}/"
                               f"lite/{runNumber}/"
                               f"{self.timeStamp}/ReductionRecord.json")
         else:
-            self.redRecord = (f"{self.ipts}shared/SNAPRed/{self.stateID}/"
+            self.redRecord = (f"{reductionHome(self.ipts)}{self.stateID}/"
                               f"native/{runNumber}/"
                               f"{self.timeStamp}/ReductionRecord.json")
 
@@ -337,9 +352,9 @@ class redObject:
         useStateID = False #TODO how to pass options?
 
         if useStateID:
-            redPath = f'{self.ipts}shared/SNAPRed/{self.stateID[0]}/export/'
+            redPath = f'{reductionHome(self.ipts)}{self.stateID[0]}/export/'
         else:
-            redPath = f'{self.ipts}shared/SNAPRed/export/'
+            redPath = f'{reductionHome(self.ipts)}export/'
 
         filePrefix = 'SNAP'
 
@@ -689,7 +704,7 @@ class diskObject:
         
         self.runString = str(runNumber).strip()
 
-        redPath = f"{ipts}shared/SNAPRed/{stateID}/{instType}/{self.runString}/"
+        redPath = f"{reductionHome(ipts)}{stateID}/{instType}/{self.runString}/"
         
         self.isReduced = os.path.exists(redPath) 
         if not self.isReduced:

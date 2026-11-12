@@ -5,15 +5,15 @@ WrapConfig.load()
 
 __all__ = ["WrapConfig"]
 
-# Load cycle-date data for calibration-validity checks.
-# build_cycle_json compares the .ods against the existing JSON and only
-# rewrites (and bumps the version) when the cycle data actually changed.
-# It also populates the in-memory cache, so a separate load_cycle_data
-# call is not needed.
+# Cycles come from SNAPRed's SNAPInstPrm when it carries them: see
+# snapStateMgr.cycleForRun. Only when it carries none (SNAPRed 2.3.1, or no cycle
+# registered yet) does wrap fall back to its own cycleDates table, loaded here.
+# build_cycle_json compares the .ods against the existing JSON and only rewrites
+# (and bumps the version) when the cycle data actually changed. It also populates
+# the in-memory cache, so a separate load_cycle_data call is not needed.
 #
-# If neither the .ods nor the JSON are available (e.g. CI / test
-# environments) we warn but allow the import to proceed — cycle-aware
-# features will simply return None.
+# If the fallback is needed but unavailable (e.g. CI / test environments) we warn
+# but allow the import to proceed: cycle-aware features will return None.
 from snapred.meta.Config import Config
 from .cycleDates import build_cycle_json
 import os as _os
@@ -21,28 +21,39 @@ import os as _os
 _calib_home = Config["instrument.calibration.home"]
 
 try:
-    build_cycle_json(
-        json_path=_os.path.join(_calib_home, "cycleDates.json"),
-        ods_path=_os.path.join(_calib_home, "cycleDates.ods"),
-    )
-    print("Loaded cycle-date data successfully.")
-    print(f"  source: {_os.path.join(_calib_home, 'cycleDates.ods')}")
-    print(f"  index:  {_os.path.join(_calib_home, 'cycleDates.json')}")
-except FileNotFoundError as _e:
-    import warnings as _w
-    _w.warn(
-        f"Cycle-date data not available ({_e}). "
-        "Cycle-aware calibration checks will be disabled.",
-        stacklevel=1,
-    )
-except PermissionError as _e:
-    import warnings as _w
-    _w.warn(
-        f"Cycle-date data could not be written ({_e}). "
-        "This is expected for non-instrument-scientist users. "
-        "Cycle data from the existing JSON (if any) will be used.",
-        stacklevel=1,
-    )
+    from .snapStateMgr import registeredCycles as _registeredCycles
+
+    _redCycles = _registeredCycles()
+except Exception as _e:  # never let the check stop the import; fall back as before
+    print(f"SNAPInstPrm: could not read registered cycles ({_e}); trying cycleDates")
+    _redCycles = []
+
+if _redCycles:
+    print(f"Cycles: {len(_redCycles)} registered in SNAPRed's SNAPInstPrm, latest {_redCycles[0]}.")
+else:
+    try:
+        build_cycle_json(
+            json_path=_os.path.join(_calib_home, "cycleDates.json"),
+            ods_path=_os.path.join(_calib_home, "cycleDates.ods"),
+        )
+        print("No cycles in SNAPRed's SNAPInstPrm; loaded wrap's cycle-date data instead.")
+        print(f"  source: {_os.path.join(_calib_home, 'cycleDates.ods')}")
+        print(f"  index:  {_os.path.join(_calib_home, 'cycleDates.json')}")
+    except FileNotFoundError as _e:
+        import warnings as _w
+        _w.warn(
+            f"No cycles in SNAPRed's SNAPInstPrm and no cycle-date data ({_e}). "
+            "Cycle-aware calibration checks will be disabled.",
+            stacklevel=1,
+        )
+    except PermissionError as _e:
+        import warnings as _w
+        _w.warn(
+            f"Cycle-date data could not be written ({_e}). "
+            "This is expected for non-instrument-scientist users. "
+            "Cycle data from the existing JSON (if any) will be used.",
+            stacklevel=1,
+        )
 
 
 try:

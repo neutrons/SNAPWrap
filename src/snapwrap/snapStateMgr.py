@@ -11,6 +11,7 @@ import copy
 import shutil
 import operator
 import re
+import functools
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # SNAPRed imports 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -377,14 +378,14 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
             comment = entry.get("comments", "")
             m = _propagation_re.match(comment)
             effectiveRun = m.group(1) if m else entry["runNumber"]
-            entry["cycleID"] = get_cycle_for_run(effectiveRun)
+            entry["cycleID"] = cycleForRun(effectiveRun, silent=True)
 
     calStatus["calibIndexList"] = calIndexList
 
     # Determine the cycle for the input run number (None if runNumber is None)
     runCycleID = None
     if runNumber is not None:
-        runCycleID = get_cycle_for_run(runNumber)
+        runCycleID = cycleForRun(runNumber)
     calStatus["runCycleID"] = runCycleID
 
     # If no runnumber only obtainable information relates to general state calibrations so return
@@ -430,7 +431,8 @@ def checkCalibrationStatus(runNumber,stateID=None, isLite=True,calType="difcal",
                 calStatus["statusDetail"] = (
                     f"valid calibration exists but is out of cycle "
                     f"(run cycle: {runCycleID}, "
-                    f"calibration cycle: {calStatus['calibIndexList'][noCycleIndex].get('cycleID', '?')})"
+                    f"calibration cycle: {calStatus['calibIndexList'][noCycleIndex].get('cycleID', '?')}). "
+                    "Pass requireSameCycle=False to use it anyway."
                 )
             else:
                 calStatus["statusDetail"] = "calibrations exist but no matching run range in appliesTo"
@@ -896,31 +898,171 @@ def frankenRecord(donorRun,
 
 
 # ---------------------------------------------------------------------------
-# Cycle-date helpers
+# Cycle helpers
 # ---------------------------------------------------------------------------
 
-def cycleForRun(runNumber):
+#: A facility cycle ID: four digits, a hyphen, one uppercase letter. Mirrors
+#: snapred's ``Cycle.CYCLE_ID_PATTERN``. The ``Cycle.NO_CYCLE`` sentinel
+#: ("unknown") deliberately does not match, so filtering on this pattern drops
+#: it, and the fixed width makes a lexicographic sort chronological.
+_CYCLE_ID_RE = re.compile(r"^\d{4}-[A-Z]$")
+
+
+def orderCycleIDs(cycleIDs):
+    """Distinct, well-formed cycle IDs, most recent first.
+
+    Anything that is not a real cycle ID is dropped -- notably snapred's
+    ``Cycle.NO_CYCLE`` sentinel, and ``None`` from an entry that carries no
+    cycle. Because every ID is ``YYYY-L``, reverse lexicographic order is
+    chronological, so no date lookup is needed.
+    """
+
+    return sorted(
+        {c for c in (cycleIDs or []) if isinstance(c, str) and _CYCLE_ID_RE.match(c)},
+        reverse=True,
+    )
+
+
+def registeredCycles():
+    """Cycle IDs registered in ``SNAPInstPrm``, most recent first.
+
+    The authority for cycle bounds is the instrument-parameter index, not a
+    spreadsheet in the calibration home: each cycle is an entry whose
+    ``appliesTo`` bounds its runs and whose body carries the ``cycle``. This
+    reads every version and collects the distinct cycles found.
+
+    Entries without a cycle -- the configuration-epoch entries that cycle
+    entries overlay -- contribute nothing, which is what makes a run outside
+    every cycle read as out-of-cycle.
+
+    Returns an empty list when no cycles are registered yet, so a caller must
+    cope with that rather than assume the instrument has cycles.
+
+    Requires a snapred carrying ``InstrumentConfig.cycle``; against an older
+    one every entry simply has no cycle attribute and the result is empty.
+    """
+
+    localDataService = LocalDataService()
+    indexer = localDataService.instrumentParameterIndexer()
+
+    cycleIDs = []
+    for version in indexer.allVersions():
+        try:
+            instrumentConfig = localDataService.readInstrumentParametersVersion(version)
+        except AttributeError:
+            # snapred predates readInstrumentParametersVersion: nothing to read.
+            return []
+        except Exception as e:
+            # One unreadable version must not hide the rest.
+            print(f"SNAPInstPrm: WARNING could not read version {version}: {e}")
+            continue
+
+        cycle = getattr(instrumentConfig, "cycle", None)
+        if cycle is not None:
+            cycleIDs.append(getattr(cycle, "cycleID", None))
+
+    return orderCycleIDs(cycleIDs)
+
+
+@functools.lru_cache(maxsize=1)
+def _redRegistersCycles():
+    """Whether SNAPRed's SNAPInstPrm carries any cycle at all.
+
+    Cached: wrap's ``checkCalibrationStatus`` resolves a cycle once per index
+    entry, and this would otherwise re-read every SNAPInstPrm version each
+    time. Call :func:`clearCycleCache` after registering a new cycle.
+    """
+
+    return bool(registeredCycles())
+
+
+def clearCycleCache():
+    """Forget whether SNAPRed carries cycles.
+
+    Must be called after writing a new cycle to SNAPRed's SNAPInstPrm --
+    otherwise a session that started before any cycle existed goes on using
+    wrap's ``cycleDates`` fallback.
+    """
+
+    _redRegistersCycles.cache_clear()
+
+
+def _cycleFromInstrumentParameters(runNumber):
+    """Resolve a run's cycle through SNAPRed, distinguishing "none" from "unknown".
+
+    Returns ``(cycleID, authoritative)``:
+
+    * ``(id, True)``    -- SNAPRed resolved a real cycle for the run.
+    * ``(None, True)``  -- SNAPRed carries cycles and this run is in none of
+      them. That is a real answer: the run falls outside every cycle entry and
+      picks up the configuration-epoch entry, which carries no cycle.
+    * ``(None, False)`` -- SNAPRed has no cycle data to offer, so the caller
+      must look elsewhere. Either the installed SNAPRed predates cycle support
+      (2.3.1 has no ``getCycle``, no ``Cycle`` DAO and no
+      ``InstrumentConfig.cycle``), or no cycle has been registered yet.
+
+    The second and third cases are indistinguishable from SNAPRed's answer
+    alone -- it returns the ``Cycle.NO_CYCLE`` sentinel for both -- so they are
+    separated by asking whether SNAPRed knows of any cycle at all.
+    """
+
+    localDataService = LocalDataService()
+    try:
+        cycle = localDataService.getCycle(str(runNumber))
+    except AttributeError:
+        # SNAPRed predates cycle support entirely.
+        return None, False
+    except Exception as e:
+        print(f"SNAPInstPrm: WARNING cycle lookup failed for run {runNumber}: {e}")
+        return None, False
+
+    cycleID = getattr(cycle, "cycleID", None)
+    if isinstance(cycleID, str) and _CYCLE_ID_RE.match(cycleID):
+        return cycleID, True
+
+    # SNAPRed returned its no-cycle sentinel.
+    return None, _redRegistersCycles()
+
+
+def cycleForRun(runNumber, silent=False):
     """Return the facility operating-cycle ID for a given SNAP run number.
 
     Parameters
     ----------
     runNumber : int or str
         The run number to look up.
+    silent : bool
+        Suppress the "no cycle" message. Set when resolving in a loop, where
+        one line per calibration-index entry would drown the output.
 
     Returns
     -------
     str or None
-        The cycleID (e.g. ``'2025-A'``), or ``None`` if the run
-        predates all recorded cycles.
+        The cycleID (e.g. ``'2025-A'``), or ``None`` if no cycle applies.
 
     Notes
     -----
-    On first call the module reads (or builds) a JSON index from the
-    ``cycleDates.ods`` spreadsheet in the calibration directory.
-    Subsequent calls use the in-memory cache.
+    SNAPRed's SNAPInstPrm is the authority, via
+    :func:`_cycleFromInstrumentParameters`. Only when SNAPRed has no cycle data
+    to offer does this fall back to wrap's ``cycleDates`` table.
+
+    **The fallback is temporary.** It exists because the installed SNAPRed
+    (2.3.1) has no cycle support at all, so without it every lookup would
+    return ``None`` and -- since wrap's ``checkCalibrationStatus`` treats an
+    unresolved cycle as ``requireSameCycle=False`` -- cycle filtering would be
+    silently disabled. Delete the fallback, and wrap's ``cycleDates`` with it,
+    once the SNAPRed pin moves to a release carrying the cycle support.
     """
+
+    cycleID, authoritative = _cycleFromInstrumentParameters(runNumber)
+    if authoritative:
+        if cycleID is None and not silent:
+            print(f"SNAPInstPrm: run {runNumber} is in no registered cycle")
+        return cycleID
+
+    # TEMPORARY: wrap's own table, until the SNAPRed pin moves. See above.
     cycle = get_cycle_for_run(runNumber)
-    if cycle is None:
+    if cycle is None and not silent:
         print(f"cycleDates: no cycle found for run {runNumber}")
     return cycle
 
