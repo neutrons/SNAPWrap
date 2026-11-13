@@ -127,7 +127,7 @@ platforms = ["linux-64"] # add additional platforms as needed
 
 [tool.pixi.dependencies]
 # TODO: This needs to be cleaned up, I'm not certain which deps are actually used.
-snapred = "==2.4.0+exp.2.cycle.aware.calib"
+snapred = "==2.4.0+exp.3.cycle.aware.calib"
 scikit-image = "*"
 python = ">=3.10"
 panel = ">=1.7.4,<2"
@@ -190,7 +190,7 @@ scikit-image = "*"
 lmfit = "*"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
-snapred = "==2.4.0+exp.2.cycle.aware.calib"
+snapred = "==2.4.0+exp.3.cycle.aware.calib"
 odfpy = ">=1.4.1"
 h5py = "*"
 scipy = "*"
