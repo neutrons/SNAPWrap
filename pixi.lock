@@ -593,7 +593,7 @@ environments:
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantid-6.16.1-np21py312h68643e6_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidqt-6.16.1-py312h3be2853_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidworkbench-6.16.1-py312h9e94620_0.conda
-      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.2.cycle.aware.calib-pyh4616a5c_0.conda
+      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.3.cycle.aware.calib-pyh4616a5c_0.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/09/15/ab14dfdfd6756389e0a5467417863cf6fffa18ecfba0a68bfdc15dc5895a/pytest_playwright-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/14/2f/967ba146e6d58cf6a652da73885f52fc68001525b4197effc174321d70b4/jmespath-1.1.0-py3-none-any.whl
@@ -1183,7 +1183,7 @@ environments:
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantid-6.16.1-np21py312h68643e6_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidqt-6.16.1-py312h3be2853_0.conda
       - conda: https://conda.anaconda.org/mantid/label/main/linux-64/mantidworkbench-6.16.1-py312h9e94620_0.conda
-      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.2.cycle.aware.calib-pyh4616a5c_0.conda
+      - conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.3.cycle.aware.calib-pyh4616a5c_0.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/09/15/ab14dfdfd6756389e0a5467417863cf6fffa18ecfba0a68bfdc15dc5895a/pytest_playwright-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/19/47/034be51bc2b40279fd1417397d3f330b73906774bd6eaecd26ed93c1491f/bm4d-4.2.5-py3-none-any.whl
@@ -10549,9 +10549,9 @@ packages:
   license: GPL-3.0-or-later
   size: 2804028
   timestamp: 1782951515896
-- conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.2.cycle.aware.calib-pyh4616a5c_0.conda
-  sha256: 0ec77b3212be3de742a67f4ea58e6e7c1c9cc626c48d4af6d02c28a9132c524e
-  md5: 6f7f5792a4f45422ab6bef2976ae32c2
+- conda: https://conda.anaconda.org/neutrons/label/exp/noarch/snapred-2.4.0+exp.3.cycle.aware.calib-pyh4616a5c_0.conda
+  sha256: 2007416ee48456d11f4958dfb81f4f14461e5cb83cbdd3a818ad0056add0e004
+  md5: c5fe1e19318d3bb54f339e6ce0d4a896
   depends:
   - mantidworkbench >=6.16.0,<6.17
   - pydantic >=2.7.3,<3
@@ -10559,8 +10559,8 @@ packages:
   - python >=3.10
   - python *
   license: GPL-3.0-only
-  size: 315477
-  timestamp: 1793984348570
+  size: 316226
+  timestamp: 1794579688256
 - pypi: ./
   name: snapwrap
   requires_dist:

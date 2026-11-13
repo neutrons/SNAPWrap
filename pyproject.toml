@@ -127,7 +127,7 @@ platforms = ["linux-64"] # add additional platforms as needed
 
 [tool.pixi.dependencies]
 # TODO: This needs to be cleaned up, I'm not certain which deps are actually used.
-snapred = "==2.4.0+exp.2.cycle.aware.calib"
+snapred = "==2.4.0+exp.3.cycle.aware.calib"
 scikit-image = "*"
 python = ">=3.10"
 panel = ">=1.7.4,<2"
@@ -190,7 +190,7 @@ scikit-image = "*"
 lmfit = "*"
 panel = ">=1.7.4,<2"
 sqlalchemy = ">=2.0.41,<3"
-snapred = "==2.4.0+exp.2.cycle.aware.calib"
+snapred = "==2.4.0+exp.3.cycle.aware.calib"
 odfpy = ">=1.4.1"
 h5py = "*"
 scipy = "*"
@@ -287,13 +287,16 @@ conda-publish = { cmd = "anaconda upload *.conda", description = "Publish the .c
 #   on conda-forge (latest: 6.5.10).
 # multidict: CVE-2026-104874 (PYSEC-2026-4244) is fixed in 6.9.1, which is not yet on conda-forge
 #   (latest: 6.7.1); it is pulled in by aiohttp.
+# soupsieve: CVE-2026-126190 is fixed in 4.0.0, which IS on conda-forge (4.1); the lock still has
+#   3.0.2 (via beautifulsoup4, which needs only >=1.2). Drop this once the lock is refreshed.
 audit-deps = { cmd = """pip-audit --local -s osv \
 --ignore-vuln PYSEC-2026-3447 \
 --ignore-vuln GHSA-xmj3-9gf7-h52w \
 --ignore-vuln CVE-2026-116577 \
 --ignore-vuln CVE-2026-116578 \
 --ignore-vuln CVE-2026-115927 \
---ignore-vuln CVE-2026-104874""", description = "Audit the package dependencies for vulnerabilities" }
+--ignore-vuln CVE-2026-104874 \
+--ignore-vuln CVE-2026-126190""", description = "Audit the package dependencies for vulnerabilities" }
 clean = { cmd = 'rm -rf .pytest_cache .ruff_cache **/*.egg-info **/dist **/__pycache__', description = "Clean up various caches and build artifacts" }
 clean-conda = { cmd = "rm -f *.conda", description = "Clean the local .conda build artifacts" }
 clean-docs = { cmd = "rm -rf docs/_build", description = "Clean up documentation build artifacts" }
